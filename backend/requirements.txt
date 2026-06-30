@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+pymupdf4llm
+spacy
+sentence-transformers
+transformers
+pinecone-client
+sqlalchemy
+alembic
+celery
+redis
+python-dotenv
+google-genai
+python-multipart
+pydantic
+pydantic-settings
