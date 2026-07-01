@@ -2,6 +2,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .api import upload, query
+from .database import engine
+from . import models
+
+# Create database tables automatically
+models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="AI Policy Intelligence Platform API",

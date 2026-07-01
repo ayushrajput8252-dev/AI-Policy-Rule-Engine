@@ -6,8 +6,10 @@ from scipy.spatial.distance import cosine
 try:
     nlp = spacy.load("en_core_web_sm")
 except OSError:
-    print("Warning: en_core_web_sm not found. Falling back to blank model.")
-    nlp = spacy.blank("en")
+    print("Warning: en_core_web_sm not found. Attempting to download...")
+    from spacy.cli import download
+    download("en_core_web_sm")
+    nlp = spacy.load("en_core_web_sm")
 
 # Load SentenceTransformer for embeddings (BAAI/bge-large-en-v1.5)
 # This model will be downloaded on first run.
