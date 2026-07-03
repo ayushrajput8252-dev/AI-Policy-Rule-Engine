@@ -20,7 +20,7 @@ _embedding_model = None
 def get_embedding_model():
     global _embedding_model
     if _embedding_model is None:
-        _embedding_model = SentenceTransformer("BAAI/bge-large-en-v1.5")
+        _embedding_model = SentenceTransformer("BAAI/bge-base-en-v1.5")
     return _embedding_model
 
 KEYWORDS = [
