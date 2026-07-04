@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
-from .api import upload, query
+from .api import upload, query, rules
 from .database import engine
 from . import models
 
@@ -24,6 +24,7 @@ app.add_middleware(
 
 app.include_router(upload.router, prefix="/api/v1")
 app.include_router(query.router, prefix="/api/v1")
+app.include_router(rules.router, prefix="/api/v1")
 
 @app.get("/")
 def read_root():
