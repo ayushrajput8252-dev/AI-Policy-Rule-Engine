@@ -1,7 +1,7 @@
 from .detection import get_embedding_model
 from .canonicalization import get_pinecone_index
 
-def retrieve_rules(query: str, top_k: int = 5) -> list[dict]:
+def retrieve_rules(query: str, top_k: int = 5, document_id: str | None = None) -> list[dict]:
     """
     Embeds the user query and retrieves the top_k most relevant rules from Pinecone.
     """
@@ -10,11 +10,16 @@ def retrieve_rules(query: str, top_k: int = 5) -> list[dict]:
     
     index = get_pinecone_index()
     
-    response = index.query(
-        vector=query_vector,
-        top_k=top_k,
-        include_metadata=True
-    )
+    query_args = {
+        "vector": query_vector,
+        "top_k": top_k,
+        "include_metadata": True
+    }
+    
+    if document_id:
+        query_args["filter"] = {"document_id": {"$eq": document_id}}
+        
+    response = index.query(**query_args)
     
     retrieved_rules = []
     for match in response.matches:
