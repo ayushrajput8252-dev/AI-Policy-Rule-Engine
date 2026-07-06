@@ -21,7 +21,7 @@ def canonicalize_and_store_rule(document_id: str, page: int, section: str, rule_
     For this POC, we will use the raw text as the canonical rule and store it in Pinecone + SQLite.
     A full agglomerative clustering implementation would batch rules and cluster them periodically.
     """
-    canonical_rule = rule_data.get("action", "") + " " + rule_data.get("object", "")
+    canonical_rule = rule_data.get("key_finding", "")
     
     rule_id = str(uuid.uuid4())
     
@@ -29,9 +29,9 @@ def canonicalize_and_store_rule(document_id: str, page: int, section: str, rule_
     db_rule = Rule(
         id=rule_id,
         canonical_rule=canonical_rule,
-        actor=rule_data.get("actor", ""),
-        action=rule_data.get("action", ""),
-        condition=rule_data.get("condition", ""),
+        actor="N/A",
+        action="N/A",
+        condition=rule_data.get("context", ""),
         type=rule_data.get("type", ""),
         confidence=rule_data.get("confidence", 0),
         document_id=document_id,
@@ -47,7 +47,7 @@ def canonicalize_and_store_rule(document_id: str, page: int, section: str, rule_
         model = get_embedding_model()
         
         # We embed the full rule context for better semantic search
-        text_to_embed = f"Actor: {db_rule.actor}. Action: {db_rule.action}. Condition: {db_rule.condition}."
+        text_to_embed = f"Finding: {canonical_rule}. Context: {db_rule.condition}."
         vector = model.encode(text_to_embed).tolist()
         
         metadata = {

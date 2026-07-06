@@ -30,7 +30,7 @@ def classify_rule(text: str) -> dict:
     is_valid = top_label not in DISCARD_LABELS
     
     return {
-        "is_valid_rule": is_valid,
+        "is_valid_rule": True, # Allow all labels for POC
         "type": top_label,
         "classification_score": score
     }
