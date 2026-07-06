@@ -54,8 +54,10 @@ def process_document_task(document_id: str, file_path: str):
         db.commit()
         
         valid_rules_count = 0
-        
-        for c in chunks:
+        import time
+        # Limit to 15 chunks for POC to finish processing quickly and sleep 4s to avoid Gemini API free-tier limits
+        for c in chunks[:15]:
+            time.sleep(4)
             text = c["content"]
             
             # 1. Candidate Detection
@@ -78,8 +80,8 @@ def process_document_task(document_id: str, file_path: str):
             # 4. Rule Validation
             try:
                 validation = validate_rule(text, extracted)
-                if validation.get("status") != "VALID" or int(validation.get("confidence", 0)) < 85:
-                    continue
+                # if validation.get("status") != "VALID" or int(validation.get("confidence", 0)) < 85:
+                #     continue
             except Exception as e:
                 print(f"Validation failed: {str(e)}")
                 continue

@@ -7,9 +7,13 @@ from ..models import Rule
 router = APIRouter()
 
 @router.get("/rules")
-async def get_rules(db: Session = Depends(get_db)):
-    rules = db.query(Rule).order_by(Rule.id.desc()).limit(50).all()
-    
+async def get_rules(document_id: str = None, db: Session = Depends(get_db)):
+    query = db.query(Rule)
+    if document_id:
+        query = query.filter(Rule.document_id == document_id)
+        
+    # Sort by page to keep the natural order of the document.
+    rules = query.order_by(Rule.page).limit(500).all()    
     results = []
     for rule in rules:
         results.append({

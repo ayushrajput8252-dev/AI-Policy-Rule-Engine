@@ -8,12 +8,13 @@ router = APIRouter()
 class QueryRequest(BaseModel):
     query: str
     top_k: int = 5
+    document_id: str | None = None
 
 @router.post("/query")
 async def process_query(request: QueryRequest):
     try:
         # 1. Vector Retrieval
-        retrieved_rules = retrieve_rules(request.query, request.top_k)
+        retrieved_rules = retrieve_rules(request.query, request.top_k, request.document_id)
         
         if not retrieved_rules:
             return {
