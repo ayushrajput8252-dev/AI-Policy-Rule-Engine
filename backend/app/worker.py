@@ -29,11 +29,18 @@ def process_document_task(document_id: str, file_path: str):
     from .services.validation import validate_rule
     from .services.canonicalization import canonicalize_and_store_rule
     from .database import SessionLocal
-    from .models import Chunk
+    from .models import Chunk, Document
     
     print(f"Processing document {document_id} from {file_path}")
     db = SessionLocal()
     try:
+        # Update status to processing
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if doc:
+            meta = dict(doc.metadata_ or {})
+            meta["status"] = "processing"
+            doc.metadata_ = meta
+            db.commit()
         md_content = parse_pdf(file_path)
         chunks = chunk_document(document_id, md_content)
         print(f"Generated {len(chunks)} chunks for {document_id}")
@@ -55,9 +62,9 @@ def process_document_task(document_id: str, file_path: str):
         
         valid_rules_count = 0
         import time
-        # Limit to 15 chunks for POC to finish processing quickly and sleep 4s to avoid Gemini API free-tier limits
-        for c in chunks[:15]:
-            time.sleep(4)
+        # Limit to 10 chunks for POC to finish processing quickly and sleep 5s to avoid Gemini API free-tier limits
+        for c in chunks[:10]:
+            time.sleep(5)
             text = c["content"]
             
             # 1. Candidate Detection
@@ -75,17 +82,13 @@ def process_document_task(document_id: str, file_path: str):
                 extracted = extract_rule(text, classification["type"])
             except Exception as e:
                 print(f"Extraction failed: {str(e)}")
+                # If we hit rate limits, break early so we can at least save the rules we've extracted so far
+                if '429' in str(e):
+                    print("Hit rate limit, stopping extraction for this document.")
+                    break
                 continue
                 
-            # 4. Rule Validation
-            try:
-                validation = validate_rule(text, extracted)
-                # if validation.get("status") != "VALID" or int(validation.get("confidence", 0)) < 85:
-                #     continue
-            except Exception as e:
-                print(f"Validation failed: {str(e)}")
-                continue
-                
+            # 4. Rule Validation (Disabled to save Gemini Quota)
             # 5. Canonicalization & Storage
             canonicalize_and_store_rule(
                 document_id=document_id,
@@ -97,10 +100,27 @@ def process_document_task(document_id: str, file_path: str):
             valid_rules_count += 1
         
         print(f"Processed {valid_rules_count} valid rules for document {document_id}")
+        
+        # Mark as completed
+        if doc:
+            meta = dict(doc.metadata_ or {})
+            meta["status"] = "completed"
+            doc.metadata_ = meta
+            db.commit()
+            
         return {"status": "success", "chunks_count": len(chunks), "rules_extracted": valid_rules_count}
     except Exception as e:
         print(f"Error processing document {document_id}: {str(e)}")
         db.rollback()
+        
+        # Mark as error
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if doc:
+            meta = dict(doc.metadata_ or {})
+            meta["status"] = "failed"
+            doc.metadata_ = meta
+            db.commit()
+            
         return {"status": "error", "message": str(e)}
     finally:
         db.close()

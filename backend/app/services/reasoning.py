@@ -21,8 +21,8 @@ def generate_answer(query: str, retrieved_rules: list[dict]) -> dict:
     ])
     
     prompt = f"""
-    You are an AI Policy Intelligence Reasoning Engine. Answer the user's question based ONLY on the provided validated rules.
-    If the provided rules do not contain the answer, say so. Do not hallucinate.
+    You are an AI Document Intelligence Engine. Answer the user's question using the provided context. 
+    If the provided context does not fully contain the answer, you may supplement it with your general knowledge, but prioritize the context.
 
     User Question: "{query}"
     
