@@ -2,15 +2,20 @@ from typing import List
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from ..database import get_db
-from ..models import Rule
+from ..models import Rule, Document
 
 router = APIRouter()
 
 @router.get("/rules")
 async def get_rules(document_id: str = None, db: Session = Depends(get_db)):
     query = db.query(Rule)
+    status = "completed"
+    
     if document_id:
         query = query.filter(Rule.document_id == document_id)
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if doc and doc.metadata_:
+            status = doc.metadata_.get("status", "completed")
         
     # Sort by page to keep the natural order of the document.
     rules = query.order_by(Rule.page).limit(500).all()    
@@ -26,4 +31,4 @@ async def get_rules(document_id: str = None, db: Session = Depends(get_db)):
             "section": rule.section
         })
         
-    return {"rules": results}
+    return {"rules": results, "status": status}
