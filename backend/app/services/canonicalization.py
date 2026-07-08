@@ -15,7 +15,7 @@ def get_pinecone_index():
         _index = _pinecone.Index(settings.PINECONE_INDEX_NAME)
     return _index
 
-def canonicalize_and_store_rule(document_id: str, page: int, section: str, rule_data: dict, db_session) -> dict:
+def canonicalize_and_store_rule(document_id: str, page: int, section: str, rule_data: dict, db_session, bbox: list = None, page_dim: list = None) -> dict:
     """
     Normalizes a rule using embeddings (conceptual clustering).
     For this POC, we will use the raw text as the canonical rule and store it in Pinecone + SQLite.
@@ -59,6 +59,10 @@ def canonicalize_and_store_rule(document_id: str, page: int, section: str, rule_
             "document_id": document_id
         }
         
+        if bbox and page_dim:
+            metadata["bbox"] = bbox
+            metadata["page_dim"] = page_dim
+            
         index.upsert(vectors=[{"id": rule_id, "values": vector, "metadata": metadata}])
         
     except Exception as e:
