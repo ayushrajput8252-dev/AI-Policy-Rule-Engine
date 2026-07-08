@@ -4,6 +4,8 @@
 
 An AI-powered platform that automatically reads complex documents (like compliance manuals or contracts) and extracts structured business rules. It turns messy, unstructured paragraphs into clean, searchable data.
 
+![alt text](image.png)
+
 ## ✨ Why this project stands out (Engineering Highlights)
 - **Scalable Background Processing**: Built with **Celery & Redis** to handle heavy AI workloads in the background, ensuring the main API never slows down or freezes.
 - **Advanced AI Pipeline**: Instead of a basic "zero-shot" prompt, it uses a multi-step LLM process to guarantee high accuracy and zero hallucinations.
