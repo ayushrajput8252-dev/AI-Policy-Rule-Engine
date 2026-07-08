@@ -88,14 +88,15 @@ def process_document_task(document_id: str, file_path: str):
                     break
                 continue
                 
-            # 4. Rule Validation (Disabled to save Gemini Quota)
             # 5. Canonicalization & Storage
             canonicalize_and_store_rule(
                 document_id=document_id,
-                page=c["page"],
-                section=c["section"],
+                page=c.get("page"),
+                section=c.get("section"),
                 rule_data=extracted,
-                db_session=db
+                db_session=db,
+                bbox=c.get("bbox"),
+                page_dim=c.get("page_dim")
             )
             valid_rules_count += 1
         

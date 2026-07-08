@@ -19,8 +19,6 @@ async def process_query(request: QueryRequest):
         if not retrieved_rules:
             return {
                 "answer": "I don't have any policy rules that match your query.",
-                "supporting_rules": [],
-                "confidence": 0,
                 "sources": []
             }
             

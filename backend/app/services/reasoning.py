@@ -31,16 +31,7 @@ def generate_answer(query: str, retrieved_rules: list[dict]) -> dict:
     
     Return a JSON object with the following schema:
     {{
-      "answer": "Your comprehensive answer based on the rules (string)",
-      "supporting_rules": ["List of Rule IDs used to formulate the answer (array of strings)"],
-      "confidence": "Your confidence score in the answer from 0 to 100 (integer)",
-      "sources": [
-         {{
-             "document_id": "string",
-             "page": "integer",
-             "section": "string"
-         }}
-      ]
+      "answer": "Your comprehensive answer based on the rules (string)"
     }}
     
     Return ONLY valid JSON.
@@ -56,10 +47,34 @@ def generate_answer(query: str, retrieved_rules: list[dict]) -> dict:
     
     try:
         data = json.loads(response.text)
+        
+        # Build sources array manually from retrieved rules to include bbox
+        sources = []
+        for r in retrieved_rules:
+            meta = r.get("metadata", {})
+            sources.append({
+                "document_id": meta.get("document_id"),
+                "page": meta.get("page"),
+                "bbox": meta.get("bbox"),
+                "page_dim": meta.get("page_dim")
+            })
+            
+        data["sources"] = sources
         return data
     except json.JSONDecodeError:
         # Fallback if it returns markdown json
         match = re.search(r'```json\s*(.*?)\s*```', response.text, re.DOTALL)
         if match:
-            return json.loads(match.group(1))
+            data = json.loads(match.group(1))
+            sources = []
+            for r in retrieved_rules:
+                meta = r.get("metadata", {})
+                sources.append({
+                    "document_id": meta.get("document_id"),
+                    "page": meta.get("page"),
+                    "bbox": meta.get("bbox"),
+                    "page_dim": meta.get("page_dim")
+                })
+            data["sources"] = sources
+            return data
         raise Exception("Failed to parse Gemini reasoning output as JSON")
