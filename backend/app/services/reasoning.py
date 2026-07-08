@@ -47,16 +47,24 @@ def generate_answer(query: str, retrieved_rules: list[dict]) -> dict:
     
     try:
         data = json.loads(response.text)
-        
         # Build sources array manually from retrieved rules to include bbox
         sources = []
         for r in retrieved_rules:
             meta = r.get("metadata", {})
+            bbox = meta.get("bbox")
+            page_dim = meta.get("page_dim")
+            if isinstance(bbox, str):
+                try: bbox = json.loads(bbox)
+                except: pass
+            if isinstance(page_dim, str):
+                try: page_dim = json.loads(page_dim)
+                except: pass
+                
             sources.append({
                 "document_id": meta.get("document_id"),
                 "page": meta.get("page"),
-                "bbox": meta.get("bbox"),
-                "page_dim": meta.get("page_dim")
+                "bbox": bbox,
+                "page_dim": page_dim
             })
             
         data["sources"] = sources
@@ -69,11 +77,19 @@ def generate_answer(query: str, retrieved_rules: list[dict]) -> dict:
             sources = []
             for r in retrieved_rules:
                 meta = r.get("metadata", {})
+                bbox = meta.get("bbox")
+                page_dim = meta.get("page_dim")
+                if isinstance(bbox, str):
+                    try: bbox = json.loads(bbox)
+                    except: pass
+                if isinstance(page_dim, str):
+                    try: page_dim = json.loads(page_dim)
+                    except: pass
                 sources.append({
                     "document_id": meta.get("document_id"),
                     "page": meta.get("page"),
-                    "bbox": meta.get("bbox"),
-                    "page_dim": meta.get("page_dim")
+                    "bbox": bbox,
+                    "page_dim": page_dim
                 })
             data["sources"] = sources
             return data

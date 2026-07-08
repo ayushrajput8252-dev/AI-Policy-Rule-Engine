@@ -28,7 +28,9 @@ async def get_rules(document_id: str = None, db: Session = Depends(get_db)):
             "type": rule.type,
             "confidence": rule.confidence,
             "page": rule.page,
-            "section": rule.section
+            "section": rule.section,
+            "bbox": rule.metadata_.get("bbox") if rule.metadata_ else None,
+            "page_dim": rule.metadata_.get("page_dim") if rule.metadata_ else None
         })
         
     return {"rules": results, "status": status}
