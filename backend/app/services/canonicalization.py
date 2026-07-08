@@ -36,7 +36,8 @@ def canonicalize_and_store_rule(document_id: str, page: int, section: str, rule_
         confidence=rule_data.get("confidence", 0),
         document_id=document_id,
         page=page,
-        section=section
+        section=section,
+        metadata_={"bbox": bbox, "page_dim": page_dim} if bbox and page_dim else {}
     )
     db_session.add(db_rule)
     db_session.commit()
@@ -60,8 +61,9 @@ def canonicalize_and_store_rule(document_id: str, page: int, section: str, rule_
         }
         
         if bbox and page_dim:
-            metadata["bbox"] = bbox
-            metadata["page_dim"] = page_dim
+            import json
+            metadata["bbox"] = json.dumps(bbox)
+            metadata["page_dim"] = json.dumps(page_dim)
             
         index.upsert(vectors=[{"id": rule_id, "values": vector, "metadata": metadata}])
         

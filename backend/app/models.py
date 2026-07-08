@@ -38,5 +38,6 @@ class Rule(Base):
     document_id = Column(String, ForeignKey("documents.id"))
     page = Column(Integer)
     section = Column(String)
+    metadata_ = Column("metadata", JSON, default={})
 
     document = relationship("Document", back_populates="rules")
