@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: ai-policy-backend
+    env: python
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: PINECONE_INDEX_NAME
+        sync: false
+      - key: PINECONE_ENVIRONMENT
+        sync: false
+      - key: HF_TOKEN
+        sync: false
+      - key: CORS_ORIGINS
+        value: "https://ai-policy-rule-engine.vercel.app" # Change to your Vercel URL
