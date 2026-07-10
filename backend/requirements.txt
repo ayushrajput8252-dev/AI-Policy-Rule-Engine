@@ -14,3 +14,4 @@ google-genai
 python-multipart
 pydantic
 pydantic-settings
+groq

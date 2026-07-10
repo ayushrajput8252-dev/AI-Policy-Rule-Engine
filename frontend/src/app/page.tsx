@@ -51,10 +51,14 @@ export default function ChatPage() {
   const [currentFileName, setCurrentFileName] = useState<string | null>(null);
   const [docStatus, setDocStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle");
   const [activeSource, setActiveSource] = useState<Source | null>(null);
+  const [filterType, setFilterType] = useState<string>("ALL");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchRules = async () => {
-    if (!currentDocId) return;
+    if (!currentDocId) {
+      setExtractedRules([]);
+      return;
+    }
     setIsFetchingRules(true);
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -74,7 +78,6 @@ export default function ChatPage() {
   };
 
   useEffect(() => {
-    if (!currentDocId) return;
     fetchRules();
     const interval = setInterval(fetchRules, 5000);
     return () => clearInterval(interval);
@@ -197,6 +200,24 @@ export default function ChatPage() {
             {isFetchingRules && <Loader2 className="h-5 w-5 animate-spin" />}
           </div>
           
+          {extractedRules.length > 0 && docStatus !== "processing" && (
+            <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
+              {["ALL", "RULE", "RECOMMENDATION", "ACTION", "INFO"].map(type => (
+                <button
+                  key={type}
+                  onClick={() => setFilterType(type)}
+                  className={`px-3 py-1 text-xs font-bold uppercase border-2 border-black transition-all whitespace-nowrap ${
+                    filterType === type 
+                      ? "bg-black text-white shadow-none translate-x-0.5 translate-y-0.5" 
+                      : "bg-white text-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none"
+                  }`}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+          )}
+          
           <div className="space-y-4">
             {docStatus === "processing" && (
               <div className="p-4 border-2 border-black border-dashed font-bold uppercase text-center bg-yellow-300 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center gap-2">
@@ -216,7 +237,7 @@ export default function ChatPage() {
                 AWAITING DATA
               </div>
             ) : (
-              extractedRules.map((rule) => (
+              (filterType === "ALL" ? extractedRules : extractedRules.filter(r => (r.type?.toUpperCase() || "INFO") === filterType)).map((rule) => (
                 <div key={rule.id} className="p-3 border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-default">
                   <div className="flex items-center gap-2 mb-2 pb-2 border-b-2 border-black">
                     <span className="font-black bg-black text-white px-2 py-1 text-xs uppercase">

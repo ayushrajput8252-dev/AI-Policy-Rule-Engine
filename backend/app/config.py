@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     PORT: int = 8000
 
     GEMINI_API_KEY: str = Field(default="", validation_alias=AliasChoices("GEMINI_API_KEY", "GOOGLE_API_KEY"))
+    GROQ_API_KEY: str = ""
 
     PINECONE_API_KEY: str = ""
     PINECONE_ENVIRONMENT: str = ""

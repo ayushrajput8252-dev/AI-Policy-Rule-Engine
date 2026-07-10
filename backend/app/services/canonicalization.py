@@ -22,22 +22,32 @@ def canonicalize_and_store_rule(document_id: str, page: int, section: str, rule_
     A full agglomerative clustering implementation would batch rules and cluster them periodically.
     """
     canonical_rule = rule_data.get("key_finding", "")
+    actor = rule_data.get("actor", "N/A")
+    action = rule_data.get("action", "N/A")
+    condition = rule_data.get("condition", "")
+    exception = rule_data.get("exception", "")
+    penalty = rule_data.get("penalty", "")
     
     rule_id = str(uuid.uuid4())
     
     # Store in SQLite
+    meta = {"bbox": bbox, "page_dim": page_dim} if bbox and page_dim else {}
+    if exception: meta["exception"] = exception
+    if penalty: meta["penalty"] = penalty
+    if rule_data.get("context"): meta["context"] = rule_data.get("context")
+
     db_rule = Rule(
         id=rule_id,
         canonical_rule=canonical_rule,
-        actor="N/A",
-        action="N/A",
-        condition=rule_data.get("context", ""),
+        actor=actor,
+        action=action,
+        condition=condition,
         type=rule_data.get("type", ""),
         confidence=rule_data.get("confidence", 0),
         document_id=document_id,
         page=page,
         section=section,
-        metadata_={"bbox": bbox, "page_dim": page_dim} if bbox and page_dim else {}
+        metadata_=meta
     )
     db_session.add(db_rule)
     db_session.commit()
@@ -47,8 +57,8 @@ def canonicalize_and_store_rule(document_id: str, page: int, section: str, rule_
         index = get_pinecone_index()
         model = get_embedding_model()
         
-        # We embed the full rule context for better semantic search
-        text_to_embed = f"Finding: {canonical_rule}. Context: {db_rule.condition}."
+        # We embed the full structural logical rule context for better semantic search
+        text_to_embed = f"Rule: {canonical_rule}. Actor: {actor}. Action: {action}. Condition: {condition}. Exception: {exception}. Penalty: {penalty}."
         vector = model.encode(text_to_embed).tolist()
         
         metadata = {

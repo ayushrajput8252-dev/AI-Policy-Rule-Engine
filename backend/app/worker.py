@@ -61,25 +61,38 @@ def process_document_task(document_id: str, file_path: str):
         db.commit()
         
         valid_rules_count = 0
-        import time
-        # Limit to 10 chunks for POC to finish processing quickly and sleep 5s to avoid Gemini API free-tier limits
-        for c in chunks[:10]:
-            time.sleep(5)
+        
+        # Pre-warm models in the main thread to avoid race conditions
+        try:
+            from .services.detection import get_embedding_model, get_curated_embeddings
+            get_embedding_model()
+            get_curated_embeddings()
+            from .services.classification import get_classifier
+            get_classifier()
+        except Exception as e:
+            print(f"Error pre-warming models: {e}")
+            
+        import concurrent.futures
+
+        def process_chunk(c):
             text = c["content"]
             
             # 1. Candidate Detection
             detection = detect_candidate(text)
             if not detection["is_candidate"]:
-                continue
+                return None
                 
             # 2. Rule Classification
             classification = classify_rule(text)
             if not classification["is_valid_rule"]:
-                continue
+                return None
                 
             # 3. Rule Extraction
             try:
                 extracted = extract_rule(text, classification["type"])
+                if not extracted.get("is_business_rule", True):
+                    print("Skipping non-business rule (boilerplate/copyright)")
+                    return None
             except Exception as e:
                 print(f"Extraction failed: {str(e)}")
                 if '429' in str(e) or 'quota' in str(e).lower():
@@ -91,19 +104,38 @@ def process_document_task(document_id: str, file_path: str):
                         "confidence": 85
                     }
                 else:
-                    continue
-                
-            # 5. Canonicalization & Storage
-            canonicalize_and_store_rule(
-                document_id=document_id,
-                page=c.get("page"),
-                section=c.get("section"),
-                rule_data=extracted,
-                db_session=db,
-                bbox=c.get("bbox"),
-                page_dim=c.get("page_dim")
-            )
-            valid_rules_count += 1
+                    return None
+                    
+            return {
+                "chunk": c,
+                "rule_data": extracted
+            }
+
+        # Dynamically scale workers for large PDFs
+        optimal_workers = min(30, max(15, len(chunks) // 5))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=optimal_workers) as executor:
+            futures = [executor.submit(process_chunk, c) for c in chunks]
+            
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    result = future.result()
+                    if result:
+                        c = result["chunk"]
+                        rule_data = result["rule_data"]
+                        
+                        # 5. Canonicalization & Storage (Main thread for DB safety)
+                        canonicalize_and_store_rule(
+                            document_id=document_id,
+                            page=c.get("page"),
+                            section=c.get("section"),
+                            rule_data=rule_data,
+                            db_session=db,
+                            bbox=c.get("bbox"),
+                            page_dim=c.get("page_dim")
+                        )
+                        valid_rules_count += 1
+                except Exception as e:
+                    print(f"Chunk processing error: {e}")
         
         print(f"Processed {valid_rules_count} valid rules for document {document_id}")
         

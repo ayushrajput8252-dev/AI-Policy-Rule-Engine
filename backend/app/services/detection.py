@@ -90,6 +90,6 @@ def detect_candidate(text: str) -> dict:
     final_score = min(100, score)
     
     return {
-        "is_candidate": True, # Threshold removed for POC to allow any document type
+        "is_candidate": final_score >= 20,
         "candidate_score": final_score
     }
