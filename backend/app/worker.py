@@ -63,7 +63,7 @@ def process_document_task(document_id: str, file_path: str):
         from .services.extraction import extract_rules_batch
         
         valid_rules_count = 0
-        BATCH_SIZE = 5
+        BATCH_SIZE = 10
         
         # Process ALL chunks in batches without artificial sleep delays or chunk limits
         for i in range(0, len(chunks), BATCH_SIZE):
