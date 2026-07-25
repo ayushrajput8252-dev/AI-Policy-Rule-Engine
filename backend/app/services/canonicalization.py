@@ -29,8 +29,8 @@ def canonicalize_and_store_rule(document_id: str, page: int, section: str, rule_
     db_rule = Rule(
         id=rule_id,
         canonical_rule=canonical_rule,
-        actor="N/A",
-        action="N/A",
+        actor=rule_data.get("actor", "N/A"),
+        action=rule_data.get("action", "N/A"),
         condition=rule_data.get("context", ""),
         type=rule_data.get("type", ""),
         confidence=rule_data.get("confidence", 0),
