@@ -1,16 +1,10 @@
 import json
 import re
-import time
-from google import genai
-from google.genai import types
-from ..config import settings
-
-client = genai.Client(api_key=settings.GEMINI_API_KEY)
+from .llm_service import generate_json
 
 def extract_rules_batch(chunks_batch: list[dict], max_retries: int = 4) -> list[dict]:
     """
-    Extracts structured rules from a batch of document chunks using a single Gemini 2.5 Flash call.
-    Includes exponential backoff retries for rate-limit protection (429).
+    Extracts structured rules from a batch of document chunks using Grok (primary) / Gemini (fallback).
     """
     if not chunks_batch:
         return []
@@ -46,63 +40,32 @@ def extract_rules_batch(chunks_batch: list[dict], max_retries: int = 4) -> list[
     Return ONLY valid JSON.
     """
     
-    backoff = 2.0
-    for attempt in range(max_retries):
-        try:
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                ),
-            )
-            
-            text_resp = response.text
-            try:
-                data = json.loads(text_resp)
-            except json.JSONDecodeError:
-                match = re.search(r'```json\s*(.*?)\s*```', text_resp, re.DOTALL)
-                if match:
-                    data = json.loads(match.group(1))
-                else:
-                    data = []
-            
-            if isinstance(data, dict) and "rules" in data:
-                data = data["rules"]
-            if not isinstance(data, list):
-                data = [data]
-                
-            return data
-            
-        except Exception as e:
-            err_str = str(e)
-            if ('429' in err_str or 'quota' in err_str.lower() or 'resource_exhausted' in err_str.lower()) and attempt < max_retries - 1:
-                # Try parsing Gemini suggested retry delay e.g. retryDelay: '33s'
-                match = re.search(r'retryDelay[\':\s]+[\'"]?(\d+)', err_str)
-                sleep_time = int(match.group(1)) + 2 if match else int(backoff)
-                print(f"[Gemini Rate Limit] 429 quota hit. Waiting {sleep_time}s before retry (Attempt {attempt + 1}/{max_retries})...")
-                time.sleep(sleep_time)
-                backoff *= 2.0
-            else:
-                print(f"[Gemini Batch Extraction Error] {str(e)}")
-                # Fallback mock response per chunk in batch to prevent workflow crash
-                fallback_results = []
-                for idx, c in enumerate(chunks_batch):
-                    fallback_results.append({
-                        "chunk_index": idx,
-                        "is_candidate": True,
-                        "key_finding": c.get("content", "").strip()[:200],
-                        "actor": "General User",
-                        "action": "Compliance",
-                        "condition": c.get("section", "General"),
-                        "type": "GUIDELINE",
-                        "confidence": 75
-                    })
-                return fallback_results
+    try:
+        data = generate_json(prompt)
+        if isinstance(data, dict) and "rules" in data:
+            data = data["rules"]
+        if not isinstance(data, list):
+            data = [data]
+        return data
+    except Exception as e:
+        print(f"[Extraction Error] Fallback to chunk text: {str(e)}")
+        fallback_results = []
+        for idx, c in enumerate(chunks_batch):
+            fallback_results.append({
+                "chunk_index": idx,
+                "is_candidate": True,
+                "key_finding": c.get("content", "").strip()[:200],
+                "actor": "General User",
+                "action": "Compliance",
+                "condition": c.get("section", "General"),
+                "type": "GUIDELINE",
+                "confidence": 75
+            })
+        return fallback_results
 
 def extract_rule(text: str, rule_type: str) -> dict:
     """
-    Extracts structured rule fields from a candidate text using Gemini.
+    Extracts structured rule fields from a candidate text using Grok (primary) / Gemini (fallback).
     """
     prompt = f"""
     You are an AI Document Intelligence Assistant. Extract the most important insight, rule, or definition from the following text.
@@ -120,21 +83,6 @@ def extract_rule(text: str, rule_type: str) -> dict:
     
     Return ONLY valid JSON.
     """
-    
-    response = client.models.generate_content(
-        model='gemini-2.5-flash',
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-        ),
-    )
-    
-    try:
-        data = json.loads(response.text)
-        return data
-    except json.JSONDecodeError:
-        match = re.search(r'```json\s*(.*?)\s*```', response.text, re.DOTALL)
-        if match:
-            return json.loads(match.group(1))
-        raise Exception("Failed to parse Gemini output as JSON")
+    return generate_json(prompt)
+
 
