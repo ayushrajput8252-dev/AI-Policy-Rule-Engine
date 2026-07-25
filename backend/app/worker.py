@@ -60,50 +60,46 @@ def process_document_task(document_id: str, file_path: str):
         db.add_all(db_chunks)
         db.commit()
         
+        from .services.extraction import extract_rules_batch
+        
         valid_rules_count = 0
-        import time
-        # Limit to 10 chunks for POC to finish processing quickly and sleep 5s to avoid Gemini API free-tier limits
-        for c in chunks[:10]:
-            time.sleep(5)
-            text = c["content"]
+        BATCH_SIZE = 5
+        
+        # Process ALL chunks in batches without artificial sleep delays or chunk limits
+        for i in range(0, len(chunks), BATCH_SIZE):
+            batch = chunks[i : i + BATCH_SIZE]
+            batch_results = extract_rules_batch(batch)
             
-            # 1. Candidate Detection
-            detection = detect_candidate(text)
-            if not detection["is_candidate"]:
-                continue
-                
-            # 2. Rule Classification
-            classification = classify_rule(text)
-            if not classification["is_valid_rule"]:
-                continue
-                
-            # 3. Rule Extraction
-            try:
-                extracted = extract_rule(text, classification["type"])
-            except Exception as e:
-                print(f"Extraction failed: {str(e)}")
-                if '429' in str(e) or 'quota' in str(e).lower():
-                    print("Hit rate limit, using mock extraction for POC!")
-                    extracted = {
-                        "key_finding": text.strip()[:200] + ("..." if len(text) > 200 else ""),
-                        "context": text,
-                        "type": classification.get("type", "GUIDELINE"),
-                        "confidence": 85
-                    }
+            # Map batch results back to individual chunks and canonicalize/store
+            for res in batch_results:
+                chunk_idx = res.get("chunk_index")
+                if chunk_idx is not None and 0 <= chunk_idx < len(batch):
+                    c = batch[chunk_idx]
                 else:
+                    c = batch[0] if batch else {}
+                    
+                if not res.get("is_candidate", True):
                     continue
+                    
+                extracted = {
+                    "key_finding": res.get("key_finding", c.get("content", "")[:200]),
+                    "context": res.get("condition") or c.get("content", ""),
+                    "actor": res.get("actor", "N/A"),
+                    "action": res.get("action", "N/A"),
+                    "type": res.get("type", "GUIDELINE"),
+                    "confidence": res.get("confidence", 85)
+                }
                 
-            # 5. Canonicalization & Storage
-            canonicalize_and_store_rule(
-                document_id=document_id,
-                page=c.get("page"),
-                section=c.get("section"),
-                rule_data=extracted,
-                db_session=db,
-                bbox=c.get("bbox"),
-                page_dim=c.get("page_dim")
-            )
-            valid_rules_count += 1
+                canonicalize_and_store_rule(
+                    document_id=document_id,
+                    page=c.get("page"),
+                    section=c.get("section"),
+                    rule_data=extracted,
+                    db_session=db,
+                    bbox=c.get("bbox"),
+                    page_dim=c.get("page_dim")
+                )
+                valid_rules_count += 1
         
         print(f"Processed {valid_rules_count} valid rules for document {document_id}")
         
