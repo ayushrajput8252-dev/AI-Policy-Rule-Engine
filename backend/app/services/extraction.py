@@ -75,10 +75,13 @@ def extract_rules_batch(chunks_batch: list[dict], max_retries: int = 4) -> list[
             return data
             
         except Exception as e:
-            err_str = str(e).lower()
-            if ('429' in err_str or 'quota' in err_str or 'resource_exhausted' in err_str) and attempt < max_retries - 1:
-                print(f"[Gemini Rate Limit] Retrying batch in {backoff:.1f}s (Attempt {attempt + 1}/{max_retries})")
-                time.sleep(backoff)
+            err_str = str(e)
+            if ('429' in err_str or 'quota' in err_str.lower() or 'resource_exhausted' in err_str.lower()) and attempt < max_retries - 1:
+                # Try parsing Gemini suggested retry delay e.g. retryDelay: '33s'
+                match = re.search(r'retryDelay[\':\s]+[\'"]?(\d+)', err_str)
+                sleep_time = int(match.group(1)) + 2 if match else int(backoff)
+                print(f"[Gemini Rate Limit] 429 quota hit. Waiting {sleep_time}s before retry (Attempt {attempt + 1}/{max_retries})...")
+                time.sleep(sleep_time)
                 backoff *= 2.0
             else:
                 print(f"[Gemini Batch Extraction Error] {str(e)}")
