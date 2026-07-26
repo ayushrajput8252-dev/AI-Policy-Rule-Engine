@@ -1,0 +1,113 @@
+import re
+from langdetect import detect, DetectorFactory
+from .llm_service import generate_json
+
+# Seed DetectorFactory for deterministic language identification
+DetectorFactory.seed = 0
+
+# ISO Code to Human-Readable Name mapping
+LANGUAGE_MAP = {
+    "en": "English",
+    "hi": "Hindi (हिंदी)",
+    "bn": "Bengali (বাংলা)",
+    "gu": "Gujarati (ગુજરાતી)",
+    "pa": "Punjabi (ਪੰਜਾਬੀ)",
+    "mr": "Marathi (मराठी)",
+    "ta": "Tamil (தமிழ்)",
+    "te": "Telugu (తెలుగు)",
+    "kn": "Kannada (ಕನ್ನಡ)",
+    "ml": "Malayalam (മലയാളം)",
+    "ur": "Urdu (اردو)",
+    "ne": "Nepali (नेपाली)",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German",
+    "it": "Italian",
+    "pt": "Portuguese",
+    "zh-cn": "Chinese (Simplified)",
+    "zh-tw": "Chinese (Traditional)",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "ru": "Russian",
+    "ar": "Arabic",
+    "nl": "Dutch",
+    "pl": "Polish",
+    "tr": "Turkish",
+    "vi": "Vietnamese",
+    "th": "Thai",
+    "id": "Indonesian",
+}
+
+def detect_language(text: str) -> str:
+    """
+    Detects the ISO 639-1 language code of the input text using langdetect.
+    Returns 'en' if text is too short, numeric, or if detection fails.
+    """
+    cleaned = text.strip()
+    if not cleaned or len(cleaned) < 3 or cleaned.isnumeric():
+        return "en"
+    
+    try:
+        lang_code = detect(cleaned).lower()
+        return lang_code
+    except Exception as e:
+        print(f"[Multilingual Service] Language detection fallback to 'en': {e}")
+        return "en"
+
+def get_language_name(lang_code: str) -> str:
+    """
+    Returns human readable language name for an ISO code.
+    """
+    return LANGUAGE_MAP.get(lang_code.lower(), lang_code.upper())
+
+def translate_to_english(text: str, source_lang: str) -> str:
+    """
+    Translates a non-English user query into clear, accurate English.
+    """
+    source_name = get_language_name(source_lang)
+    prompt = f"""
+    You are an expert Enterprise Multilingual Translator.
+    Translate the following user question from {source_name} (ISO: {source_lang}) into natural, concise English suitable for RAG document vector search.
+
+    Original Question ({source_name}): "{text}"
+
+    Return ONLY a JSON object with this exact schema:
+    {{
+      "translated_text": "The natural English translation"
+    }}
+    """
+    try:
+        res = generate_json(prompt)
+        if isinstance(res, dict) and "translated_text" in res and res["translated_text"]:
+            return res["translated_text"].strip()
+    except Exception as e:
+        print(f"[Multilingual Service] Translation to English failed: {e}")
+    
+    return text  # Return original if translation fails
+
+def translate_from_english(text: str, target_lang: str) -> str:
+    """
+    Translates an English RAG answer back into the target user language.
+    """
+    target_name = get_language_name(target_lang)
+    prompt = f"""
+    You are an expert Enterprise Multilingual Translator.
+    Translate the following English document answer into {target_name} (ISO: {target_lang}).
+    Preserve all numbers, rule citations, formatting, and key terminology accurately.
+
+    English Text:
+    "{text}"
+
+    Return ONLY a JSON object with this exact schema:
+    {{
+      "translated_text": "The full translation in {target_name}"
+    }}
+    """
+    try:
+        res = generate_json(prompt)
+        if isinstance(res, dict) and "translated_text" in res and res["translated_text"]:
+            return res["translated_text"].strip()
+    except Exception as e:
+        print(f"[Multilingual Service] Translation from English failed: {e}")
+    
+    return text  # Return original English if translation fails

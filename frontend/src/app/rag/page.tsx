@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   Send, Upload, Loader2, Crosshair, ArrowLeft, Sparkles,
-  FileText, Database, X, Cpu, CheckCircle2, Search, Zap
+  FileText, Database, X, Cpu, CheckCircle2, Search, Zap, Globe
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
@@ -19,7 +19,17 @@ const PdfViewer = dynamic(() => import("../../components/PdfViewer"), {
 });
 
 type Source = { document_id: string; page: number; bbox?: number[]; page_dim?: number[] };
-type Message = { id: string; role: "user" | "assistant"; content: string; sources?: Source[] };
+type Message = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sources?: Source[];
+  detected_language?: string;
+  language_name?: string;
+  original_query?: string;
+  translated_query?: string;
+};
+
 type Rule = {
   id: string;
   canonical_rule: string;
@@ -36,7 +46,7 @@ export default function RAGPage() {
     {
       id: "welcome",
       role: "assistant",
-      content: "System Ready. Enterprise RAG Engine online. Upload a document (PDF) or enter a query.",
+      content: "System Ready. Enterprise Multilingual RAG Engine online. Upload a PDF or enter a query in any language (English, Spanish, Hindi, French, German, etc.).",
     },
   ]);
   const [input, setInput] = useState("");
@@ -65,29 +75,34 @@ export default function RAGPage() {
       if (res.ok) {
         const data = await res.json();
         setExtractedRules(data.rules || []);
-        if (data.status) setDocStatus(data.status);
+        setDocStatus("completed");
       }
     } catch {
-      /* silent retry */
+      setDocStatus("failed");
     } finally {
       setIsFetchingRules(false);
     }
   };
 
   useEffect(() => {
-    if (!currentDocId) return;
-    fetchRules();
-    const interval = setInterval(fetchRules, 5000);
-    return () => clearInterval(interval);
+    if (currentDocId) {
+      fetchRules();
+      const interval = setInterval(fetchRules, 4000);
+      return () => clearInterval(interval);
+    }
   }, [currentDocId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
-    const userMsg = { id: Date.now().toString(), role: "user" as const, content: input };
-    setMessages((prev) => [...prev, userMsg]);
+    const userQuery = input.trim();
     setInput("");
+
+    setMessages((prev) => [
+      ...prev,
+      { id: Date.now().toString(), role: "user", content: userQuery },
+    ]);
     setIsLoading(true);
 
     try {
@@ -95,8 +110,13 @@ export default function RAGPage() {
       const res = await fetch(`${apiUrl}/api/v1/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: userMsg.content, top_k: 5, document_id: currentDocId }),
+        body: JSON.stringify({
+          query: userQuery,
+          top_k: 5,
+          document_id: currentDocId || undefined,
+        }),
       });
+
       const data = await res.json();
       setMessages((prev) => [
         ...prev,
@@ -105,6 +125,10 @@ export default function RAGPage() {
           role: "assistant",
           content: data.answer,
           sources: data.sources,
+          detected_language: data.detected_language,
+          language_name: data.language_name,
+          original_query: data.original_query,
+          translated_query: data.translated_query,
         },
       ]);
     } catch {
@@ -133,7 +157,7 @@ export default function RAGPage() {
     setActiveSource(null);
 
     setMessages([
-      { id: "welcome", role: "assistant", content: "System Ready." },
+      { id: "welcome", role: "assistant", content: "System Ready. Multilingual RAG Engine active." },
       { id: Date.now().toString(), role: "user", content: `Uploading document: ${file.name}` },
     ]);
 
@@ -157,47 +181,38 @@ export default function RAGPage() {
           {
             id: (Date.now() + 1).toString(),
             role: "assistant",
-            content: `Upload Success: ${file.name}. Vector Indexing initialized.`,
+            content: `Upload Success: ${file.name}. Multilingual HNSW Vector Indexing initialized.`,
           },
         ]);
-        setTimeout(fetchRules, 1000);
       } else {
-        setMessages((prev) => [
-          ...prev,
-          { id: (Date.now() + 1).toString(), role: "assistant", content: "Upload Failed: Server rejected file." },
-        ]);
+        setDocStatus("failed");
       }
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        { id: (Date.now() + 1).toString(), role: "assistant", content: "Upload Error: Network Timeout." },
-      ]);
+      setDocStatus("failed");
     } finally {
       setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
   return (
-    <div className="flex flex-col h-screen bg-zinc-50 text-zinc-900 font-sans overflow-hidden">
-      {/* ── TOP HEADER ── */}
-      <header className="h-14 shrink-0 bg-white border-b border-zinc-200 px-6 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-3">
+    <div className="h-screen w-screen bg-white flex flex-col overflow-hidden selection:bg-blue-500/20 font-sans text-zinc-900">
+      {/* ── TOP NAV WORKSPACE BAR ── */}
+      <header className="h-14 shrink-0 bg-white border-b border-zinc-200 px-6 flex items-center justify-between">
+        <div className="flex items-center gap-4">
           <Link
             href="/"
-            className="flex items-center gap-1.5 text-xs font-semibold text-zinc-600 hover:text-zinc-900 transition-colors bg-zinc-100 px-3 py-1.5 rounded-lg border border-zinc-200"
+            className="flex items-center gap-1.5 text-xs font-mono font-semibold text-zinc-600 hover:text-zinc-900 transition-colors bg-zinc-100 hover:bg-zinc-200 px-3 py-1.5 rounded-lg border border-zinc-200"
           >
-            <ArrowLeft className="w-4 h-4 text-zinc-500" />
-            <span>Back to Home</span>
+            <ArrowLeft className="w-3.5 h-3.5" /> Back to Home
           </Link>
 
           <div className="h-4 w-px bg-zinc-200" />
 
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold">
-              <Database className="w-4 h-4" />
+            <div className="w-7 h-7 rounded-lg bg-zinc-900 text-white flex items-center justify-center font-bold text-xs">
+              <Zap className="w-3.5 h-3.5 text-blue-400 fill-blue-400" />
             </div>
-            <span className="text-sm font-bold text-zinc-900 tracking-tight">AgenticFlow AI — RAG Engine</span>
+            <span className="text-sm font-bold text-zinc-900 tracking-tight">AgenticFlow AI — Multilingual RAG Engine</span>
           </div>
         </div>
 
@@ -211,7 +226,7 @@ export default function RAGPage() {
 
           <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-mono text-emerald-700 font-semibold">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Vector Engine Connected</span>
+            <span>Multilingual HNSW Active</span>
           </div>
         </div>
       </header>
@@ -298,9 +313,9 @@ export default function RAGPage() {
           <div className="h-11 shrink-0 bg-zinc-50 border-b border-zinc-200 px-6 flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs font-semibold text-zinc-800">
               <Cpu className="w-4 h-4 text-blue-600" />
-              <span>AI Assistant Workspace</span>
+              <span>AI Assistant Workspace (Multilingual Enabled)</span>
             </div>
-            <span className="text-xs font-mono text-zinc-500">Hybrid Top-K Retrieval</span>
+            <span className="text-xs font-mono text-zinc-500">langdetect + Vector RAG</span>
           </div>
 
           <div className="flex-1 overflow-y-auto scrollbar-thin p-6 space-y-4 bg-zinc-50/50">
@@ -312,10 +327,25 @@ export default function RAGPage() {
                   animate={{ opacity: 1, y: 0 }}
                   className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
-                  <div className={`max-w-[80%] ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                  <div className={`max-w-[85%] ${msg.role === "user" ? "items-end" : "items-start"}`}>
                     <div className="text-[10px] font-mono font-bold text-zinc-400 mb-1 px-1">
                       {msg.role === "assistant" ? "SYS RAG" : "USER"}
                     </div>
+
+                    {/* Multilingual Detection Badge */}
+                    {msg.role === "assistant" && msg.detected_language && msg.detected_language !== "en" && (
+                      <div className="mb-2 space-y-1 font-mono text-[11px]">
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 font-bold">
+                          <Globe className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Language Detected: {msg.language_name || msg.detected_language.toUpperCase()} ({msg.detected_language})</span>
+                        </div>
+                        {msg.translated_query && (
+                          <div className="p-2 rounded-lg bg-white border border-zinc-200 text-zinc-600 text-[10px] leading-tight">
+                            <span className="font-bold text-blue-600">English RAG Translation:</span> "{msg.translated_query}"
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div
                       className={`p-4 rounded-2xl text-[13px] leading-relaxed shadow-sm ${
@@ -346,7 +376,7 @@ export default function RAGPage() {
                 <div className="flex justify-start">
                   <div className="bg-white border border-zinc-200 p-4 rounded-2xl shadow-sm flex items-center gap-3 text-xs font-mono text-zinc-700 font-semibold">
                     <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-                    <span>Computing Hybrid Vector Embeddings...</span>
+                    <span>Detecting language & performing vector search...</span>
                   </div>
                 </div>
               )}
@@ -377,7 +407,7 @@ export default function RAGPage() {
                 <input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Enter query..."
+                  placeholder="Enter query in any language (English, Spanish, Hindi, French...)..."
                   className="flex-1 bg-zinc-50 border border-zinc-200 focus:border-blue-500 rounded-xl px-4 py-2.5 text-[13px] text-zinc-900 placeholder:text-zinc-400 focus:outline-none transition-all shadow-inner"
                   disabled={isLoading}
                 />
@@ -408,7 +438,7 @@ export default function RAGPage() {
                 <span className="text-xs font-bold text-zinc-800">PDF Document Source Inspector</span>
                 <button
                   onClick={() => setActiveSource(null)}
-                  className="p-1 rounded-md hover:bg-zinc-200 text-zinc-600 transition-colors"
+                  className="p-1 rounded hover:bg-zinc-200 text-zinc-600 transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -417,7 +447,7 @@ export default function RAGPage() {
               <div className="flex-1 overflow-hidden relative">
                 <PdfViewer
                   source={activeSource}
-                  fileName={currentDocId && currentFileName ? `${currentDocId}_${currentFileName}` : null}
+                  fileName={currentDocId && currentFileName ? `${currentDocId}_${currentFileName}` : currentFileName}
                 />
               </div>
             </motion.div>
