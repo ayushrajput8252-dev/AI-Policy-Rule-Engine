@@ -1,18 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import {
-  motion,
-  useInView,
-  AnimatePresence,
-} from "framer-motion";
+import { motion, useInView, AnimatePresence } from "framer-motion";
 import {
   Database, UserPlus, Brain, Bot, BarChart3, Shield,
-  ChevronDown, ArrowRight, Menu, X, Zap, Users,
-  Globe, CheckCircle2, Sparkles, Search, FileText,
-  Lock, Cpu, Activity, Terminal, Code2, Layers, Check,
-  Play, RefreshCw, Radio, ExternalLink, Sliders, Server, ArrowUpRight
+  ArrowRight, Menu, X, Zap, Users, Globe, CheckCircle2,
+  Sparkles, Search, FileText, Cpu, Activity, Play, ArrowUpRight, Crosshair, Network
 } from "lucide-react";
 
 /* ── Inline GitHub Icon ── */
@@ -24,10 +18,16 @@ function GithubIcon({ className }: { className?: string }) {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   RICH SVG DOODLES & SKETCH ANNOTATIONS
-   ═══════════════════════════════════════════════════════════════ */
+/* ── Inline LinkedIn Icon ── */
+function LinkedinIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.25V10.9H6.46M7.86 6.7a1.63 1.63 0 1 0 1.63 1.63A1.63 1.63 0 0 0 7.86 6.7z" />
+    </svg>
+  );
+}
 
+/* ── Doodle Underline ── */
 function DoodleUnderline({ className = "w-48 text-blue-600" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 200 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -42,32 +42,7 @@ function DoodleUnderline({ className = "w-48 text-blue-600" }: { className?: str
   );
 }
 
-function DoodleArrow({ className = "w-12 h-12 text-blue-600" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path
-        d="M8 48C20 32 35 18 50 12M50 12L34 10M50 12L46 26"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function DoodleSparkle({ className = "w-6 h-6 text-blue-500" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <path d="M12 2v20M2 12h20M5 5l14 14M5 19L19 5" />
-    </svg>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   CUSTOM HOOKS (ZERO LAG)
-   ═══════════════════════════════════════════════════════════════ */
-
+/* ── Count Up Hook ── */
 function useCountUp(end: number, duration = 1800) {
   const [count, setCount] = useState(0);
   const ref = useRef<HTMLSpanElement>(null);
@@ -97,52 +72,65 @@ function useCycleText(texts: string[], interval = 2200) {
   return texts[idx];
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   MAIN PAGE COMPONENT
-   ═══════════════════════════════════════════════════════════════ */
-
 export default function LandingPage() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [archModalOpen, setArchModalOpen] = useState(false);
 
-  const navLinks = ["Platform", "Capabilities", "Architecture", "Docs", "Pricing"];
+  const navLinks = [
+    { label: "Platform", href: "#platform" },
+    { label: "Capabilities", href: "#capabilities" },
+    { label: "Architecture", href: "#architecture" },
+    { label: "Pricing", href: "#pricing" },
+  ];
 
   return (
     <div className="min-h-screen bg-white text-zinc-900 overflow-x-hidden bg-white-grid relative selection:bg-blue-500/20">
       {/* ─── NAVIGATION ─── */}
-      <nav className="fixed top-0 left-0 right-0 z-50">
-        <div className="absolute inset-0 bg-white/80 backdrop-blur-md border-b border-zinc-200/80" />
+      <nav className="fixed top-0 left-0 right-0 z-40">
+        <div className="absolute inset-0 bg-white/80 backdrop-blur-md border-b border-zinc-200/80 shadow-xs" />
         <div className="relative max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5 group">
             <div className="w-8 h-8 rounded-lg bg-zinc-900 text-white flex items-center justify-center font-bold text-sm shadow-sm group-hover:scale-105 transition-transform">
-              <Sparkles className="w-4 h-4 text-blue-400" />
+              <Zap className="w-4 h-4 text-blue-400 fill-blue-400" />
             </div>
-            <span className="font-bold text-[15px] tracking-tight text-zinc-900">
-              Enterprise <span className="text-blue-600 font-mono text-xs uppercase ml-1 px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200">Agentic</span>
+            <span className="font-bold text-[16px] tracking-tight text-zinc-900">
+              AgenticFlow <span className="text-blue-600 font-mono text-xs uppercase ml-1 px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200">AI</span>
             </span>
           </Link>
 
           <div className="hidden lg:flex items-center gap-1">
             {navLinks.map((l) => (
               <a
-                key={l}
-                href={`#${l.toLowerCase()}`}
+                key={l.label}
+                href={l.href}
                 className="px-3.5 py-1.5 text-[13px] font-medium text-zinc-600 hover:text-zinc-900 transition-colors rounded-md hover:bg-zinc-100/80"
               >
-                {l}
+                {l.label}
               </a>
             ))}
           </div>
 
-          <div className="hidden lg:flex items-center gap-3">
+          <div className="hidden lg:flex items-center gap-2.5">
             <a
-              href="https://github.com"
+              href="https://github.com/ayushrajput8252-dev/AI-Policy-Rule-Engine"
               target="_blank"
               rel="noreferrer"
+              title="GitHub Repository"
               className="p-2 text-zinc-600 hover:text-zinc-900 transition-colors rounded-lg hover:bg-zinc-100"
             >
               <GithubIcon className="w-4 h-4" />
             </a>
+
+            <a
+              href="https://www.linkedin.com/in/ayush-singh-aiml/"
+              target="_blank"
+              rel="noreferrer"
+              title="Ayush Singh - LinkedIn"
+              className="p-2 text-zinc-600 hover:text-blue-600 transition-colors rounded-lg hover:bg-zinc-100"
+            >
+              <LinkedinIcon className="w-4 h-4" />
+            </a>
+
             <Link
               href="/rag"
               className="text-[13px] font-mono text-blue-600 hover:text-blue-700 transition-colors px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 font-semibold"
@@ -172,56 +160,63 @@ export default function LandingPage() {
             >
               {navLinks.map((l) => (
                 <a
-                  key={l}
-                  href={`#${l.toLowerCase()}`}
+                  key={l.label}
+                  href={l.href}
                   onClick={() => setMobileMenu(false)}
                   className="block py-2 text-sm text-zinc-700 hover:text-blue-600 font-medium"
                 >
-                  {l}
+                  {l.label}
                 </a>
               ))}
-              <button
-                onClick={() => {
-                  setMobileMenu(false);
-                  setArchModalOpen(true);
-                }}
-                className="mt-3 w-full text-sm font-medium bg-zinc-900 text-white px-4 py-2.5 rounded-lg text-center"
-              >
-                View Architecture
-              </button>
+              <div className="flex items-center gap-3 pt-2 pb-3 border-t border-zinc-100 mt-2">
+                <a
+                  href="https://github.com/ayushrajput8252-dev/AI-Policy-Rule-Engine"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1.5 text-xs text-zinc-700 font-medium"
+                >
+                  <GithubIcon className="w-4 h-4" /> GitHub
+                </a>
+                <a
+                  href="https://www.linkedin.com/in/ayush-singh-aiml/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1.5 text-xs text-blue-600 font-medium"
+                >
+                  <LinkedinIcon className="w-4 h-4" /> LinkedIn
+                </a>
+              </div>
+              <Link href="/rag" className="block text-sm font-bold bg-blue-600 text-white px-4 py-2.5 rounded-lg text-center">
+                Open /rag Workspace
+              </Link>
             </motion.div>
           )}
         </AnimatePresence>
       </nav>
 
       {/* ─── HERO SECTION ─── */}
-      <section className="relative pt-28 pb-16 md:pt-36 md:pb-24 overflow-hidden z-10">
+      <section id="platform" className="relative pt-28 pb-16 md:pt-36 md:pb-24 overflow-hidden z-10">
         <div className="max-w-6xl mx-auto px-6">
           <div className="grid lg:grid-cols-[1fr_440px] gap-12 items-start">
             {/* Left Column */}
             <div className="pt-4 relative">
-              <div className="absolute -top-8 left-0 hidden md:flex items-center gap-1.5 text-xs text-blue-700 font-mono bg-blue-50 border border-blue-200 px-3 py-1 rounded-full animate-doodle-float">
-                <DoodleSparkle className="w-3.5 h-3.5 text-blue-600" />
-                <span>Next-Gen Autonomous Enterprise Agents</span>
-              </div>
-
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-zinc-200 bg-zinc-50 mb-6">
                 <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[12px] font-medium text-zinc-600">Enterprise AI Engine v4.2 Ready</span>
+                <span className="text-[12px] font-medium text-zinc-600">The #1 Enterprise Agentic AI Engine</span>
               </div>
 
               <h1 className="text-[clamp(2.3rem,5vw,3.6rem)] font-extrabold leading-[1.08] tracking-tight text-zinc-900 mb-6">
-                Enterprise AI{" "}
+                AgenticFlow AI —{" "}
                 <span className="relative inline-block text-blue-600">
-                  Automation Agent
+                  Autonomous Policy
                   <DoodleUnderline className="absolute left-0 -bottom-2.5 w-full text-blue-600" />
                 </span>
                 <br />
-                Platform for Modern Work
+                & RAG Engine
               </h1>
 
               <p className="text-[16px] text-zinc-600 leading-relaxed mb-10 max-w-lg">
-                Automate complex enterprise workflows, orchestrate autonomous AI agents, index organizational knowledge with RAG, and scale secure execution across all systems.
+                Automate complex enterprise policy extraction, orchestrate autonomous multi-agent reasoning, index document vectors with hybrid RAG, and execute deterministic actions.
               </p>
 
               <div className="flex flex-wrap items-center gap-4">
@@ -240,27 +235,17 @@ export default function LandingPage() {
                   View Architecture
                 </button>
               </div>
-
-              <div className="mt-10 flex items-center gap-3 pt-6 border-t border-zinc-200/80">
-                <DoodleArrow className="w-8 h-8 text-zinc-400 rotate-12" />
-                <span className="text-xs font-mono text-zinc-500">
-                  <strong className="text-zinc-800">100% Deterministic:</strong> Full audit logs, RBAC permissions & human-in-the-loop controls.
-                </span>
-              </div>
             </div>
 
             {/* Right Column: Hero Agent Matrix */}
             <div className="hidden lg:block relative">
-              <div className="absolute -top-5 -right-3 z-20 bg-amber-100 text-amber-900 border border-amber-300 font-mono text-[11px] px-2.5 py-1 rounded-md shadow-sm transform rotate-3 flex items-center gap-1">
-                <span>✦ Agent Reasoning Loop</span>
-              </div>
               <HeroAgentMatrix />
             </div>
           </div>
         </div>
       </section>
 
-      {/* ─── CAPABILITIES BENTO GRID (ULTRA AGENTIC) ─── */}
+      {/* ─── CAPABILITIES BENTO GRID ─── */}
       <section id="capabilities" className="py-20 relative z-10 border-t border-zinc-200/80 bg-zinc-50/50">
         <div className="max-w-6xl mx-auto px-6">
           <SectionHeader
@@ -270,18 +255,18 @@ export default function LandingPage() {
           />
 
           <div className="grid md:grid-cols-3 gap-6 mt-14">
-            {/* Card 1: RAG (Interactive Embedding Simulator) */}
+            {/* Card 1: RAG (Interactive Vector Console) */}
             <div className="md:col-span-2">
               <RAGCardInteractive />
             </div>
 
-            {/* Card 2: Onboarding (Interactive Task Provisioner) */}
+            {/* Card 2: Onboarding */}
             <OnboardingCardInteractive />
 
-            {/* Card 3: Knowledge Graph (Interactive Vector Mesh) */}
+            {/* Card 3: Knowledge Graph Engine */}
             <KnowledgeCardInteractive />
 
-            {/* Card 4: Automation Agent (Interactive Agent DAG Inspector) */}
+            {/* Card 4: Automation Agent */}
             <div className="md:col-span-2">
               <AutomationCardInteractive />
             </div>
@@ -292,63 +277,19 @@ export default function LandingPage() {
             {/* Card 6: Security */}
             <SecurityCardWhite />
 
-            {/* Card 7: 18+ Integrations */}
-            <div className="p-6 h-full flex flex-col justify-between bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
-              <div>
-                <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
-                  <Globe className="w-5 h-5" />
-                </div>
-                <h3 className="text-[15px] font-bold text-zinc-900 mb-1.5">18+ Native Integrations</h3>
-                <p className="text-[12px] text-zinc-600 leading-relaxed">
-                  Teams, Slack, Jira, GitHub, Salesforce, SAP, SharePoint, and custom MCP connectors.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-1.5 mt-5">
-                {["Teams", "Slack", "Jira", "GitHub", "SAP", "Outlook", "Salesforce"].map((n) => (
-                  <span key={n} className="text-[10px] font-mono px-2 py-1 rounded bg-zinc-100 text-zinc-700 border border-zinc-200">
-                    {n}
-                  </span>
-                ))}
-              </div>
-            </div>
+            {/* Card 7: Integrations */}
+            <IntegrationsCardInteractive />
           </div>
         </div>
       </section>
 
-      {/* ─── INTEGRATIONS MARQUEE ─── */}
-      <section className="py-20 border-t border-zinc-200/80 bg-white">
-        <div className="max-w-6xl mx-auto px-6 mb-12">
-          <SectionHeader
-            badge="Ecosystem"
-            title="Integrates Seamlessly with Your Stack"
-            subtitle="No vendor lock-in. Plugs directly into your existing enterprise infrastructure."
-          />
-        </div>
-        <div className="space-y-3">
-          <div className="overflow-hidden">
-            <div className="flex animate-marquee-light gap-4" style={{ width: "max-content" }}>
-              {[...INTEGRATIONS, ...INTEGRATIONS].map((n, i) => (
-                <IntegrationPillWhite key={`a${i}`} name={n} />
-              ))}
-            </div>
-          </div>
-          <div className="overflow-hidden">
-            <div className="flex animate-marquee-reverse-light gap-4" style={{ width: "max-content" }}>
-              {[...INTEGRATIONS.slice().reverse(), ...INTEGRATIONS.slice().reverse()].map((n, i) => (
-                <IntegrationPillWhite key={`b${i}`} name={n} />
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ─── WORKFLOW ARCHITECTURE TIMELINE (INTERACTIVE AGENTIC SIMULATOR) ─── */}
+      {/* ─── WORKFLOW ARCHITECTURE TIMELINE ─── */}
       <section id="architecture" className="py-28 border-t border-zinc-200/80 bg-zinc-50/50">
         <div className="max-w-6xl mx-auto px-6">
           <SectionHeader
             badge="Interactive Agent Pipeline"
             title="From Knowledge Import to Automated Action"
-            subtitle="Click any step below to simulate real-time agent execution protocols."
+            subtitle="Continuous, deterministic AI orchestration pipeline."
           />
           <WorkflowTimelineInteractive onOpenModal={() => setArchModalOpen(true)} />
         </div>
@@ -366,7 +307,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ─── INTERACTIVE ARCHITECTURE MODAL ─── */}
+      {/* ─── ARCHITECTURE MODAL ─── */}
       <AnimatePresence>
         {archModalOpen && (
           <motion.div
@@ -385,7 +326,7 @@ export default function LandingPage() {
                 <div className="flex items-center gap-2">
                   <Cpu className="w-4 h-4 text-blue-600" />
                   <span className="text-sm font-bold text-zinc-900">
-                    Enterprise AI Agentic System Architecture (Interactive Inspector)
+                    AgenticFlow AI System Architecture
                   </span>
                 </div>
                 <button
@@ -402,7 +343,7 @@ export default function LandingPage() {
                     ● DETERMINISTIC MULTI-AGENT EXECUTION PIPELINE
                   </div>
                   <p className="text-xs text-blue-900 leading-relaxed">
-                    Click any node in the architecture pipeline to view live vector metrics, token throughput, and tool execution protocol.
+                    Click any node in the architecture pipeline to view live vector metrics and tool execution protocols.
                   </p>
                 </div>
 
@@ -429,20 +370,6 @@ export default function LandingPage() {
                     </div>
                   ))}
                 </div>
-
-                <div className="p-4 rounded-xl bg-zinc-900 text-zinc-100 font-mono text-xs shadow-inner">
-                  <div className="flex items-center gap-2 mb-2 text-emerald-400">
-                    <Activity className="w-4 h-4" />
-                    <span className="font-bold">SYSTEM TELEMETRY LOG</span>
-                  </div>
-                  <div className="space-y-1 text-[11px] text-zinc-400">
-                    <div>[0.000s] Webhook trigger received from enterprise Slack workspace.</div>
-                    <div>[0.014s] Query vector embedded. Top-K 5 chunks retrieved from vector store.</div>
-                    <div>[0.180s] Agent DAG generated 2 tool executions: [GitHub.issue_create, Jira.assign].</div>
-                    <div>[0.225s] Human-in-the-loop RBAC check: PASSED (Level 4 Authorization).</div>
-                    <div>[0.233s] Actions executed deterministically. Output JSON returned.</div>
-                  </div>
-                </div>
               </div>
 
               <div className="p-4 bg-zinc-50 border-t border-zinc-200 flex items-center justify-between">
@@ -461,15 +388,11 @@ export default function LandingPage() {
       </AnimatePresence>
 
       {/* ─── CTA & FOOTER ─── */}
-      <section id="cta" className="py-28 border-t border-zinc-200/80 bg-gradient-to-b from-white to-blue-50/40 relative">
+      <section id="pricing" className="py-28 border-t border-zinc-200/80 bg-gradient-to-b from-white to-blue-50/40 relative">
         <div className="max-w-3xl mx-auto px-6 text-center relative z-10">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-mono mb-4 border border-blue-200">
-            <DoodleSparkle className="w-3.5 h-3.5 text-blue-600" />
-            <span>Ready for Enterprise Deployment</span>
-          </div>
           <h2 className="text-[clamp(2rem,4vw,3rem)] font-extrabold text-zinc-900 tracking-tight mb-4">
             Automate Your Organization <br />
-            <span className="text-blue-600">with Enterprise AI Agents</span>
+            <span className="text-blue-600">with AgenticFlow AI</span>
           </h2>
           <p className="text-zinc-600 text-[16px] leading-relaxed mb-8 max-w-lg mx-auto">
             Deploy enterprise-grade AI automation, RAG document search, onboarding workflows, and tool orchestration in hours.
@@ -492,29 +415,19 @@ export default function LandingPage() {
       </section>
 
       <footer className="border-t border-zinc-200 bg-white py-14">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-10 mb-12">
-            <div className="col-span-2 md:col-span-1">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-6 h-6 rounded bg-zinc-900 text-white flex items-center justify-center">
-                  <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-                </div>
-                <span className="font-bold text-[14px] text-zinc-900">Enterprise AI</span>
-              </div>
-              <p className="text-[12px] text-zinc-500 leading-relaxed">
-                Autonomous AI automation & RAG platform for modern enterprise teams.
-              </p>
-            </div>
-            <FooterCol title="Platform" links={["AI Agents", "RAG Engine", "Onboarding", "Knowledge Transfer", "Workflow Builder"]} />
-            <FooterCol title="Resources" links={["Documentation", "API Reference", "Guides", "Blog", "Changelog"]} />
-            <FooterCol title="Developers" links={["API Docs", "SDKs", "MCP Integration", "GitHub", "Community"]} />
-            <FooterCol title="Company" links={["About", "Careers", "Security", "Privacy", "Contact"]} />
+        <div className="max-w-6xl mx-auto px-6 text-center space-y-3">
+          <div className="flex justify-center items-center gap-4 text-xs font-semibold text-zinc-600">
+            <a href="https://github.com/ayushrajput8252-dev/AI-Policy-Rule-Engine" target="_blank" rel="noreferrer" className="hover:text-zinc-900 flex items-center gap-1">
+              <GithubIcon className="w-4 h-4" /> GitHub Repository
+            </a>
+            <span>•</span>
+            <a href="https://www.linkedin.com/in/ayush-singh-aiml/" target="_blank" rel="noreferrer" className="hover:text-blue-600 flex items-center gap-1">
+              <LinkedinIcon className="w-4 h-4 text-blue-600" /> Ayush Singh (LinkedIn)
+            </a>
           </div>
-          <div className="border-t border-zinc-100 pt-6 text-center">
-            <p className="text-[12px] text-zinc-500 font-mono">
-              Built for Enterprise AI Automation · © {new Date().getFullYear()} Enterprise AI Platform
-            </p>
-          </div>
+          <p className="text-[12px] text-zinc-500 font-mono">
+            AgenticFlow AI · Autonomous Enterprise AI Platform · © {new Date().getFullYear()}
+          </p>
         </div>
       </footer>
     </div>
@@ -522,15 +435,8 @@ export default function LandingPage() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   SUB-COMPONENTS (WHITE THEME & HIGHLY AGENTIC)
+   SUB-COMPONENTS
    ═══════════════════════════════════════════════════════════════ */
-
-const INTEGRATIONS = [
-  "Microsoft Teams", "Slack", "Outlook", "Google Workspace",
-  "Jira", "Confluence", "GitHub", "GitLab",
-  "Docker", "Kubernetes", "Azure", "AWS",
-  "Google Drive", "SharePoint", "Salesforce", "SAP",
-];
 
 function SectionHeader({ badge, title, subtitle }: { badge: string; title: string; subtitle?: string }) {
   return (
@@ -546,7 +452,6 @@ function SectionHeader({ badge, title, subtitle }: { badge: string; title: strin
   );
 }
 
-/* ── Hero Agent Matrix ── */
 function HeroAgentMatrix() {
   const status = useCycleText(
     ["Thinking...", "Querying Vector DB...", "Orchestrating MCP Tools...", "Executing Action...", "Awaiting Verification...", "Completed ✓"],
@@ -616,30 +521,54 @@ function HeroAgentMatrix() {
   );
 }
 
-/* ── Interactive RAG Card with Live Query Switcher ── */
+/* ── HIGHLY INTERACTIVE RAG CARD ── */
 function RAGCardInteractive() {
   const sampleQueries = [
-    { query: "Expense Policy Limits", match: 98.4, chunks: 4 },
-    { query: "Termination Notice Period", match: 94.2, chunks: 3 },
-    { query: "NDA & IP Ownership", match: 99.1, chunks: 5 },
+    { query: "Expense Policy Limits", match: 98.4, chunks: 4, page: 2, bbox: "[120, 40, 300, 80]" },
+    { query: "Termination Notice Period", match: 94.2, chunks: 3, page: 5, bbox: "[60, 100, 280, 60]" },
+    { query: "NDA & IP Ownership", match: 99.1, chunks: 5, page: 1, bbox: "[90, 30, 350, 90]" },
+    { query: "Remote Work Stipend", match: 96.8, chunks: 4, page: 3, bbox: "[110, 80, 320, 70]" },
   ];
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const currentQ = sampleQueries[selectedIdx];
 
   return (
-    <div className="p-6 h-full flex flex-col md:flex-row gap-6 bg-white border border-zinc-200/90 rounded-2xl shadow-sm hover:border-blue-300 transition-colors">
-      <div className="flex-1 min-w-0">
-        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
-          <Database className="w-5 h-5" />
+    <div className="p-6 h-full flex flex-col justify-between bg-white border border-zinc-200/90 rounded-2xl shadow-sm hover:border-blue-300 transition-colors">
+      <div>
+        {/* Highlighted Feature Badges */}
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+            🎯 Hybrid Vector Search
+          </span>
+          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+            📌 Page BBox Citations
+          </span>
+          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 border border-zinc-200">
+            ⚡ Top-K Retrieval
+          </span>
         </div>
-        <h3 className="text-[16px] font-bold text-zinc-900 mb-2">Advanced Enterprise RAG</h3>
+
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+            <Database className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-[16px] font-bold text-zinc-900">Advanced Enterprise RAG Engine</h3>
+            <p className="text-[11px] font-mono text-zinc-500">Realtime Vector Indexing & Source Target Mapping</p>
+          </div>
+        </div>
+
         <p className="text-[13px] text-zinc-600 leading-relaxed mb-4">
-          Index millions of PDFs, emails, SharePoint files, and policies with semantic search, hybrid reranking, and citation tracing.
+          Index millions of PDFs, policies, and SharePoint files with semantic search, hybrid reranking, and exact page bounding-box target citations.
         </p>
 
-        {/* Interactive Query Switcher Buttons */}
-        <div className="space-y-1.5 mb-4">
-          <div className="text-[11px] font-mono text-zinc-500">Simulate Test Vector Queries:</div>
-          <div className="flex flex-wrap gap-1.5">
+        {/* Interactive Query Switcher Bar */}
+        <div className="space-y-2 mb-4">
+          <div className="text-[11px] font-mono font-bold text-zinc-700 flex items-center justify-between">
+            <span>Simulate Real Vector Queries:</span>
+            <span className="text-blue-600">Click to test →</span>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
             {sampleQueries.map((q, i) => (
               <button
                 key={q.query}
@@ -647,72 +576,73 @@ function RAGCardInteractive() {
                   e.preventDefault();
                   setSelectedIdx(i);
                 }}
-                className={`text-[11px] font-mono px-2.5 py-1 rounded-lg border transition-all ${
+                className={`text-[11px] font-mono px-3 py-2 rounded-xl border text-left transition-all flex items-center justify-between ${
                   selectedIdx === i
-                    ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                    ? "bg-blue-600 text-white border-blue-600 shadow-sm font-bold"
                     : "bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100"
                 }`}
               >
-                🔍 {q.query}
+                <span className="truncate">🔍 {q.query}</span>
+                {selectedIdx === i && <span className="w-2 h-2 rounded-full bg-white animate-pulse" />}
               </button>
             ))}
           </div>
         </div>
 
-        <Link
-          href="/rag"
-          className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-blue-600 hover:text-blue-700"
-        >
-          Open Full Interactive Workspace <ArrowUpRight className="w-4 h-4" />
-        </Link>
+        {/* Live Vector Match Box */}
+        <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl space-y-2 font-mono text-xs mb-4">
+          <div className="flex justify-between items-center text-[11px]">
+            <span className="text-zinc-500">Selected Vector Target:</span>
+            <span className="font-bold text-zinc-900">{currentQ.query}</span>
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex justify-between text-[10px]">
+              <span className="text-zinc-500">Cosine Similarity Score:</span>
+              <span className="font-bold text-blue-600">{currentQ.match}% Match</span>
+            </div>
+            <div className="h-2 rounded-full bg-zinc-200 overflow-hidden">
+              <motion.div
+                key={selectedIdx}
+                initial={{ width: 0 }}
+                animate={{ width: `${currentQ.match}%` }}
+                transition={{ duration: 0.6 }}
+                className="h-full bg-blue-600 rounded-full"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-[10px] pt-1 border-t border-zinc-200/80 text-zinc-600">
+            <div>
+              <span className="text-zinc-400">Target Location:</span> <strong className="text-zinc-800">Page {currentQ.page}</strong>
+            </div>
+            <div>
+              <span className="text-zinc-400">BBox:</span> <strong className="text-blue-700">{currentQ.bbox}</strong>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* RAG Interactive Execution Inspector */}
-      <div className="w-full md:w-56 shrink-0 space-y-3 p-3.5 bg-zinc-50 rounded-xl border border-zinc-200">
-        <div className="flex items-center gap-2 border-b border-zinc-200 pb-2">
-          <Search className="w-3.5 h-3.5 text-blue-600" />
-          <div className="flex-1 text-[11px] font-mono font-bold text-zinc-900 truncate">
-            {sampleQueries[selectedIdx].query}
-          </div>
+      <div className="flex items-center justify-between pt-2 border-t border-zinc-100">
+        <div className="flex items-center gap-1.5 text-xs font-mono text-emerald-600 font-semibold">
+          <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+          <span>Bounding Box Crosshair Mapped</span>
         </div>
 
-        <div className="space-y-2 font-mono text-[10px]">
-          <div className="flex justify-between">
-            <span className="text-zinc-500">Similarity Score:</span>
-            <span className="font-bold text-blue-600">{sampleQueries[selectedIdx].match}%</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-zinc-500">Chunks Retrieved:</span>
-            <span className="font-bold text-zinc-900">{sampleQueries[selectedIdx].chunks} Vector Chunks</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-zinc-500">Vector Metric:</span>
-            <span className="text-emerald-600 font-semibold">Cosine HNSW</span>
-          </div>
-        </div>
-
-        <div className="h-1.5 rounded-full bg-zinc-200 overflow-hidden">
-          <motion.div
-            key={selectedIdx}
-            initial={{ width: 0 }}
-            animate={{ width: `${sampleQueries[selectedIdx].match}%` }}
-            transition={{ duration: 0.8 }}
-            className="h-full rounded-full bg-blue-600"
-          />
-        </div>
-
-        <div className="flex items-center gap-1.5 pt-1 text-[10px] text-emerald-600 font-mono font-semibold">
-          <CheckCircle2 className="w-3.5 h-3.5" />
-          <span>Bounding Box Mapped</span>
-        </div>
+        <Link
+          href="/rag"
+          className="inline-flex items-center gap-1 text-xs font-mono font-bold text-blue-600 hover:text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-200"
+        >
+          <span>Open Full /rag Workspace</span>
+          <ArrowUpRight className="w-3.5 h-3.5" />
+        </Link>
       </div>
     </div>
   );
 }
 
-/* ── Interactive Onboarding Card ── */
 function OnboardingCardInteractive() {
-  const steps = ["Outlook Account", "Teams Channel", "GitHub Org Access", "Jira License", "Software Provision"];
+  const steps = ["Outlook Account", "Teams Channel", "GitHub Access", "Jira License", "Software Provision"];
   const [active, setActive] = useState(2);
   const [isRunning, setIsRunning] = useState(false);
 
@@ -771,52 +701,88 @@ function OnboardingCardInteractive() {
   );
 }
 
-/* ── Interactive Knowledge Graph Card ── */
+/* ── HIGHLY INTERACTIVE KNOWLEDGE TRANSFER CARD ── */
 function KnowledgeCardInteractive() {
-  const [activeNode, setActiveNode] = useState("AI Agent");
   const nodes = [
-    { label: "Senior Staff", desc: "Transcripts & Meeting Records" },
-    { label: "Docs", desc: "PDF & Policy Index" },
-    { label: "AI Agent", desc: "Active Knowledge Synthesizer" },
-    { label: "Graph", desc: "HNSW Semantic Knowledge Mesh" },
-    { label: "Hire", desc: "Instant Access for New Employees" },
+    { label: "Senior Staff", desc: "Transcripts & Meeting Records", metrics: "142 Records Synced" },
+    { label: "Docs & PDFs", desc: "Unstructured Document Index", metrics: "8,420 Pages Parsed" },
+    { label: "Vector Mesh", desc: "HNSW Semantic Knowledge Mesh", metrics: "12,400 Knowledge Triples" },
+    { label: "AI Agent", desc: "Active Knowledge Synthesizer", metrics: "Context Buffer Ready" },
+    { label: "New Hire", desc: "Instant Day 1 Q&A Answers", metrics: "0.2s Retrieval Speed" },
   ];
+  const [activeIdx, setActiveIdx] = useState(2);
+  const currentNode = nodes[activeIdx];
 
   return (
-    <div className="p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
-      <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
-        <Brain className="w-5 h-5" />
-      </div>
-      <h3 className="text-[15px] font-bold text-zinc-900 mb-1.5">Knowledge Transfer Engine</h3>
-      <p className="text-[12px] text-zinc-600 leading-relaxed mb-3">
-        Hover on graph nodes to inspect knowledge synthesis path:
-      </p>
+    <div className="p-6 h-full flex flex-col justify-between bg-white border border-zinc-200/90 rounded-2xl shadow-sm hover:border-blue-300 transition-colors">
+      <div>
+        {/* Highlighted Feature Badges */}
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
+            🎙️ Meeting OCR
+          </span>
+          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+            🧠 Brain Graph
+          </span>
+          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+            ⚡ Instant RAG
+          </span>
+        </div>
 
-      {/* Node Selector Pills */}
-      <div className="flex flex-wrap gap-1 mb-3">
-        {nodes.map((n) => (
-          <button
-            key={n.label}
-            onClick={() => setActiveNode(n.label)}
-            className={`text-[10px] font-mono px-2 py-0.5 rounded border transition-all ${
-              activeNode === n.label
-                ? "bg-blue-600 text-white border-blue-600 font-bold"
-                : "bg-zinc-100 text-zinc-700 border-zinc-200"
-            }`}
-          >
-            {n.label}
-          </button>
-        ))}
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+            <Brain className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-[15px] font-bold text-zinc-900">Knowledge Transfer Engine</h3>
+            <p className="text-[11px] font-mono text-zinc-500">Autonomous Knowledge Graph Mesh</p>
+          </div>
+        </div>
+
+        <p className="text-[12px] text-zinc-600 leading-relaxed mb-4">
+          Capture senior employee knowledge, meeting transcripts, and codebases into an active graph for instant team onboarding.
+        </p>
+
+        {/* Node Switcher Pills */}
+        <div className="space-y-1.5 mb-3">
+          <div className="text-[10px] font-mono font-bold text-zinc-600">Inspect Knowledge Mesh Nodes:</div>
+          <div className="flex flex-wrap gap-1">
+            {nodes.map((n, i) => (
+              <button
+                key={n.label}
+                onClick={() => setActiveIdx(i)}
+                className={`text-[10px] font-mono px-2.5 py-1 rounded-lg border transition-all ${
+                  activeIdx === i
+                    ? "bg-blue-600 text-white border-blue-600 font-bold shadow-sm"
+                    : "bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100"
+                }`}
+              >
+                {n.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Selected Node Details Box */}
+        <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-mono text-zinc-800 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-blue-600">● {currentNode.label}</span>
+            <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded font-bold">
+              {currentNode.metrics}
+            </span>
+          </div>
+          <p className="text-[11px] text-zinc-600">{currentNode.desc}</p>
+        </div>
       </div>
 
-      <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] font-mono text-blue-900">
-        <span className="font-bold">{activeNode}:</span> {nodes.find((n) => n.label === activeNode)?.desc}
+      <div className="flex items-center gap-1.5 pt-3 border-t border-zinc-100 text-[11px] font-mono text-zinc-500">
+        <Network className="w-3.5 h-3.5 text-blue-600" />
+        <span>Graph mesh synced in real-time</span>
       </div>
     </div>
   );
 }
 
-/* ── Interactive Automation Agent DAG Card ── */
 function AutomationCardInteractive() {
   const [activeTab, setActiveTab] = useState(0);
   const stages = [
@@ -844,7 +810,6 @@ function AutomationCardInteractive() {
           </div>
         </div>
 
-        {/* Stage Selector Tabs */}
         <div className="grid grid-cols-2 md:grid-cols-1 gap-1.5 md:w-48 shrink-0">
           {stages.map((s, i) => (
             <button
@@ -865,7 +830,6 @@ function AutomationCardInteractive() {
   );
 }
 
-/* ── Reports Card White ── */
 function ReportsCardWhite() {
   const metrics = [
     { label: "Automations", value: 1245, suffix: "" },
@@ -907,9 +871,8 @@ function StatSpan({ end, suffix }: { end: number; suffix: string }) {
   );
 }
 
-/* ── Security Card White ── */
 function SecurityCardWhite() {
-  const items = ["SSO / SAML", "RBAC", "Audit Logs", "AES-256", "GDPR", "SOC2 Type II", "On-Prem", "GovCloud"];
+  const items = ["SSO / SAML", "RBAC", "Audit Logs", "AES-256", "GDPR", "SOC2 Type II"];
   return (
     <div className="p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
       <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
@@ -928,114 +891,61 @@ function SecurityCardWhite() {
   );
 }
 
-/* ── Integration Pill White ── */
-function IntegrationPillWhite({ name }: { name: string }) {
+function IntegrationsCardInteractive() {
   return (
-    <div className="shrink-0 px-4 py-2 rounded-xl bg-white border border-zinc-200 shadow-sm text-xs font-semibold text-zinc-700 hover:border-blue-300 hover:bg-blue-50/50 transition-all cursor-default whitespace-nowrap">
-      {name}
+    <div className="p-6 h-full flex flex-col justify-between bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+      <div>
+        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
+          <Globe className="w-5 h-5" />
+        </div>
+        <h3 className="text-[15px] font-bold text-zinc-900 mb-1.5">18+ Native Integrations</h3>
+        <p className="text-[12px] text-zinc-600 leading-relaxed">
+          Teams, Slack, Jira, GitHub, Salesforce, SAP, SharePoint, and custom MCP connectors.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-1.5 mt-4">
+        {["Teams", "Slack", "Jira", "GitHub", "SAP"].map((n) => (
+          <span key={n} className="text-[10px] font-mono px-2 py-1 rounded bg-zinc-50 text-zinc-800 border border-zinc-200">
+            {n}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
 
-/* ── Interactive Workflow Timeline Visualizer ── */
 function WorkflowTimelineInteractive({ onOpenModal }: { onOpenModal: () => void }) {
   const steps = [
-    { num: 1, title: "Connect Apps", status: "OAuth2 Ready", protocol: "Slack, Teams, Jira, SAP", detail: "Initializes enterprise webhook protocol listeners and active OAuth2 handshakes." },
-    { num: 2, title: "Import Knowledge", status: "Parsing PDF", protocol: "OCR & PDF Chunker", detail: "Streams unstructured documents into semantic chunking parser at 1,240 pages/sec." },
-    { num: 3, title: "Index Vectors", status: "Embedding", protocol: "Qdrant HNSW 1536d", detail: "Generates high-dimensional vector embeddings with cosine similarity indexing." },
-    { num: 4, title: "Deploy AI Agents", status: "Active DAG", protocol: "Claude 3.5 / GPT-4o", detail: "Spawns autonomous agent reasoning kernel with memory buffer allocation." },
-    { num: 5, title: "Automate Workflows", status: "Orchestrating", protocol: "MCP Registry Dispatch", detail: "Executes tool selection matrix across GitHub, Jira, SAP, and Salesforce." },
-    { num: 6, title: "Human Approval", status: "RBAC Level 4", protocol: "Zero-Trust Audit Gate", detail: "Enforces manager authorization gate before high-consequence system mutations." },
-    { num: 7, title: "Execute Actions", status: "200 OK", protocol: "Idempotent API Call", detail: "Dispatches deterministic, signed API transactions with full audit logging." },
-    { num: 8, title: "Analytics Dashboard", status: "Live Digest", protocol: "Executive Metrics", detail: "Aggregates latency throughput, token metrics, and cost savings telemetry." },
+    { num: 1, title: "Connect Enterprise Apps" },
+    { num: 2, title: "Import Knowledge & Policy" },
+    { num: 3, title: "Index Document Vectors" },
+    { num: 4, title: "Deploy AI Agents" },
+    { num: 5, title: "Automate Workflows" },
+    { num: 6, title: "Human Approval Gate" },
+    { num: 7, title: "Execute Actions" },
+    { num: 8, title: "Analytics Dashboard" },
   ];
-
-  const [activeStep, setActiveStep] = useState(2);
-  const [autoPlay, setAutoPlay] = useState(true);
-
-  useEffect(() => {
-    if (!autoPlay) return;
-    const iv = setInterval(() => {
-      setActiveStep((prev) => (prev + 1) % steps.length);
-    }, 3200);
-    return () => clearInterval(iv);
-  }, [autoPlay, steps.length]);
-
-  const current = steps[activeStep];
 
   return (
     <div className="mt-12 space-y-6">
-      {/* Step Selector Pills */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
-        {steps.map((s, i) => (
-          <button
+        {steps.map((s) => (
+          <div
             key={s.title}
-            onClick={() => {
-              setAutoPlay(false);
-              setActiveStep(i);
-            }}
-            className={`p-3 rounded-xl border text-left transition-all font-mono text-xs flex flex-col justify-between h-20 ${
-              activeStep === i
-                ? "bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-400/30"
-                : "bg-white text-zinc-800 border-zinc-200 hover:border-blue-300"
-            }`}
+            onClick={onOpenModal}
+            className="p-3 rounded-xl border border-zinc-200 bg-white hover:border-blue-400 transition-all cursor-pointer font-mono text-xs flex flex-col justify-between h-20 shadow-sm"
           >
-            <div className="flex items-center justify-between">
-              <span className={`w-5 h-5 rounded-md text-[10px] font-bold flex items-center justify-center ${activeStep === i ? "bg-white text-blue-600" : "bg-blue-50 text-blue-600"}`}>
-                {s.num}
-              </span>
-              {activeStep === i && <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />}
+            <div className="w-5 h-5 rounded bg-blue-50 text-blue-600 font-bold text-[10px] flex items-center justify-center">
+              {s.num}
             </div>
-            <span className="font-bold truncate text-[11px]">{s.title}</span>
-          </button>
+            <span className="font-bold text-[11px] text-zinc-800">{s.title}</span>
+          </div>
         ))}
-      </div>
-
-      {/* Live Agentic Stage Inspector Box */}
-      <div className="bg-white border border-zinc-200/90 rounded-2xl p-6 shadow-sm relative overflow-hidden">
-        <div className="flex items-center justify-between pb-4 border-b border-zinc-200 mb-4">
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-mono font-bold text-blue-600 px-2.5 py-1 rounded bg-blue-50 border border-blue-200 uppercase">
-              STAGE {current.num} / 8 :: {current.title}
-            </span>
-            <span className="text-xs font-mono text-emerald-600 font-semibold flex items-center gap-1">
-              <Radio className="w-3.5 h-3.5 animate-pulse text-emerald-500" />
-              {current.status}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setAutoPlay(!autoPlay)}
-              className="text-[11px] font-mono text-zinc-600 hover:text-zinc-900 border border-zinc-200 px-2.5 py-1 rounded-lg bg-zinc-50"
-            >
-              {autoPlay ? "⏸ Pause Flow" : "▶ Resume Flow"}
-            </button>
-            <button
-              onClick={onOpenModal}
-              className="text-[11px] font-mono font-bold bg-zinc-900 text-white px-3 py-1 rounded-lg hover:bg-blue-600 transition-colors"
-            >
-              Inspect DAG Modal ↗
-            </button>
-          </div>
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-6 font-mono text-xs">
-          <div>
-            <div className="text-zinc-400 text-[10px] uppercase mb-1">Protocol / Engine:</div>
-            <div className="font-bold text-zinc-900">{current.protocol}</div>
-          </div>
-          <div className="md:col-span-2">
-            <div className="text-zinc-400 text-[10px] uppercase mb-1">Live Agent Execution Protocol:</div>
-            <div className="text-zinc-700 leading-relaxed">{current.detail}</div>
-          </div>
-        </div>
       </div>
     </div>
   );
 }
 
-/* ── Stat Card White ── */
 function StatCardWhite({ value, suffix, label }: { value: number; suffix: string; label: string }) {
   const { count, ref } = useCountUp(value);
   return (
@@ -1045,24 +955,6 @@ function StatCardWhite({ value, suffix, label }: { value: number; suffix: string
         {suffix}
       </div>
       <p className="text-[13px] font-semibold text-zinc-700">{label}</p>
-    </div>
-  );
-}
-
-/* ── Footer Column ── */
-function FooterCol({ title, links }: { title: string; links: string[] }) {
-  return (
-    <div>
-      <h4 className="text-[11px] font-mono font-bold text-zinc-900 uppercase tracking-widest mb-3">{title}</h4>
-      <ul className="space-y-2">
-        {links.map((l) => (
-          <li key={l}>
-            <a href="#" className="text-[12px] text-zinc-600 hover:text-blue-600 font-medium transition-colors">
-              {l}
-            </a>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
