@@ -4,8 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   Send, Upload, Loader2, Crosshair, ArrowLeft, Sparkles,
-  FileText, Database, X, Terminal, Cpu, CheckCircle2,
-  GitBranch, Search, Zap, Layers, RefreshCw, ChevronDown, ChevronUp, Radio, Activity
+  FileText, Database, X, Cpu, CheckCircle2, Search, Zap
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
@@ -14,7 +13,7 @@ const PdfViewer = dynamic(() => import("../../components/PdfViewer"), {
   ssr: false,
   loading: () => (
     <div className="flex items-center justify-center h-full text-zinc-400 text-xs font-mono animate-pulse">
-      Loading PDF Source Engine...
+      Loading PDF Module...
     </div>
   ),
 });
@@ -49,8 +48,6 @@ export default function RAGPage() {
   const [currentFileName, setCurrentFileName] = useState<string | null>(null);
   const [docStatus, setDocStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle");
   const [activeSource, setActiveSource] = useState<Source | null>(null);
-  const [selectedFilter, setSelectedFilter] = useState<string>("ALL");
-  const [openTraceId, setOpenTraceId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -116,7 +113,7 @@ export default function RAGPage() {
         {
           id: (Date.now() + 1).toString(),
           role: "assistant",
-          content: "ERROR: ENGINE DISCONNECTED. Check API connection at http://localhost:8000.",
+          content: "ERROR: ENGINE DISCONNECTED.",
         },
       ]);
     } finally {
@@ -160,7 +157,7 @@ export default function RAGPage() {
           {
             id: (Date.now() + 1).toString(),
             role: "assistant",
-            content: `Upload Success: ${file.name}. Vector Indexing & Rule Extraction initialized.`,
+            content: `Upload Success: ${file.name}. Vector Indexing initialized.`,
           },
         ]);
         setTimeout(fetchRules, 1000);
@@ -181,22 +178,17 @@ export default function RAGPage() {
     }
   };
 
-  const filteredRules = extractedRules.filter((r) => {
-    if (selectedFilter === "ALL") return true;
-    return (r.type || "").toUpperCase() === selectedFilter;
-  });
-
   return (
-    <div className="flex flex-col h-screen bg-[#F8FAFC] text-zinc-900 font-sans overflow-hidden">
-      {/* ── TOP AGENTIC TELEMETRY HEADER ── */}
-      <header className="h-14 shrink-0 bg-white border-b border-zinc-200 px-6 flex items-center justify-between shadow-sm z-10">
+    <div className="flex flex-col h-screen bg-zinc-50 text-zinc-900 font-sans overflow-hidden">
+      {/* ── TOP HEADER ── */}
+      <header className="h-14 shrink-0 bg-white border-b border-zinc-200 px-6 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
           <Link
             href="/"
             className="flex items-center gap-1.5 text-xs font-semibold text-zinc-600 hover:text-zinc-900 transition-colors bg-zinc-100 px-3 py-1.5 rounded-lg border border-zinc-200"
           >
             <ArrowLeft className="w-4 h-4 text-zinc-500" />
-            <span>Back to Platform</span>
+            <span>Back to Home</span>
           </Link>
 
           <div className="h-4 w-px bg-zinc-200" />
@@ -205,31 +197,21 @@ export default function RAGPage() {
             <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold">
               <Database className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-zinc-900 tracking-tight">RAG Agentic Workspace</span>
+            <span className="text-sm font-bold text-zinc-900 tracking-tight">AgenticFlow AI — RAG Engine</span>
           </div>
-        </div>
-
-        {/* Center Live Telemetry Badge */}
-        <div className="hidden lg:flex items-center gap-3 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-xs font-mono text-blue-800">
-          <Radio className="w-3.5 h-3.5 text-blue-600 animate-pulse" />
-          <span>⚡ RAG AGENT: ONLINE</span>
-          <span>|</span>
-          <span>Top-K: 5</span>
-          <span>|</span>
-          <span>Metric: Cosine HNSW</span>
         </div>
 
         <div className="flex items-center gap-3">
           {currentFileName && (
             <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded-lg bg-blue-50 border border-blue-200 text-xs font-mono text-blue-700">
               <FileText className="w-3.5 h-3.5" />
-              <span className="max-w-[160px] truncate">{currentFileName}</span>
+              <span className="max-w-[180px] truncate">{currentFileName}</span>
             </div>
           )}
 
           <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-mono text-emerald-700 font-semibold">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Vector DB Connected</span>
+            <span>Vector Engine Connected</span>
           </div>
         </div>
       </header>
@@ -237,75 +219,50 @@ export default function RAGPage() {
       {/* ── MAIN WORKSPACE ── */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
         {/* ── LEFT PANEL: EXTRACTED RULES INDEX ── */}
-        <div className="w-96 shrink-0 bg-white border-r border-zinc-200 flex flex-col min-h-0">
-          {/* Header */}
+        <div className="w-88 shrink-0 bg-white border-r border-zinc-200 flex flex-col min-h-0">
           <div className="p-3.5 bg-zinc-50 border-b border-zinc-200 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-blue-600" />
               <span className="text-xs font-bold text-zinc-800 uppercase tracking-wider">
-                Extracted Document Rules ({filteredRules.length})
+                Database.RAW / Extracted Rules
               </span>
             </div>
             {isFetchingRules && <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />}
           </div>
 
-          {/* Filter Pills Bar */}
-          <div className="p-2.5 bg-white border-b border-zinc-100 flex gap-1 font-mono text-[10px]">
-            {["ALL", "RULE", "POLICY", "CONSTRAINT"].map((f) => (
-              <button
-                key={f}
-                onClick={() => setSelectedFilter(f)}
-                className={`px-2.5 py-1 rounded border transition-all ${
-                  selectedFilter === f
-                    ? "bg-blue-600 text-white border-blue-600 font-bold shadow-sm"
-                    : "bg-zinc-50 text-zinc-600 border-zinc-200 hover:bg-zinc-100"
-                }`}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-
-          {/* Rules Container */}
           <div className="flex-1 overflow-y-auto scrollbar-thin p-3.5 space-y-3">
             {docStatus === "processing" && (
               <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs font-mono text-amber-800 flex items-center gap-2.5 shadow-sm">
                 <Loader2 className="w-4 h-4 animate-spin shrink-0 text-amber-600" />
-                <span className="font-semibold">Parsing PDF & vectorizing rules...</span>
+                <span className="font-semibold">Extracting vector rules...</span>
               </div>
             )}
 
-            {docStatus === "failed" && (
-              <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs font-mono text-red-700 font-semibold shadow-sm">
-                EXTRACTION FAILED: Check document format.
-              </div>
-            )}
-
-            {filteredRules.length === 0 && docStatus !== "processing" && (
+            {extractedRules.length === 0 && docStatus !== "processing" && (
               <div className="p-8 text-center border-2 border-dashed border-zinc-200 rounded-xl bg-zinc-50/50">
                 <Search className="w-6 h-6 text-zinc-300 mx-auto mb-2" />
-                <p className="text-xs font-semibold text-zinc-700">No Document Rules Loaded</p>
-                <p className="text-[10px] font-mono text-zinc-500 mt-1">
+                <p className="text-xs font-semibold text-zinc-700">AWAITING DATA</p>
+                <p className="text-[11px] text-zinc-500 mt-1">
                   Upload a PDF document to extract structured rules.
                 </p>
               </div>
             )}
 
             <AnimatePresence>
-              {filteredRules.map((rule, index) => (
+              {extractedRules.map((rule, index) => (
                 <motion.div
                   key={rule.id}
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.02 }}
-                  className="group bg-white border border-zinc-200/90 hover:border-blue-400 rounded-xl p-3.5 shadow-sm hover:shadow transition-all"
+                  className="group bg-white border border-zinc-200 hover:border-blue-300 rounded-xl p-3.5 shadow-sm hover:shadow transition-all"
                 >
                   <div className="flex items-center gap-2 mb-2 pb-2 border-b border-zinc-100">
                     <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 uppercase">
                       {rule.type || "RULE"}
                     </span>
                     <span className="text-[10px] font-mono text-zinc-500 border border-zinc-200 px-1.5 py-0.5 rounded bg-zinc-50">
-                      CONF:{rule.confidence || 0}%
+                      ACC:{rule.confidence || 0}%
                     </span>
 
                     {rule.bbox && rule.page_dim && rule.page && rule.document_id && (
@@ -318,11 +275,11 @@ export default function RAGPage() {
                             page_dim: rule.page_dim,
                           })
                         }
-                        className="ml-auto text-[10px] font-mono flex items-center gap-1 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 px-2 py-1 rounded border border-blue-200 transition-colors shadow-sm font-bold"
-                        title="Inspect Bounding Box Source Target in PDF"
+                        className="ml-auto text-[10px] font-mono flex items-center gap-1 bg-zinc-100 hover:bg-blue-600 hover:text-white text-zinc-700 px-2 py-1 rounded border border-zinc-200 transition-colors shadow-sm"
+                        title="View Bounding Box Source Target in PDF"
                       >
                         <Crosshair className="w-3.5 h-3.5" />
-                        <span>⊕ Target</span>
+                        <span>Target</span>
                       </button>
                     )}
                   </div>
@@ -338,17 +295,15 @@ export default function RAGPage() {
 
         {/* ── CENTER PANEL: CHAT WORKSPACE ── */}
         <div className="flex-1 flex flex-col bg-white min-w-0">
-          {/* Sub Header */}
-          <div className="h-10 shrink-0 bg-zinc-50 border-b border-zinc-200 px-6 flex items-center justify-between font-mono text-xs text-zinc-600">
-            <div className="flex items-center gap-2">
+          <div className="h-11 shrink-0 bg-zinc-50 border-b border-zinc-200 px-6 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-semibold text-zinc-800">
               <Cpu className="w-4 h-4 text-blue-600" />
-              <span className="font-bold text-zinc-900">Copilot Agent Query Console</span>
+              <span>AI Assistant Workspace</span>
             </div>
-            <span>Hybrid Top-K: 5</span>
+            <span className="text-xs font-mono text-zinc-500">Hybrid Top-K Retrieval</span>
           </div>
 
-          {/* Message Feed */}
-          <div className="flex-1 overflow-y-auto scrollbar-thin p-6 space-y-4 bg-zinc-50/40">
+          <div className="flex-1 overflow-y-auto scrollbar-thin p-6 space-y-4 bg-zinc-50/50">
             <div className="max-w-2xl mx-auto space-y-4">
               {messages.map((msg) => (
                 <motion.div
@@ -357,9 +312,9 @@ export default function RAGPage() {
                   animate={{ opacity: 1, y: 0 }}
                   className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
-                  <div className={`max-w-[85%] ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                  <div className={`max-w-[80%] ${msg.role === "user" ? "items-end" : "items-start"}`}>
                     <div className="text-[10px] font-mono font-bold text-zinc-400 mb-1 px-1">
-                      {msg.role === "assistant" ? "SYS :: RAG_AGENT" : "USER :: PROMPT"}
+                      {msg.role === "assistant" ? "SYS RAG" : "USER"}
                     </div>
 
                     <div
@@ -372,45 +327,15 @@ export default function RAGPage() {
                       {msg.content}
                     </div>
 
-                    {/* Agent Thought Trace Accordion */}
-                    {msg.role === "assistant" && (
-                      <div className="mt-2 space-y-2">
+                    {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
+                      <div className="mt-2">
                         <button
-                          onClick={() => setOpenTraceId(openTraceId === msg.id ? null : msg.id)}
-                          className="inline-flex items-center gap-1 text-[11px] font-mono text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 px-2.5 py-1 rounded-md"
+                          onClick={() => setActiveSource(msg.sources![0])}
+                          className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 px-3 py-1 rounded-lg transition-colors shadow-sm"
                         >
-                          <Zap className="w-3 h-3 text-blue-600" />
-                          <span>Agent Thought Trace</span>
-                          {openTraceId === msg.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          <Crosshair className="w-3.5 h-3.5 text-blue-600" />
+                          <span>View Bounding Box Source</span>
                         </button>
-
-                        <AnimatePresence>
-                          {openTraceId === msg.id && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: "auto" }}
-                              exit={{ opacity: 0, height: 0 }}
-                              className="p-3 rounded-xl bg-zinc-900 text-zinc-200 font-mono text-[11px] space-y-1.5 border border-zinc-800 shadow-inner"
-                            >
-                              <div className="text-emerald-400 font-bold">● REASONING TRACE LOG</div>
-                              <div className="text-zinc-400">1. Query Intent: Policy & Constraint Analysis</div>
-                              <div className="text-zinc-400">2. Vector Search: Top 5 HNSW similarity chunks fetched</div>
-                              <div className="text-zinc-400">3. Rerank Threshold: All chunks passed confidence &gt;92%</div>
-                              <div className="text-zinc-400">4. Target Mapping: PDF Page Bounding Box verified</div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-
-                        {/* Source Target Button */}
-                        {msg.sources && msg.sources.length > 0 && (
-                          <button
-                            onClick={() => setActiveSource(msg.sources![0])}
-                            className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-600 hover:text-white px-3 py-1.5 rounded-lg transition-all shadow-sm ml-2"
-                          >
-                            <Crosshair className="w-3.5 h-3.5" />
-                            <span>⊕ Target Source in PDF</span>
-                          </button>
-                        )}
                       </div>
                     )}
                   </div>
@@ -421,7 +346,7 @@ export default function RAGPage() {
                 <div className="flex justify-start">
                   <div className="bg-white border border-zinc-200 p-4 rounded-2xl shadow-sm flex items-center gap-3 text-xs font-mono text-zinc-700 font-semibold">
                     <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-                    <span>Computing Hybrid Vector Embeddings & Agent Rerank...</span>
+                    <span>Computing Hybrid Vector Embeddings...</span>
                   </div>
                 </div>
               )}
@@ -429,7 +354,6 @@ export default function RAGPage() {
             </div>
           </div>
 
-          {/* Input Bar */}
           <div className="p-4 bg-white border-t border-zinc-200">
             <div className="max-w-2xl mx-auto">
               <form onSubmit={handleSubmit} className="flex gap-3 items-center">
@@ -445,7 +369,7 @@ export default function RAGPage() {
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isUploading}
                   className="w-11 h-11 rounded-xl bg-zinc-100 hover:bg-blue-50 text-zinc-700 hover:text-blue-600 border border-zinc-200 hover:border-blue-200 flex items-center justify-center transition-all disabled:opacity-40 shrink-0"
-                  title="Upload Document (PDF)"
+                  title="Upload PDF Document"
                 >
                   {isUploading ? <Loader2 className="w-5 h-5 animate-spin text-blue-600" /> : <Upload className="w-5 h-5" />}
                 </button>
@@ -453,7 +377,7 @@ export default function RAGPage() {
                 <input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Enter query to inspect document rules..."
+                  placeholder="Enter query..."
                   className="flex-1 bg-zinc-50 border border-zinc-200 focus:border-blue-500 rounded-xl px-4 py-2.5 text-[13px] text-zinc-900 placeholder:text-zinc-400 focus:outline-none transition-all shadow-inner"
                   disabled={isLoading}
                 />
@@ -468,15 +392,6 @@ export default function RAGPage() {
               </form>
             </div>
           </div>
-
-          {/* Bottom Live System Telemetry Ticker */}
-          <div className="h-7 shrink-0 bg-zinc-900 text-zinc-300 font-mono text-[10px] px-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Activity className="w-3 h-3 text-emerald-400" />
-              <span className="text-zinc-400">LOG: Vector store HNSW index active · 1,536d embeddings · API 200 OK</span>
-            </div>
-            <div className="text-zinc-500">Latency: 14ms</div>
-          </div>
         </div>
 
         {/* ── RIGHT PANEL: PDF SOURCE INSPECTOR ── */}
@@ -490,9 +405,7 @@ export default function RAGPage() {
               className="shrink-0 bg-white border-l border-zinc-200 flex flex-col overflow-hidden shadow-xl"
             >
               <div className="h-11 shrink-0 bg-zinc-50 border-b border-zinc-200 px-4 flex items-center justify-between">
-                <span className="text-xs font-bold text-zinc-800 font-mono">
-                  PDF SOURCE INSPECTOR :: TARGET BOUNDING BOX
-                </span>
+                <span className="text-xs font-bold text-zinc-800">PDF Document Source Inspector</span>
                 <button
                   onClick={() => setActiveSource(null)}
                   className="p-1 rounded-md hover:bg-zinc-200 text-zinc-600 transition-colors"

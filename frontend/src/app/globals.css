@@ -92,18 +92,14 @@
   }
   html {
     @apply font-sans;
+    scroll-behavior: smooth;
+    scroll-padding-top: 5rem;
   }
 }
 
 /* ═══════════════════════════════════════════════════
    PREMIUM WHITE THEME & AGENTIC MOTION
    ═══════════════════════════════════════════════════ */
-
-/* ── Light Architectural Grid Background ── */
-@keyframes grid-drift-light {
-  0%   { transform: translate(0, 0); }
-  100% { transform: translate(48px, 48px); }
-}
 
 .bg-white-grid {
   position: relative;
@@ -112,12 +108,11 @@
 .bg-white-grid::before {
   content: "";
   position: absolute;
-  inset: -48px;
+  inset: 0;
   background-image:
     linear-gradient(rgba(15, 23, 42, 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(15, 23, 42, 0.035) 1px, transparent 1px);
   background-size: 48px 48px;
-  animation: grid-drift-light 25s linear infinite;
   pointer-events: none;
   z-index: 0;
 }
