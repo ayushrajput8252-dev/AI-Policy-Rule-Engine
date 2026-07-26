@@ -2,49 +2,27 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Send, Upload, Loader2, AlertCircle, Crosshair } from "lucide-react";
+import { Send, Upload, Loader2, Crosshair, ArrowLeft, Sparkles, FileText, Database, X } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
 
 const PdfViewer = dynamic(() => import("../../components/PdfViewer"), {
   ssr: false,
-  loading: () => <div className="p-4 font-bold uppercase text-center animate-pulse">Loading PDF Module...</div>
+  loading: () => <div className="flex items-center justify-center h-full text-zinc-600 text-sm">Loading viewer...</div>,
 });
 
-type Source = {
-  document_id: string;
-  page: number;
-  bbox?: number[];
-  page_dim?: number[];
-};
+type Source = { document_id: string; page: number; bbox?: number[]; page_dim?: number[] };
+type Message = { id: string; role: "user" | "assistant"; content: string; sources?: Source[] };
+type Rule = { id: string; canonical_rule: string; type: string; confidence: number; bbox?: number[]; page_dim?: number[]; page?: number; document_id?: string };
 
-type Message = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  sources?: Source[];
-};
-
-type Rule = {
-  id: string;
-  canonical_rule: string;
-  type: string;
-  confidence: number;
-  bbox?: number[];
-  page_dim?: number[];
-  page?: number;
-  document_id?: string;
-};
-
-export default function ChatPage() {
+export default function RAGPage() {
   const [messages, setMessages] = useState<Message[]>([{
-    id: "welcome",
-    role: "assistant",
-    content: "SYSTEM READY. AWAITING DOCUMENT UPLOAD OR QUERY."
+    id: "welcome", role: "assistant",
+    content: "System ready. Upload a document or enter a query to begin."
   }]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState<"idle" | "success" | "error">("idle");
   const [extractedRules, setExtractedRules] = useState<Rule[]>([]);
   const [isFetchingRules, setIsFetchingRules] = useState(false);
   const [currentDocId, setCurrentDocId] = useState<string | null>(null);
@@ -52,317 +30,276 @@ export default function ChatPage() {
   const [docStatus, setDocStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle");
   const [activeSource, setActiveSource] = useState<Source | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   const fetchRules = async () => {
     if (!currentDocId) return;
     setIsFetchingRules(true);
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const response = await fetch(`${apiUrl}/api/v1/rules?document_id=${currentDocId}`);
-      if (response.ok) {
-        const data = await response.json();
+      const res = await fetch(`${apiUrl}/api/v1/rules?document_id=${currentDocId}`);
+      if (res.ok) {
+        const data = await res.json();
         setExtractedRules(data.rules || []);
-        if (data.status) {
-          setDocStatus(data.status);
-        }
+        if (data.status) setDocStatus(data.status);
       }
-    } catch (error) {
-      console.error("Fetch failed:", error);
-    } finally {
-      setIsFetchingRules(false);
-    }
+    } catch { /* silent */ } finally { setIsFetchingRules(false); }
   };
 
   useEffect(() => {
     if (!currentDocId) return;
     fetchRules();
-    const interval = setInterval(fetchRules, 5000);
-    return () => clearInterval(interval);
+    const iv = setInterval(fetchRules, 5000);
+    return () => clearInterval(iv);
   }, [currentDocId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
-
-    const userMessage = { id: Date.now().toString(), role: "user" as const, content: input };
-    setMessages(prev => [...prev, userMessage]);
+    const userMsg = { id: Date.now().toString(), role: "user" as const, content: input };
+    setMessages((p) => [...p, userMsg]);
     setInput("");
     setIsLoading(true);
-
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const response = await fetch(`${apiUrl}/api/v1/query`, {
+      const res = await fetch(`${apiUrl}/api/v1/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: userMessage.content, top_k: 5, document_id: currentDocId })
+        body: JSON.stringify({ query: userMsg.content, top_k: 5, document_id: currentDocId }),
       });
-      const data = await response.json();
-      
-      setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: data.answer,
-        sources: data.sources
-      }]);
-    } catch (error) {
-      setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: "ERROR: ENGINE DISCONNECTED."
-      }]);
-    } finally {
-      setIsLoading(false);
-    }
+      const data = await res.json();
+      setMessages((p) => [...p, { id: (Date.now() + 1).toString(), role: "assistant", content: data.answer, sources: data.sources }]);
+    } catch {
+      setMessages((p) => [...p, { id: (Date.now() + 1).toString(), role: "assistant", content: "Connection error. Please try again." }]);
+    } finally { setIsLoading(false); }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setIsUploading(true);
-    setUploadStatus("idle");
     setExtractedRules([]);
     setCurrentDocId(null);
     setCurrentFileName(file.name);
     setDocStatus("processing");
     setActiveSource(null);
-    setMessages([{
-      id: "welcome",
-      role: "assistant",
-      content: "SYSTEM READY."
-    }, {
-      id: Date.now().toString(),
-      role: "user",
-      content: `[UPLOAD CMD]: ${file.name}`
-    }]);
-
-    const formData = new FormData();
-    formData.append("files", file);
-
+    setMessages([
+      { id: "welcome", role: "assistant", content: "System ready." },
+      { id: Date.now().toString(), role: "user", content: `Uploading: ${file.name}` },
+    ]);
+    const fd = new FormData();
+    fd.append("files", file);
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const response = await fetch(`${apiUrl}/api/v1/upload`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (response.ok) {
-        const data = await response.json();
+      const res = await fetch(`${apiUrl}/api/v1/upload`, { method: "POST", body: fd });
+      if (res.ok) {
+        const data = await res.json();
         const docId = data.results?.[0]?.document_id;
-        
         if (docId) setCurrentDocId(docId);
-        setUploadStatus("success");
-        setMessages(prev => [...prev, {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: `UPLOAD SUCCESS: ${file.name}. PREPARING TO EXTRACT RULES.`
-        }]);
+        setMessages((p) => [...p, { id: (Date.now() + 1).toString(), role: "assistant", content: `Uploaded ${file.name}. Extracting rules...` }]);
         setTimeout(fetchRules, 1000);
       } else {
-        setUploadStatus("error");
-        setMessages(prev => [...prev, {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: `UPLOAD FAILED: SERVER REJECTED.`
-        }]);
+        setMessages((p) => [...p, { id: (Date.now() + 1).toString(), role: "assistant", content: "Upload failed." }]);
       }
-    } catch (error) {
-      setUploadStatus("error");
-      setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: "UPLOAD FAILED: NETWORK TIMEOUT."
-      }]);
+    } catch {
+      setMessages((p) => [...p, { id: (Date.now() + 1).toString(), role: "assistant", content: "Upload failed. Network error." }]);
     } finally {
       setIsUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
   return (
-    <div className="flex h-screen bg-white text-black font-mono overflow-hidden">
-      {/* Sidebar: Extracted Rules */}
-      <div className="w-96 border-r-4 border-black bg-white flex flex-col z-20 shrink-0">
-        <div className="p-4 border-b-4 border-black flex items-center justify-between bg-black text-white">
-          <div className="font-black text-xl tracking-tighter uppercase">
-            [ Policy_Engine ]
+    <div className="flex h-screen bg-[#060606] text-white overflow-hidden">
+      {/* ── LEFT SIDEBAR: Rules ── */}
+      <div className="w-80 shrink-0 border-r border-white/[0.04] flex flex-col bg-[#0a0a0a]">
+        {/* Header */}
+        <div className="p-4 border-b border-white/[0.04] flex items-center gap-3">
+          <Link href="/" className="p-1.5 rounded-lg hover:bg-white/[0.04] transition-colors text-zinc-500 hover:text-zinc-300">
+            <ArrowLeft className="w-4 h-4" />
+          </Link>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-[#3B82F6] to-[#6366F1] flex items-center justify-center">
+              <Database className="w-3 h-3 text-white" />
+            </div>
+            <span className="text-[13px] font-semibold tracking-[-0.01em]">RAG Engine</span>
           </div>
+          {isFetchingRules && <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-600 ml-auto" />}
         </div>
-        
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="flex items-center justify-between mb-4 border-b-2 border-black pb-2">
-            <h2 className="text-lg font-bold uppercase">Database.RAW</h2>
-            {isFetchingRules && <Loader2 className="h-5 w-5 animate-spin" />}
-          </div>
-          
-          <div className="space-y-4">
-            {docStatus === "processing" && (
-              <div className="p-4 border-2 border-black border-dashed font-bold uppercase text-center bg-yellow-300 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center gap-2">
-                <Loader2 className="h-6 w-6 animate-spin" />
-                <span>EXTRACTING RULES...</span>
-              </div>
-            )}
-            
-            {docStatus === "failed" && (
-              <div className="p-4 border-2 border-black font-bold uppercase text-center bg-red-400 text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                EXTRACTION FAILED
-              </div>
-            )}
 
-            {extractedRules.length === 0 && docStatus !== "processing" ? (
-              <div className="p-4 border-2 border-black border-dashed font-bold uppercase text-center">
-                AWAITING DATA
-              </div>
-            ) : (
-              extractedRules.map((rule) => (
-                <div key={rule.id} className="p-3 border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-default">
-                  <div className="flex items-center gap-2 mb-2 pb-2 border-b-2 border-black">
-                    <span className="font-black bg-black text-white px-2 py-1 text-xs uppercase">
-                      {rule.type || "INFO"}
-                    </span>
-                    <span className="text-xs font-bold uppercase border-2 border-black px-1">
-                      ACC:{rule.confidence || 0}%
-                    </span>
-                    {rule.bbox && rule.page_dim && rule.page && rule.document_id && (
-                      <button 
-                        onClick={() => setActiveSource({
-                          document_id: rule.document_id!,
-                          page: rule.page!,
-                          bbox: rule.bbox,
-                          page_dim: rule.page_dim
-                        })}
-                        className="ml-auto p-1 bg-white border-2 border-black flex items-center shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
-                        title="View Source in Document"
-                      >
-                        <Crosshair className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                  <p className="text-sm font-medium">
-                    {rule.canonical_rule}
-                  </p>
+        {/* Rules list */}
+        <div className="flex-1 overflow-y-auto scrollbar-thin p-3 space-y-2">
+          {currentFileName && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.04] mb-3">
+              <FileText className="w-3.5 h-3.5 text-zinc-600 shrink-0" />
+              <span className="text-[11px] text-zinc-500 truncate">{currentFileName}</span>
+            </div>
+          )}
+
+          {docStatus === "processing" && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 px-3 py-3 rounded-lg bg-[#3B82F6]/[0.04] border border-[#3B82F6]/[0.08]">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#3B82F6]/60" />
+              <span className="text-[11px] text-[#3B82F6]/60">Extracting rules...</span>
+            </motion.div>
+          )}
+
+          {docStatus === "failed" && (
+            <div className="px-3 py-3 rounded-lg bg-red-500/[0.05] border border-red-500/[0.1] text-[11px] text-red-400/70">
+              Extraction failed
+            </div>
+          )}
+
+          {extractedRules.length === 0 && docStatus !== "processing" && (
+            <div className="px-3 py-8 text-center">
+              <Database className="w-5 h-5 text-zinc-800 mx-auto mb-2" />
+              <p className="text-[11px] text-zinc-700">No rules extracted yet</p>
+              <p className="text-[10px] text-zinc-800 mt-1">Upload a PDF to begin</p>
+            </div>
+          )}
+
+          <AnimatePresence>
+            {extractedRules.map((rule, i) => (
+              <motion.div
+                key={rule.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.03 }}
+                className="group px-3 py-2.5 rounded-lg bg-white/[0.01] border border-white/[0.04] hover:bg-white/[0.03] hover:border-white/[0.07] transition-all cursor-default"
+              >
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-white/[0.04] text-zinc-500 uppercase tracking-wider">
+                    {rule.type || "info"}
+                  </span>
+                  <span className="text-[9px] text-zinc-700 font-mono ml-auto">
+                    {rule.confidence || 0}%
+                  </span>
+                  {rule.bbox && rule.page_dim && rule.page && rule.document_id && (
+                    <button
+                      onClick={() => setActiveSource({ document_id: rule.document_id!, page: rule.page!, bbox: rule.bbox, page_dim: rule.page_dim })}
+                      className="p-1 rounded hover:bg-white/[0.06] text-zinc-700 hover:text-zinc-400 transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                      <Crosshair className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
-              ))
-            )}
-          </div>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">{rule.canonical_rule}</p>
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
       </div>
 
-      {/* Main Chat Area */}
-      <div className={`flex-1 flex flex-col bg-gray-100 bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:16px_16px] min-w-0 ${activeSource ? 'border-r-4 border-black' : ''}`}>
-        {/* Top Nav */}
-        <header className="w-full p-4 flex justify-between items-center border-b-4 border-black bg-white shrink-0">
-          <h1 className="font-bold uppercase tracking-tighter text-xl">AI Assistant</h1>
-        </header>
-        
-        {/* Chat Messages */}
-        <div className="flex-1 overflow-y-auto p-6 scrollbar-hide flex flex-col gap-6">
-          <div className="max-w-4xl mx-auto w-full flex flex-col gap-6 pt-4">
+      {/* ── CENTER: Chat ── */}
+      <div className="flex-1 flex flex-col min-w-0 bg-[#060606]">
+        {/* Chat header */}
+        <div className="h-12 shrink-0 border-b border-white/[0.04] flex items-center px-5">
+          <Sparkles className="w-3.5 h-3.5 text-zinc-600 mr-2" />
+          <span className="text-[13px] text-zinc-400 font-medium">AI Assistant</span>
+          {currentFileName && (
+            <span className="ml-3 text-[11px] text-zinc-700">· {currentFileName}</span>
+          )}
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-6">
+          <div className="max-w-2xl mx-auto space-y-4">
             {messages.map((msg) => (
-              <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`flex flex-col gap-1 max-w-[80%] ${msg.role === "user" ? "items-end" : "items-start"}`}>
-                  <div className="text-xs font-black uppercase bg-black text-white px-2 py-1">
-                    {msg.role === "assistant" ? "SYS" : "USR"}
-                  </div>
-                  <div className={`p-4 border-4 border-black text-sm font-medium ${
-                    msg.role === "assistant" 
-                      ? "bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]" 
-                      : "bg-[#00ff00] shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]"
+              <motion.div
+                key={msg.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                <div className={`max-w-[75%] ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                  <div className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${
+                    msg.role === "assistant"
+                      ? "bg-white/[0.03] border border-white/[0.05] text-zinc-300"
+                      : "bg-gradient-to-r from-[#3B82F6]/20 to-[#6366F1]/20 border border-[#3B82F6]/10 text-zinc-200"
                   }`}>
                     {msg.content}
                   </div>
-                  
-                  {/* Source tracing icon */}
                   {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
-                    <div className="mt-2 flex items-center gap-2">
-                      <button 
-                        onClick={() => setActiveSource(msg.sources![0])}
-                        className="p-2 bg-white border-2 border-black flex items-center gap-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all uppercase text-xs font-bold"
-                        title="View Source in Document"
-                      >
-                        <Crosshair className="h-4 w-4" /> View Source
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => setActiveSource(msg.sources![0])}
+                      className="mt-1.5 flex items-center gap-1.5 text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors px-2 py-1 rounded-md hover:bg-white/[0.03]"
+                    >
+                      <Crosshair className="w-3 h-3" /> View Source
+                    </button>
                   )}
                 </div>
-              </div>
+              </motion.div>
             ))}
             {isLoading && (
-              <div className="flex justify-start">
-                <div className="flex flex-col gap-1 items-start">
-                  <div className="text-xs font-black uppercase bg-black text-white px-2 py-1">SYS</div>
-                  <div className="p-4 border-4 border-black bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex items-center gap-3">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    <span className="font-bold uppercase">COMPUTING...</span>
-                  </div>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
+                <div className="px-4 py-3 rounded-2xl bg-white/[0.03] border border-white/[0.05] flex items-center gap-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-500" />
+                  <span className="text-[12px] text-zinc-500">Processing...</span>
                 </div>
-              </div>
+              </motion.div>
             )}
+            <div ref={chatEndRef} />
           </div>
         </div>
-        
-        {/* Input Area */}
-        <div className="w-full p-6 bg-white border-t-4 border-black shrink-0">
-          <div className="max-w-4xl mx-auto flex flex-col gap-2">
-            <form onSubmit={handleSubmit} className="flex gap-4">
-              
-              <input 
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileUpload}
-                accept="application/pdf"
-                className="hidden"
-              />
+
+        {/* Input */}
+        <div className="shrink-0 border-t border-white/[0.04] p-4">
+          <div className="max-w-2xl mx-auto">
+            <form onSubmit={handleSubmit} className="flex items-center gap-3">
+              <input type="file" ref={fileInputRef} onChange={handleUpload} accept="application/pdf" className="hidden" />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploading}
-                className="w-16 h-16 border-4 border-black bg-[#ff00ff] hover:bg-[#cc00cc] text-black flex items-center justify-center shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all disabled:opacity-50 shrink-0"
-                title="Upload Document"
+                className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.06] hover:border-white/[0.1] transition-all disabled:opacity-40 shrink-0"
               >
-                {isUploading ? <Loader2 className="h-8 w-8 animate-spin" /> : <Upload className="h-8 w-8" />}
+                {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
               </button>
-
-              <input 
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="ENTER QUERY..." 
-                className="flex-1 min-w-0 border-4 border-black bg-white p-4 font-bold text-lg focus:outline-none focus:bg-gray-100 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
-                disabled={isLoading}
-              />
-              
-              <button 
-                type="submit" 
-                disabled={isLoading || !input.trim()} 
-                className="w-24 h-16 border-4 border-black bg-blue-500 text-white hover:bg-blue-600 flex items-center justify-center shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all disabled:opacity-50 disabled:bg-gray-400 shrink-0"
+              <div className="flex-1 relative">
+                <input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Ask about your documents..."
+                  className="w-full bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-2.5 text-[13px] text-zinc-200 placeholder:text-zinc-700 focus:outline-none focus:border-[#3B82F6]/20 focus:bg-white/[0.04] transition-all"
+                  disabled={isLoading}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isLoading || !input.trim()}
+                className="w-10 h-10 rounded-xl bg-gradient-to-r from-[#3B82F6] to-[#6366F1] flex items-center justify-center text-white hover:brightness-110 transition-all disabled:opacity-30 shrink-0"
               >
-                <Send className="h-8 w-8" />
+                <Send className="w-4 h-4" />
               </button>
             </form>
-            
           </div>
         </div>
       </div>
 
-      {/* Right Sidebar: PDF Viewer */}
-      {activeSource && (
-        <div className="w-1/3 flex flex-col bg-white shrink-0 shadow-2xl relative z-30 border-l-4 border-black">
-          <div className="p-4 border-b-4 border-black bg-black text-white font-black uppercase flex justify-between items-center">
-            <span className="tracking-tighter">Document Viewer</span>
-            <button 
-              onClick={() => setActiveSource(null)}
-              className="text-white hover:text-gray-300 font-bold border-2 border-white px-2 hover:bg-white hover:text-black transition-colors"
-            >
-              X
-            </button>
-          </div>
-          <div className="flex-1 overflow-hidden relative">
-            <PdfViewer source={activeSource} fileName={currentDocId && currentFileName ? `${currentDocId}_${currentFileName}` : null} />
-          </div>
-        </div>
-      )}
+      {/* ── RIGHT: PDF Viewer ── */}
+      <AnimatePresence>
+        {activeSource && (
+          <motion.div
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: "35%", opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] as const }}
+            className="shrink-0 border-l border-white/[0.04] bg-[#0a0a0a] flex flex-col overflow-hidden"
+          >
+            <div className="h-12 shrink-0 border-b border-white/[0.04] flex items-center justify-between px-4">
+              <span className="text-[13px] text-zinc-400 font-medium">Document Viewer</span>
+              <button onClick={() => setActiveSource(null)} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-zinc-600 hover:text-zinc-300 transition-all">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <PdfViewer source={activeSource} fileName={currentDocId && currentFileName ? `${currentDocId}_${currentFileName}` : null} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
