@@ -6,7 +6,8 @@ import { motion, useInView, AnimatePresence } from "framer-motion";
 import {
   Database, UserPlus, Brain, Bot, BarChart3, Shield,
   ArrowRight, Menu, X, Zap, Users, Globe, CheckCircle2,
-  Sparkles, Search, FileText, Cpu, Activity, Play, ArrowUpRight, Crosshair, Network
+  Sparkles, Search, FileText, Cpu, Activity, Play, ArrowUpRight, Radio, Terminal, Pause, SkipForward,
+  MessageSquare, Layers, Server, Cloud, Plug, Share2, CheckSquare
 } from "lucide-react";
 
 /* ── Inline GitHub Icon ── */
@@ -61,15 +62,6 @@ function useCountUp(end: number, duration = 1800) {
     requestAnimationFrame(tick);
   }, [inView, end, duration]);
   return { count, ref };
-}
-
-function useCycleText(texts: string[], interval = 2200) {
-  const [idx, setIdx] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setIdx((i) => (i + 1) % texts.length), interval);
-    return () => clearInterval(id);
-  }, [texts.length, interval]);
-  return texts[idx];
 }
 
 export default function LandingPage() {
@@ -239,7 +231,7 @@ export default function LandingPage() {
 
             {/* Right Column: Hero Agent Matrix */}
             <div className="hidden lg:block relative">
-              <HeroAgentMatrix />
+              <HeroAgentMatrixDynamic />
             </div>
           </div>
         </div>
@@ -249,13 +241,13 @@ export default function LandingPage() {
       <section id="capabilities" className="py-20 relative z-10 border-t border-zinc-200/80 bg-zinc-50/50">
         <div className="max-w-6xl mx-auto px-6">
           <SectionHeader
-            badge="Platform Capabilities"
+            badge="Performance Capabilities"
             title="Engineered for High-Consequence Enterprise Scale"
             subtitle="Autonomous reasoning, RAG vector indexing, and zero-trust orchestration."
           />
 
           <div className="grid md:grid-cols-3 gap-6 mt-14">
-            {/* Card 1: RAG (Interactive Vector Console) */}
+            {/* Card 1: RAG */}
             <div className="md:col-span-2">
               <RAGCardInteractive />
             </div>
@@ -263,7 +255,7 @@ export default function LandingPage() {
             {/* Card 2: Onboarding */}
             <OnboardingCardInteractive />
 
-            {/* Card 3: Knowledge Graph Engine */}
+            {/* Card 3: Knowledge Graph */}
             <KnowledgeCardInteractive />
 
             {/* Card 4: Automation Agent */}
@@ -277,7 +269,7 @@ export default function LandingPage() {
             {/* Card 6: Security */}
             <SecurityCardWhite />
 
-            {/* Card 7: Integrations */}
+            {/* Card 7: Native Integrations with Brand Icons */}
             <IntegrationsCardInteractive />
           </div>
         </div>
@@ -287,11 +279,11 @@ export default function LandingPage() {
       <section id="architecture" className="py-28 border-t border-zinc-200/80 bg-zinc-50/50">
         <div className="max-w-6xl mx-auto px-6">
           <SectionHeader
-            badge="Interactive Agent Pipeline"
+            badge="Realtime AI Pipeline"
             title="From Knowledge Import to Automated Action"
-            subtitle="Continuous, deterministic AI orchestration pipeline."
+            subtitle="Continuous floating data orchestration pipeline from start to finish."
           />
-          <WorkflowTimelineInteractive onOpenModal={() => setArchModalOpen(true)} />
+          <WorkflowTimelineFloatingPipeline onOpenModal={() => setArchModalOpen(true)} />
         </div>
       </section>
 
@@ -452,123 +444,179 @@ function SectionHeader({ badge, title, subtitle }: { badge: string; title: strin
   );
 }
 
-function HeroAgentMatrix() {
-  const status = useCycleText(
-    ["Thinking...", "Querying Vector DB...", "Orchestrating MCP Tools...", "Executing Action...", "Awaiting Verification...", "Completed ✓"],
-    2000
-  );
+/* ── 1. CLEAN LIGHT AGENT TRACE LOG BOX (BLENDED WITH UI) ── */
+function HeroAgentMatrixDynamic() {
+  const [activeStep, setActiveStep] = useState(1);
+  const [isPaused, setIsPaused] = useState(false);
 
-  const nodes = [
-    { label: "Employee Request", sub: "Slack / Teams Webhook", icon: <Users className="w-3.5 h-3.5 text-blue-600" /> },
-    { label: "AI Reasoning Agent", sub: "Claude 3.5 Sonnet / GPT-4o", icon: <Bot className="w-3.5 h-3.5 text-blue-600" /> },
-    { label: "Advanced RAG Engine", sub: "Hybrid Retrieval + Vector Rank", icon: <Database className="w-3.5 h-3.5 text-blue-600" /> },
-    { label: "Enterprise Knowledge Base", sub: "SharePoint & Confluence Index", icon: <Brain className="w-3.5 h-3.5 text-blue-600" /> },
-    { label: "Integrated Business Apps", sub: "GitHub, Jira, SAP, Salesforce", icon: <Globe className="w-3.5 h-3.5 text-blue-600" /> },
-    { label: "Automated Action Dispatcher", sub: "Deterministic Execution", icon: <Zap className="w-3.5 h-3.5 text-blue-600" /> },
+  const steps = [
+    {
+      num: 1,
+      name: "Employee Webhook Request",
+      sub: "Slack / Teams Event Listener",
+      icon: <Users className="w-3.5 h-3.5 text-blue-600" />,
+      log: "> [0.012s] Incoming webhook payload parsed: user='@ayush', event='POLICY_QUERY'",
+    },
+    {
+      num: 2,
+      name: "AI Reasoning Agent Kernel",
+      sub: "Claude 3.5 Sonnet / GPT-4o DAG",
+      icon: <Bot className="w-3.5 h-3.5 text-blue-600" />,
+      log: "> [0.084s] Intent classified: EXPOSE_POLICY_RULES. Spawning RAG retriever agent...",
+    },
+    {
+      num: 3,
+      name: "Advanced Vector RAG Engine",
+      sub: "Qdrant HNSW + Hybrid Rerank",
+      icon: <Database className="w-3.5 h-3.5 text-blue-600" />,
+      log: "> [0.142s] HNSW vector search score=0.984. 4 chunks passed confidence threshold (>92%).",
+    },
+    {
+      num: 4,
+      name: "Enterprise Knowledge Mesh",
+      sub: "SharePoint & Notion Graph",
+      icon: <Brain className="w-3.5 h-3.5 text-blue-600" />,
+      log: "> [0.188s] Linked document bounding box citation: Page 2 [120, 40, 300, 80].",
+    },
+    {
+      num: 5,
+      name: "MCP Tool Orchestrator",
+      sub: "Dispatched GitHub & Jira APIs",
+      icon: <Globe className="w-3.5 h-3.5 text-blue-600" />,
+      log: "> [0.220s] MCP Tool Dispatches: [GitHub.issue_create, Jira.assign_ticket].",
+    },
+    {
+      num: 6,
+      name: "Deterministic Dispatcher",
+      sub: "Idempotent Transaction Signed",
+      icon: <Zap className="w-3.5 h-3.5 text-blue-600" />,
+      log: "> [0.248s] Idempotent transaction token 0x9f32 signed. Audit Log verified. Status: 200 OK",
+    },
   ];
 
+  useEffect(() => {
+    if (isPaused) return;
+    const iv = setInterval(() => {
+      setActiveStep((prev) => (prev % steps.length) + 1);
+    }, 2200);
+    return () => clearInterval(iv);
+  }, [isPaused, steps.length]);
+
+  const currentStep = steps[activeStep - 1];
+
   return (
-    <div className="rounded-2xl bg-white border border-zinc-200 p-6 shadow-xl relative">
-      <div className="flex items-center justify-between border-b border-zinc-200 pb-3 mb-4">
+    <div className="rounded-2xl bg-white border border-zinc-200 p-6 shadow-xl relative overflow-hidden">
+      <div className="flex items-center justify-between border-b border-zinc-200 pb-3 mb-4 font-mono text-xs">
         <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-agent-pulse" />
-          <span className="text-xs font-mono font-bold text-zinc-900 uppercase tracking-wider">Agent Trace Log</span>
+          <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping" />
+          <span className="font-bold text-zinc-900 uppercase">Step-by-Step Agent Trace</span>
         </div>
-        <AnimatePresence mode="wait">
-          <motion.span
-            key={status}
-            initial={{ opacity: 0, y: 3 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -3 }}
-            className="text-[11px] font-mono text-blue-600 font-semibold px-2 py-0.5 rounded bg-blue-50 border border-blue-100"
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsPaused(!isPaused)}
+            className="p-1 rounded hover:bg-zinc-100 text-zinc-600 transition-colors"
+            title={isPaused ? "Play trace" : "Pause trace"}
           >
-            {status}
-          </motion.span>
-        </AnimatePresence>
+            {isPaused ? <Play className="w-3.5 h-3.5 text-blue-600 fill-blue-600" /> : <Pause className="w-3.5 h-3.5 text-zinc-600" />}
+          </button>
+          <button
+            onClick={() => setActiveStep((prev) => (prev % steps.length) + 1)}
+            className="p-1 rounded hover:bg-zinc-100 text-zinc-600 transition-colors"
+            title="Next Step"
+          >
+            <SkipForward className="w-3.5 h-3.5 text-zinc-600" />
+          </button>
+        </div>
       </div>
 
-      <div className="space-y-1">
-        {nodes.map((n, i) => (
-          <div key={n.label}>
-            <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-zinc-50 transition-colors border border-transparent hover:border-zinc-200/80">
-              <div className="flex items-center gap-3">
-                <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-200/80 flex items-center justify-center shrink-0">
-                  {n.icon}
-                </div>
-                <div>
-                  <div className="text-xs font-semibold text-zinc-800">{n.label}</div>
-                  <div className="text-[10px] text-zinc-500 font-mono">{n.sub}</div>
-                </div>
-              </div>
-              <span className="text-[10px] font-mono text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                ACTIVE
-              </span>
-            </div>
+      <div className="space-y-1.5">
+        {steps.map((s) => {
+          const isDone = s.num < activeStep;
+          const isCurrent = s.num === activeStep;
 
-            {i < nodes.length - 1 && (
-              <div className="flex justify-center h-4 relative">
-                <div className="w-px h-full bg-blue-200" />
-                <div
-                  className="absolute w-1.5 h-1.5 rounded-full bg-blue-600 animate-data-packet"
-                  style={{ animationDelay: `${i * 0.3}s` }}
-                />
+          return (
+            <div key={s.num}>
+              <div
+                onClick={() => {
+                  setIsPaused(true);
+                  setActiveStep(s.num);
+                }}
+                className={`flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer ${
+                  isCurrent
+                    ? "bg-blue-50/80 border-blue-300 shadow-sm"
+                    : isDone
+                    ? "bg-white border-zinc-200/70 opacity-90"
+                    : "bg-zinc-50/50 border-zinc-200/50 opacity-50"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-6 h-6 rounded-lg font-mono text-[10px] font-bold flex items-center justify-center shrink-0 ${isCurrent ? "bg-blue-600 text-white" : isDone ? "bg-emerald-100 text-emerald-700" : "bg-zinc-200 text-zinc-600"}`}>
+                    {s.num}
+                  </div>
+                  <div>
+                    <div className={`text-xs font-bold ${isCurrent ? "text-blue-900" : "text-zinc-800"}`}>
+                      {s.name}
+                    </div>
+                    <div className="text-[10px] text-zinc-500 font-mono">{s.sub}</div>
+                  </div>
+                </div>
+
+                <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${isCurrent ? "bg-blue-600 text-white border-blue-600 animate-pulse" : isDone ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-zinc-100 text-zinc-500 border-zinc-200"}`}>
+                  {isCurrent ? "EXECUTING..." : isDone ? "PASSED ✓" : "QUEUED"}
+                </span>
               </div>
-            )}
-          </div>
-        ))}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Clean Blended Light Terminal Log Ticker */}
+      <div className="mt-4 p-3.5 rounded-xl bg-blue-50/70 border border-blue-200/90 text-blue-950 font-mono text-[11px] shadow-xs space-y-1">
+        <div className="flex items-center justify-between text-[10px] text-blue-700 border-b border-blue-200/80 pb-1.5 mb-1 font-bold">
+          <span className="flex items-center gap-1.5 text-blue-800">
+            <Terminal className="w-3.5 h-3.5 text-blue-600" /> LIVE TRACE LOG
+          </span>
+          <span className="px-1.5 py-0.5 rounded bg-blue-100 border border-blue-300">STEP {activeStep} / 6</span>
+        </div>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentStep.num}
+            initial={{ opacity: 0, y: 2 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -2 }}
+            className="text-blue-950 font-semibold leading-relaxed"
+          >
+            {currentStep.log}
+          </motion.div>
+        </AnimatePresence>
       </div>
     </div>
   );
 }
 
-/* ── HIGHLY INTERACTIVE RAG CARD ── */
 function RAGCardInteractive() {
   const sampleQueries = [
-    { query: "Expense Policy Limits", match: 98.4, chunks: 4, page: 2, bbox: "[120, 40, 300, 80]" },
-    { query: "Termination Notice Period", match: 94.2, chunks: 3, page: 5, bbox: "[60, 100, 280, 60]" },
-    { query: "NDA & IP Ownership", match: 99.1, chunks: 5, page: 1, bbox: "[90, 30, 350, 90]" },
-    { query: "Remote Work Stipend", match: 96.8, chunks: 4, page: 3, bbox: "[110, 80, 320, 70]" },
+    { query: "Expense Policy Limits", match: 98.4, page: 2 },
+    { query: "Termination Notice", match: 94.2, page: 5 },
+    { query: "NDA & IP Ownership", match: 99.1, page: 1 },
   ];
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const currentQ = sampleQueries[selectedIdx];
 
   return (
-    <div className="p-6 h-full flex flex-col justify-between bg-white border border-zinc-200/90 rounded-2xl shadow-sm hover:border-blue-300 transition-colors">
-      <div>
-        {/* Highlighted Feature Badges */}
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-            🎯 Hybrid Vector Search
-          </span>
-          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-            📌 Page BBox Citations
-          </span>
-          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 border border-zinc-200">
-            ⚡ Top-K Retrieval
-          </span>
+    <div className="cpu-burn-card p-6 h-full flex flex-col md:flex-row gap-6 bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+      <div className="flex-1 min-w-0">
+        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
+          <Database className="w-5 h-5" />
         </div>
-
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
-            <Database className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-[16px] font-bold text-zinc-900">Advanced Enterprise RAG Engine</h3>
-            <p className="text-[11px] font-mono text-zinc-500">Realtime Vector Indexing & Source Target Mapping</p>
-          </div>
-        </div>
-
+        <h3 className="text-[16px] font-bold text-zinc-900 mb-2">Advanced Enterprise RAG</h3>
         <p className="text-[13px] text-zinc-600 leading-relaxed mb-4">
-          Index millions of PDFs, policies, and SharePoint files with semantic search, hybrid reranking, and exact page bounding-box target citations.
+          Index millions of PDFs, emails, SharePoint files, and policies with semantic search, hybrid reranking, and citation tracing.
         </p>
 
-        {/* Interactive Query Switcher Bar */}
-        <div className="space-y-2 mb-4">
-          <div className="text-[11px] font-mono font-bold text-zinc-700 flex items-center justify-between">
-            <span>Simulate Real Vector Queries:</span>
-            <span className="text-blue-600">Click to test →</span>
-          </div>
-          <div className="grid grid-cols-2 gap-1.5">
+        <div className="space-y-1.5 mb-4">
+          <div className="text-[11px] font-mono text-zinc-500">Test Vector Queries:</div>
+          <div className="flex flex-wrap gap-1.5">
             {sampleQueries.map((q, i) => (
               <button
                 key={q.query}
@@ -576,66 +624,46 @@ function RAGCardInteractive() {
                   e.preventDefault();
                   setSelectedIdx(i);
                 }}
-                className={`text-[11px] font-mono px-3 py-2 rounded-xl border text-left transition-all flex items-center justify-between ${
+                className={`text-[11px] font-mono px-2.5 py-1 rounded-lg border transition-all ${
                   selectedIdx === i
                     ? "bg-blue-600 text-white border-blue-600 shadow-sm font-bold"
                     : "bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100"
                 }`}
               >
-                <span className="truncate">🔍 {q.query}</span>
-                {selectedIdx === i && <span className="w-2 h-2 rounded-full bg-white animate-pulse" />}
+                🔍 {q.query}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Live Vector Match Box */}
-        <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl space-y-2 font-mono text-xs mb-4">
-          <div className="flex justify-between items-center text-[11px]">
-            <span className="text-zinc-500">Selected Vector Target:</span>
-            <span className="font-bold text-zinc-900">{currentQ.query}</span>
-          </div>
-
-          <div className="space-y-1">
-            <div className="flex justify-between text-[10px]">
-              <span className="text-zinc-500">Cosine Similarity Score:</span>
-              <span className="font-bold text-blue-600">{currentQ.match}% Match</span>
-            </div>
-            <div className="h-2 rounded-full bg-zinc-200 overflow-hidden">
-              <motion.div
-                key={selectedIdx}
-                initial={{ width: 0 }}
-                animate={{ width: `${currentQ.match}%` }}
-                transition={{ duration: 0.6 }}
-                className="h-full bg-blue-600 rounded-full"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 text-[10px] pt-1 border-t border-zinc-200/80 text-zinc-600">
-            <div>
-              <span className="text-zinc-400">Target Location:</span> <strong className="text-zinc-800">Page {currentQ.page}</strong>
-            </div>
-            <div>
-              <span className="text-zinc-400">BBox:</span> <strong className="text-blue-700">{currentQ.bbox}</strong>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between pt-2 border-t border-zinc-100">
-        <div className="flex items-center gap-1.5 text-xs font-mono text-emerald-600 font-semibold">
-          <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-          <span>Bounding Box Crosshair Mapped</span>
-        </div>
-
         <Link
           href="/rag"
-          className="inline-flex items-center gap-1 text-xs font-mono font-bold text-blue-600 hover:text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-200"
+          className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-blue-600 hover:text-blue-700"
         >
-          <span>Open Full /rag Workspace</span>
-          <ArrowUpRight className="w-3.5 h-3.5" />
+          Open RAG Workspace <ArrowUpRight className="w-4 h-4" />
         </Link>
+      </div>
+
+      <div className="w-full md:w-56 shrink-0 space-y-3 p-3.5 bg-zinc-50 rounded-xl border border-zinc-200 font-mono text-xs">
+        <div className="flex items-center justify-between border-b border-zinc-200 pb-2">
+          <span className="text-[10px] font-bold text-blue-600">RAG AGENT ACTIVE</span>
+          <span className="text-[10px] text-emerald-600 font-bold">98.4% ACC</span>
+        </div>
+
+        <div className="space-y-2 text-[10px]">
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Target Query:</span>
+            <span className="font-bold text-zinc-900 truncate max-w-[100px]">{sampleQueries[selectedIdx].query}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Target Page:</span>
+            <span className="font-bold text-blue-600">Page {sampleQueries[selectedIdx].page}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Cosine Match:</span>
+            <span className="font-bold text-emerald-600">{sampleQueries[selectedIdx].match}%</span>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -661,7 +689,7 @@ function OnboardingCardInteractive() {
   };
 
   return (
-    <div className="p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+    <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
       <div className="flex items-center justify-between mb-4">
         <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
           <UserPlus className="w-5 h-5" />
@@ -701,83 +729,53 @@ function OnboardingCardInteractive() {
   );
 }
 
-/* ── HIGHLY INTERACTIVE KNOWLEDGE TRANSFER CARD ── */
 function KnowledgeCardInteractive() {
   const nodes = [
-    { label: "Senior Staff", desc: "Transcripts & Meeting Records", metrics: "142 Records Synced" },
-    { label: "Docs & PDFs", desc: "Unstructured Document Index", metrics: "8,420 Pages Parsed" },
-    { label: "Vector Mesh", desc: "HNSW Semantic Knowledge Mesh", metrics: "12,400 Knowledge Triples" },
-    { label: "AI Agent", desc: "Active Knowledge Synthesizer", metrics: "Context Buffer Ready" },
-    { label: "New Hire", desc: "Instant Day 1 Q&A Answers", metrics: "0.2s Retrieval Speed" },
+    { label: "Senior Staff", desc: "Transcripts & Meeting Records" },
+    { label: "Docs", desc: "PDF & Policy Index" },
+    { label: "AI Agent", desc: "Active Knowledge Synthesizer" },
+    { label: "Graph", desc: "HNSW Semantic Knowledge Mesh" },
+    { label: "Hire", desc: "Instant Access for New Employees" },
   ];
-  const [activeIdx, setActiveIdx] = useState(2);
-  const currentNode = nodes[activeIdx];
+  const [activeIdx, setActiveIdx] = useState(0);
+
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setActiveIdx((prev) => (prev + 1) % nodes.length);
+    }, 2200);
+    return () => clearInterval(iv);
+  }, [nodes.length]);
+
+  const activeNode = nodes[activeIdx];
 
   return (
-    <div className="p-6 h-full flex flex-col justify-between bg-white border border-zinc-200/90 rounded-2xl shadow-sm hover:border-blue-300 transition-colors">
-      <div>
-        {/* Highlighted Feature Badges */}
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
-            🎙️ Meeting OCR
-          </span>
-          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-            🧠 Brain Graph
-          </span>
-          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-            ⚡ Instant RAG
-          </span>
-        </div>
+    <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+      <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
+        <Brain className="w-5 h-5" />
+      </div>
+      <h3 className="text-[15px] font-bold text-zinc-900 mb-1.5">Knowledge Transfer Engine</h3>
+      <p className="text-[12px] text-zinc-600 leading-relaxed mb-3">
+        Capture senior employee knowledge, meeting notes, and codebases into an active graph.
+      </p>
 
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
-            <Brain className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-[15px] font-bold text-zinc-900">Knowledge Transfer Engine</h3>
-            <p className="text-[11px] font-mono text-zinc-500">Autonomous Knowledge Graph Mesh</p>
-          </div>
-        </div>
-
-        <p className="text-[12px] text-zinc-600 leading-relaxed mb-4">
-          Capture senior employee knowledge, meeting transcripts, and codebases into an active graph for instant team onboarding.
-        </p>
-
-        {/* Node Switcher Pills */}
-        <div className="space-y-1.5 mb-3">
-          <div className="text-[10px] font-mono font-bold text-zinc-600">Inspect Knowledge Mesh Nodes:</div>
-          <div className="flex flex-wrap gap-1">
-            {nodes.map((n, i) => (
-              <button
-                key={n.label}
-                onClick={() => setActiveIdx(i)}
-                className={`text-[10px] font-mono px-2.5 py-1 rounded-lg border transition-all ${
-                  activeIdx === i
-                    ? "bg-blue-600 text-white border-blue-600 font-bold shadow-sm"
-                    : "bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100"
-                }`}
-              >
-                {n.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Selected Node Details Box */}
-        <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-mono text-zinc-800 space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="font-bold text-blue-600">● {currentNode.label}</span>
-            <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded font-bold">
-              {currentNode.metrics}
-            </span>
-          </div>
-          <p className="text-[11px] text-zinc-600">{currentNode.desc}</p>
-        </div>
+      <div className="flex flex-wrap gap-1 mb-3">
+        {nodes.map((n, idx) => (
+          <button
+            key={n.label}
+            onClick={() => setActiveIdx(idx)}
+            className={`text-[10px] font-mono px-2 py-0.5 rounded border transition-all ${
+              activeIdx === idx
+                ? "bg-blue-600 text-white border-blue-600 font-bold shadow-xs"
+                : "bg-zinc-100 text-zinc-700 border-zinc-200 hover:bg-zinc-200"
+            }`}
+          >
+            {n.label}
+          </button>
+        ))}
       </div>
 
-      <div className="flex items-center gap-1.5 pt-3 border-t border-zinc-100 text-[11px] font-mono text-zinc-500">
-        <Network className="w-3.5 h-3.5 text-blue-600" />
-        <span>Graph mesh synced in real-time</span>
+      <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] font-mono text-blue-900">
+        <span className="font-bold">{activeNode.label}:</span> {activeNode.desc}
       </div>
     </div>
   );
@@ -792,8 +790,15 @@ function AutomationCardInteractive() {
     { title: "4. Execution", detail: "Deterministic API Transaction dispatched." },
   ];
 
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setActiveTab((prev) => (prev + 1) % stages.length);
+    }, 2400);
+    return () => clearInterval(iv);
+  }, [stages.length]);
+
   return (
-    <div className="p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+    <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
       <div className="flex flex-col md:flex-row gap-6">
         <div className="flex-1 min-w-0">
           <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
@@ -839,7 +844,7 @@ function ReportsCardWhite() {
   ];
 
   return (
-    <div className="p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+    <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
       <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
         <BarChart3 className="w-5 h-5" />
       </div>
@@ -874,7 +879,7 @@ function StatSpan({ end, suffix }: { end: number; suffix: string }) {
 function SecurityCardWhite() {
   const items = ["SSO / SAML", "RBAC", "Audit Logs", "AES-256", "GDPR", "SOC2 Type II"];
   return (
-    <div className="p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+    <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
       <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
         <Shield className="w-5 h-5" />
       </div>
@@ -891,22 +896,39 @@ function SecurityCardWhite() {
   );
 }
 
+/* ── 3. NATIVE INTEGRATIONS CARD WITH BRAND ICONS ── */
 function IntegrationsCardInteractive() {
+  const integrations = [
+    { name: "Teams", icon: <MessageSquare className="w-3.5 h-3.5 text-indigo-600" /> },
+    { name: "Slack", icon: <Users className="w-3.5 h-3.5 text-purple-600" /> },
+    { name: "Jira", icon: <CheckSquare className="w-3.5 h-3.5 text-blue-600" /> },
+    { name: "GitHub", icon: <GithubIcon className="w-3.5 h-3.5 text-zinc-800" /> },
+    { name: "Salesforce", icon: <Cloud className="w-3.5 h-3.5 text-sky-500" /> },
+    { name: "SAP", icon: <Server className="w-3.5 h-3.5 text-blue-800" /> },
+    { name: "SharePoint", icon: <Share2 className="w-3.5 h-3.5 text-teal-600" /> },
+    { name: "MCP", icon: <Plug className="w-3.5 h-3.5 text-amber-600" /> },
+  ];
+
   return (
-    <div className="p-6 h-full flex flex-col justify-between bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+    <div className="cpu-burn-card p-6 h-full flex flex-col justify-between bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
       <div>
         <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
           <Globe className="w-5 h-5" />
         </div>
         <h3 className="text-[15px] font-bold text-zinc-900 mb-1.5">18+ Native Integrations</h3>
-        <p className="text-[12px] text-zinc-600 leading-relaxed">
+        <p className="text-[12px] text-zinc-600 leading-relaxed mb-4">
           Teams, Slack, Jira, GitHub, Salesforce, SAP, SharePoint, and custom MCP connectors.
         </p>
       </div>
-      <div className="flex flex-wrap gap-1.5 mt-4">
-        {["Teams", "Slack", "Jira", "GitHub", "SAP"].map((n) => (
-          <span key={n} className="text-[10px] font-mono px-2 py-1 rounded bg-zinc-50 text-zinc-800 border border-zinc-200">
-            {n}
+
+      <div className="flex flex-wrap gap-1.5">
+        {integrations.map((item) => (
+          <span
+            key={item.name}
+            className="text-[11px] font-mono px-2.5 py-1.5 rounded-lg bg-zinc-50 text-zinc-800 border border-zinc-200 flex items-center gap-1.5 shadow-2xs hover:bg-blue-50 hover:border-blue-200 transition-colors"
+          >
+            {item.icon}
+            <span className="font-semibold">{item.name}</span>
           </span>
         ))}
       </div>
@@ -914,33 +936,90 @@ function IntegrationsCardInteractive() {
   );
 }
 
-function WorkflowTimelineInteractive({ onOpenModal }: { onOpenModal: () => void }) {
+function WorkflowTimelineFloatingPipeline({ onOpenModal }: { onOpenModal: () => void }) {
   const steps = [
-    { num: 1, title: "Connect Enterprise Apps" },
-    { num: 2, title: "Import Knowledge & Policy" },
-    { num: 3, title: "Index Document Vectors" },
-    { num: 4, title: "Deploy AI Agents" },
-    { num: 5, title: "Automate Workflows" },
-    { num: 6, title: "Human Approval Gate" },
-    { num: 7, title: "Execute Actions" },
-    { num: 8, title: "Analytics Dashboard" },
+    { num: 1, title: "Connect Apps", detail: "Initializes enterprise webhook listeners and active OAuth2 handshakes." },
+    { num: 2, title: "Import Knowledge", detail: "Streams unstructured PDF documents into semantic OCR chunking parser." },
+    { num: 3, title: "Index Vectors", detail: "Generates high-dimensional vector embeddings with HNSW cosine similarity." },
+    { num: 4, title: "Deploy AI Agents", detail: "Spawns autonomous agent reasoning kernel with state memory buffer." },
+    { num: 5, title: "Automate Workflows", detail: "Executes tool selection matrix across GitHub, Jira, SAP, and Slack." },
+    { num: 6, title: "Human Approval", detail: "Enforces Level 4 manager authorization gate before system mutation." },
+    { num: 7, title: "Execute Actions", detail: "Dispatches signed idempotent API transactions with full audit logging." },
+    { num: 8, title: "Analytics Dashboard", detail: "Aggregates latency throughput, token metrics, and cost savings." },
   ];
+
+  const [activeStep, setActiveStep] = useState(1);
+
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setActiveStep((prev) => (prev % steps.length) + 1);
+    }, 2500);
+    return () => clearInterval(iv);
+  }, [steps.length]);
+
+  const current = steps[activeStep - 1];
 
   return (
     <div className="mt-12 space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
-        {steps.map((s) => (
+      <div className="relative p-2 bg-white border border-zinc-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="h-1 bg-zinc-100 rounded-full relative overflow-hidden mb-4 mx-2">
           <div
-            key={s.title}
-            onClick={onOpenModal}
-            className="p-3 rounded-xl border border-zinc-200 bg-white hover:border-blue-400 transition-all cursor-pointer font-mono text-xs flex flex-col justify-between h-20 shadow-sm"
-          >
-            <div className="w-5 h-5 rounded bg-blue-50 text-blue-600 font-bold text-[10px] flex items-center justify-center">
-              {s.num}
-            </div>
-            <span className="font-bold text-[11px] text-zinc-800">{s.title}</span>
+            className="h-full bg-blue-600 transition-all duration-500 rounded-full"
+            style={{ width: `${(activeStep / steps.length) * 100}%` }}
+          />
+          <div className="absolute top-0 bottom-0 w-8 bg-gradient-to-r from-transparent via-blue-400 to-transparent animate-track-packet" />
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
+          {steps.map((s) => {
+            const isActive = activeStep === s.num;
+            const isPassed = s.num < activeStep;
+
+            return (
+              <div
+                key={s.title}
+                onClick={() => setActiveStep(s.num)}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer font-mono text-xs flex flex-col justify-between h-20 relative overflow-hidden ${
+                  isActive
+                    ? "bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-400/30"
+                    : isPassed
+                    ? "bg-blue-50/50 text-blue-900 border-blue-200"
+                    : "bg-white text-zinc-800 border-zinc-200 hover:border-blue-300"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`w-5 h-5 rounded-md text-[10px] font-bold flex items-center justify-center ${isActive ? "bg-white text-blue-600" : isPassed ? "bg-blue-200 text-blue-800" : "bg-blue-50 text-blue-600"}`}>
+                    {s.num}
+                  </span>
+                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />}
+                </div>
+                <span className="font-bold text-[11px] truncate">{s.title}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 font-mono text-xs">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-bold uppercase text-[10px]">
+              FLOATING DATA PACKET :: STAGE {current.num} OF 8
+            </span>
+            <span className="text-emerald-600 font-bold flex items-center gap-1 text-[10px]">
+              <Radio className="w-3 h-3 animate-pulse text-emerald-500" /> ACTIVE DATA STREAM
+            </span>
           </div>
-        ))}
+          <div className="text-sm font-bold text-zinc-900">{current.title}</div>
+          <div className="text-zinc-600 leading-relaxed text-[11px] max-w-xl">{current.detail}</div>
+        </div>
+
+        <button
+          onClick={onOpenModal}
+          className="shrink-0 px-4 py-2.5 rounded-xl bg-zinc-900 text-white font-bold hover:bg-blue-600 transition-colors shadow-sm text-xs"
+        >
+          Inspect Architecture Modal ↗
+        </button>
       </div>
     </div>
   );
@@ -949,7 +1028,7 @@ function WorkflowTimelineInteractive({ onOpenModal }: { onOpenModal: () => void 
 function StatCardWhite({ value, suffix, label }: { value: number; suffix: string; label: string }) {
   const { count, ref } = useCountUp(value);
   return (
-    <div className="rounded-2xl bg-white border border-zinc-200 p-6 text-center shadow-sm hover:shadow-md transition-shadow">
+    <div className="cpu-burn-card rounded-2xl bg-white border border-zinc-200 p-6 text-center shadow-sm">
       <div className="text-[clamp(2.2rem,4vw,3rem)] font-extrabold text-blue-600 tracking-tight mb-1 font-mono">
         <span ref={ref}>{count}</span>
         {suffix}
