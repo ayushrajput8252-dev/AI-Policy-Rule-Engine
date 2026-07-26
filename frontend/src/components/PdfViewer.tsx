@@ -4,7 +4,16 @@ import { useEffect, useState, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
-import { Loader2, FileText, Crosshair, AlertTriangle } from "lucide-react";
+import { Loader2, FileText, Crosshair, AlertTriangle, ExternalLink } from "lucide-react";
+
+// Safe PDF worker configuration
+if (typeof window !== "undefined" && pdfjs && !pdfjs.GlobalWorkerOptions?.workerSrc) {
+  try {
+    pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version || "3.11.174"}/build/pdf.worker.min.js`;
+  } catch (e) {
+    console.warn("PDF Worker init deferred", e);
+  }
+}
 
 type Source = {
   document_id: string;
@@ -21,7 +30,11 @@ export default function PdfViewer({ source, fileName }: { source: Source; fileNa
 
   useEffect(() => {
     if (typeof window !== "undefined" && pdfjs) {
-      pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+      try {
+        pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version || "3.11.174"}/build/pdf.worker.min.js`;
+      } catch (e) {
+        console.warn("Worker error", e);
+      }
     }
   }, []);
 
@@ -95,11 +108,11 @@ export default function PdfViewer({ source, fileName }: { source: Source; fileNa
   }
 
   return (
-    <div className="flex flex-col h-full w-full bg-zinc-100 relative font-mono text-xs">
+    <div className="flex flex-col h-full w-full bg-zinc-100 relative font-mono text-xs overflow-hidden">
       <div className="p-3 border-b border-zinc-200 bg-white flex justify-between items-center shrink-0">
         <div className="flex items-center gap-2 font-bold text-zinc-800">
           <FileText className="w-4 h-4 text-blue-600" />
-          <span>PAGES: {numPages || "?"}</span>
+          <span>PAGES: {numPages || "PDF Document"}</span>
         </div>
         {source.page && (
           <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-semibold">
@@ -108,43 +121,49 @@ export default function PdfViewer({ source, fileName }: { source: Source; fileNa
         )}
       </div>
 
-      <div className="flex-1 overflow-auto p-4 flex justify-center scrollbar-thin" ref={containerRef}>
+      <div className="flex-1 overflow-auto flex justify-center scrollbar-thin" ref={containerRef}>
         {!hasError ? (
-          <Document
-            file={pdfUrl}
-            onLoadSuccess={onDocumentLoadSuccess}
-            onLoadError={() => setHasError(true)}
-            loading={
-              <div className="flex items-center gap-2 font-bold text-blue-600 my-10">
-                <Loader2 className="animate-spin h-5 w-5" />
-                <span>RENDERING DOCUMENT VECTORS...</span>
-              </div>
-            }
-            error={
-              <div className="text-red-600 font-bold border border-red-200 p-4 bg-red-50 rounded-xl my-10 text-center">
-                FAILED TO LOAD PDF SOURCE
-              </div>
-            }
-          >
-            <div className="flex flex-col gap-4 items-center">
-              {Array.from(new Array(numPages || 0), (_, index) => index + 1).map((page) => (
-                <div key={page} id={`pdf-page-${page}`} className="relative shadow-md border border-zinc-300 bg-white rounded-lg overflow-hidden">
-                  <Page
-                    pageNumber={page}
-                    width={containerWidth}
-                    renderTextLayer={true}
-                    renderAnnotationLayer={false}
-                  />
-                  {page === source.page && source.bbox && (
-                    <div style={getHighlightStyle()} className="pointer-events-none" />
-                  )}
+          <div className="p-4 w-full flex justify-center">
+            <Document
+              file={pdfUrl}
+              onLoadSuccess={onDocumentLoadSuccess}
+              onLoadError={() => setHasError(true)}
+              loading={
+                <div className="flex items-center gap-2 font-bold text-blue-600 my-10">
+                  <Loader2 className="animate-spin h-5 w-5" />
+                  <span>RENDERING DOCUMENT VECTORS...</span>
                 </div>
-              ))}
-            </div>
-          </Document>
+              }
+              error={
+                <div className="text-red-600 font-bold border border-red-200 p-4 bg-red-50 rounded-xl my-10 text-center">
+                  FAILED TO RENDER CANVAS PDF
+                </div>
+              }
+            >
+              <div className="flex flex-col gap-4 items-center">
+                {Array.from(new Array(numPages || 0), (_, index) => index + 1).map((page) => (
+                  <div key={page} id={`pdf-page-${page}`} className="relative shadow-md border border-zinc-300 bg-white rounded-lg overflow-hidden">
+                    <Page
+                      pageNumber={page}
+                      width={containerWidth}
+                      renderTextLayer={true}
+                      renderAnnotationLayer={false}
+                    />
+                    {page === source.page && source.bbox && (
+                      <div style={getHighlightStyle()} className="pointer-events-none" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Document>
+          </div>
         ) : (
-          <div className="p-6 text-center font-mono text-xs text-zinc-600 bg-white rounded-xl border border-zinc-200 m-4 self-center">
-            PDF Document Hosted at <span className="text-blue-600 font-bold">{pdfUrl}</span>
+          <div className="w-full h-full flex flex-col items-center justify-between p-2">
+            <iframe
+              src={`${pdfUrl}#page=${source.page || 1}`}
+              className="w-full h-full border-0 rounded-xl bg-white shadow-sm"
+              title="PDF Viewer Fallback"
+            />
           </div>
         )}
       </div>

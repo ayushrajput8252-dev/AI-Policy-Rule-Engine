@@ -158,8 +158,76 @@
   70%  { opacity: 1; }
   100% { transform: translateY(20px); opacity: 0; }
 }
+
+/* ── Horizontal Track Packet Flow ── */
+@keyframes track-packet-flow {
+  0%   { left: 0%; opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { left: 100%; opacity: 0; }
+}
+.animate-track-packet {
+  animation: track-packet-flow 4s linear infinite;
+}
+
+/* ── Stylish CPU Burn Energy Border Glow ── */
+@keyframes cpu-energy-sweep {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.cpu-burn-card {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.cpu-burn-card:hover {
+  border-color: #93c5fd !important;
+  box-shadow: 0 8px 24px -6px rgba(37, 99, 235, 0.08);
+  transform: translateY(-2px);
+}
 .animate-data-packet {
-  animation: data-packet-flow 1.8s ease-in-out infinite;
+  animation: data-packet-flow 1.8s infinite ease-in-out;
+}
+
+/* ── CPU Core Energy Glow Effect for Light Theme Cards ── */
+@keyframes cpu-pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 16px rgba(37, 99, 235, 0.16), 0 0 32px rgba(37, 99, 235, 0.08);
+    border-color: rgba(37, 99, 235, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 28px rgba(37, 99, 235, 0.32), 0 0 50px rgba(59, 130, 246, 0.2);
+    border-color: rgba(37, 99, 235, 0.85);
+  }
+}
+
+.cpu-glow-card {
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.cpu-glow-card:hover {
+  animation: cpu-pulse-glow 2.5s infinite ease-in-out;
+  transform: translateY(-2px);
+}
+
+/* ── Horizontal Data Pipeline Flow ── */
+@keyframes horizontal-packet-flow {
+  0% {
+    left: 0%;
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+
+.animate-horizontal-packet {
+  animation: horizontal-packet-flow 2.2s infinite cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ── Agentic Pulse ── */
