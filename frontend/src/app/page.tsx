@@ -5,19 +5,17 @@ import Link from "next/link";
 import {
   motion,
   useInView,
-  useMotionValue,
-  useSpring,
-  useTransform,
   AnimatePresence,
 } from "framer-motion";
 import {
   Database, UserPlus, Brain, Bot, BarChart3, Shield,
   ChevronDown, ArrowRight, Menu, X, Zap, Users,
   Globe, CheckCircle2, Sparkles, Search, FileText,
-  Lock, Cpu, Activity, Terminal, Eye,
+  Lock, Cpu, Activity, Terminal, Code2, Layers, Check,
+  Play, RefreshCw, Radio, ExternalLink, Sliders, Server, ArrowUpRight
 } from "lucide-react";
 
-/* ── Inline GitHub SVG (not in lucide-react v1.22+) ── */
+/* ── Inline GitHub Icon ── */
 function GithubIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -27,14 +25,55 @@ function GithubIcon({ className }: { className?: string }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   HOOKS
+   RICH SVG DOODLES & SKETCH ANNOTATIONS
    ═══════════════════════════════════════════════════════════════ */
 
-function useCountUp(end: number, duration = 2200) {
+function DoodleUnderline({ className = "w-48 text-blue-600" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 200 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M3 11C40 4 90 13 197 6M15 14C65 8 135 12 185 10"
+        stroke="currentColor"
+        strokeWidth="3.5"
+        strokeLinecap="round"
+        className="doodle-path"
+      />
+    </svg>
+  );
+}
+
+function DoodleArrow({ className = "w-12 h-12 text-blue-600" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M8 48C20 32 35 18 50 12M50 12L34 10M50 12L46 26"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function DoodleSparkle({ className = "w-6 h-6 text-blue-500" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M12 2v20M2 12h20M5 5l14 14M5 19L19 5" />
+    </svg>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CUSTOM HOOKS (ZERO LAG)
+   ═══════════════════════════════════════════════════════════════ */
+
+function useCountUp(end: number, duration = 1800) {
   const [count, setCount] = useState(0);
   const ref = useRef<HTMLSpanElement>(null);
-  const inView = useInView(ref, { once: true, margin: "-80px" });
+  const inView = useInView(ref, { once: true, margin: "-60px" });
   const started = useRef(false);
+
   useEffect(() => {
     if (!inView || started.current) return;
     started.current = true;
@@ -49,7 +88,7 @@ function useCountUp(end: number, duration = 2200) {
   return { count, ref };
 }
 
-function useCycleText(texts: string[], interval = 2500) {
+function useCycleText(texts: string[], interval = 2200) {
   const [idx, setIdx] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setIdx((i) => (i + 1) % texts.length), interval);
@@ -59,245 +98,422 @@ function useCycleText(texts: string[], interval = 2500) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   LANDING PAGE
+   MAIN PAGE COMPONENT
    ═══════════════════════════════════════════════════════════════ */
 
 export default function LandingPage() {
   const [mobileMenu, setMobileMenu] = useState(false);
+  const [archModalOpen, setArchModalOpen] = useState(false);
 
-  /* Mouse spotlight */
-  const spotX = useMotionValue(0);
-  const spotY = useMotionValue(0);
-  const smoothX = useSpring(spotX, { stiffness: 40, damping: 25 });
-  const smoothY = useSpring(spotY, { stiffness: 40, damping: 25 });
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => { spotX.set(e.clientX); spotY.set(e.clientY); };
-    window.addEventListener("mousemove", handler);
-    return () => window.removeEventListener("mousemove", handler);
-  }, [spotX, spotY]);
-
-  const navLinks = ["Platform", "Features", "Solutions", "Docs", "Pricing"];
+  const navLinks = ["Platform", "Capabilities", "Architecture", "Docs", "Pricing"];
 
   return (
-    <div className="min-h-screen bg-[#060606] text-white overflow-x-hidden bg-grid-animated noise-overlay">
-      {/* Mouse spotlight */}
-      <motion.div
-        className="pointer-events-none fixed inset-0 z-[2]"
-        style={{
-          background: useTransform(
-            [smoothX, smoothY],
-            ([x, y]) => `radial-gradient(600px circle at ${x}px ${y}px, rgba(59,130,246,0.04), transparent 60%)`
-          ),
-        }}
-      />
-
-      {/* ─── NAV ─── */}
+    <div className="min-h-screen bg-white text-zinc-900 overflow-x-hidden bg-white-grid relative selection:bg-blue-500/20">
+      {/* ─── NAVIGATION ─── */}
       <nav className="fixed top-0 left-0 right-0 z-50">
-        <div className="absolute inset-0 bg-[#060606]/70 backdrop-blur-2xl border-b border-white/[0.04]" />
-        <div className="relative max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-7 h-7 rounded-[8px] bg-gradient-to-br from-[#3B82F6] to-[#6366F1] flex items-center justify-center transition-transform group-hover:scale-105">
-              <Sparkles className="w-3.5 h-3.5 text-white" />
+        <div className="absolute inset-0 bg-white/80 backdrop-blur-md border-b border-zinc-200/80" />
+        <div className="relative max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2.5 group">
+            <div className="w-8 h-8 rounded-lg bg-zinc-900 text-white flex items-center justify-center font-bold text-sm shadow-sm group-hover:scale-105 transition-transform">
+              <Sparkles className="w-4 h-4 text-blue-400" />
             </div>
-            <span className="font-semibold text-[14px] tracking-[-0.02em]">Enterprise AI</span>
+            <span className="font-bold text-[15px] tracking-tight text-zinc-900">
+              Enterprise <span className="text-blue-600 font-mono text-xs uppercase ml-1 px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200">Agentic</span>
+            </span>
           </Link>
 
-          <div className="hidden lg:flex items-center gap-0.5">
+          <div className="hidden lg:flex items-center gap-1">
             {navLinks.map((l) => (
-              <a key={l} href={`#${l.toLowerCase()}`} className="px-3 py-1.5 text-[13px] text-zinc-500 hover:text-zinc-200 transition-colors duration-200 rounded-md hover:bg-white/[0.03]">{l}</a>
+              <a
+                key={l}
+                href={`#${l.toLowerCase()}`}
+                className="px-3.5 py-1.5 text-[13px] font-medium text-zinc-600 hover:text-zinc-900 transition-colors rounded-md hover:bg-zinc-100/80"
+              >
+                {l}
+              </a>
             ))}
           </div>
 
-          <div className="hidden lg:flex items-center gap-2">
-            <a href="https://github.com" target="_blank" rel="noreferrer" className="p-1.5 text-zinc-600 hover:text-zinc-300 transition-colors"><GithubIcon className="w-4 h-4" /></a>
-            <a href="#" className="text-[13px] text-zinc-500 hover:text-zinc-200 transition-colors px-3 py-1.5">Sign In</a>
-            <motion.a href="#cta" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="text-[13px] font-medium bg-white text-[#060606] px-4 py-1.5 rounded-lg hover:bg-zinc-200 transition-colors">Book Demo</motion.a>
+          <div className="hidden lg:flex items-center gap-3">
+            <a
+              href="https://github.com"
+              target="_blank"
+              rel="noreferrer"
+              className="p-2 text-zinc-600 hover:text-zinc-900 transition-colors rounded-lg hover:bg-zinc-100"
+            >
+              <GithubIcon className="w-4 h-4" />
+            </a>
+            <Link
+              href="/rag"
+              className="text-[13px] font-mono text-blue-600 hover:text-blue-700 transition-colors px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 font-semibold"
+            >
+              Open /rag Workspace
+            </Link>
+            <button
+              onClick={() => setArchModalOpen(true)}
+              className="text-[13px] font-medium bg-zinc-900 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors shadow-sm"
+            >
+              View Architecture
+            </button>
           </div>
 
-          <button onClick={() => setMobileMenu(!mobileMenu)} className="lg:hidden p-2 text-zinc-400">
+          <button onClick={() => setMobileMenu(!mobileMenu)} className="lg:hidden p-2 text-zinc-700">
             {mobileMenu ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>
+
         <AnimatePresence>
           {mobileMenu && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="lg:hidden relative bg-[#0a0a0a]/95 backdrop-blur-2xl border-b border-white/[0.04] px-6 pb-5 overflow-hidden">
-              {navLinks.map((l) => (<a key={l} href={`#${l.toLowerCase()}`} onClick={() => setMobileMenu(false)} className="block py-2 text-sm text-zinc-500 hover:text-white">{l}</a>))}
-              <a href="#cta" className="mt-3 block text-sm font-medium bg-white text-black px-4 py-2 rounded-lg text-center">Book Demo</a>
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="lg:hidden relative bg-white border-b border-zinc-200 px-6 pb-5 overflow-hidden"
+            >
+              {navLinks.map((l) => (
+                <a
+                  key={l}
+                  href={`#${l.toLowerCase()}`}
+                  onClick={() => setMobileMenu(false)}
+                  className="block py-2 text-sm text-zinc-700 hover:text-blue-600 font-medium"
+                >
+                  {l}
+                </a>
+              ))}
+              <button
+                onClick={() => {
+                  setMobileMenu(false);
+                  setArchModalOpen(true);
+                }}
+                className="mt-3 w-full text-sm font-medium bg-zinc-900 text-white px-4 py-2.5 rounded-lg text-center"
+              >
+                View Architecture
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
       </nav>
 
-      {/* ─── HERO ─── */}
-      <section className="relative pt-28 pb-16 md:pt-36 md:pb-24 overflow-hidden">
-        {/* Gradient orbs */}
-        <div className="absolute top-[-10%] left-[15%] w-[500px] h-[500px] rounded-full bg-[#3B82F6]/[0.06] blur-[100px] pointer-events-none" style={{ animation: "gradient-rotate 25s linear infinite" }} />
-        <div className="absolute top-[10%] right-[10%] w-[400px] h-[400px] rounded-full bg-[#6366F1]/[0.04] blur-[100px] pointer-events-none" style={{ animation: "gradient-rotate 30s linear infinite reverse" }} />
+      {/* ─── HERO SECTION ─── */}
+      <section className="relative pt-28 pb-16 md:pt-36 md:pb-24 overflow-hidden z-10">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="grid lg:grid-cols-[1fr_440px] gap-12 items-start">
+            {/* Left Column */}
+            <div className="pt-4 relative">
+              <div className="absolute -top-8 left-0 hidden md:flex items-center gap-1.5 text-xs text-blue-700 font-mono bg-blue-50 border border-blue-200 px-3 py-1 rounded-full animate-doodle-float">
+                <DoodleSparkle className="w-3.5 h-3.5 text-blue-600" />
+                <span>Next-Gen Autonomous Enterprise Agents</span>
+              </div>
 
-        <div className="max-w-6xl mx-auto px-6 relative z-10">
-          <div className="grid lg:grid-cols-[1fr_420px] gap-20 items-start">
-            {/* Left */}
-            <div className="pt-8">
-              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] as const }} className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-white/[0.06] bg-white/[0.02] mb-8">
-                <div className="w-1.5 h-1.5 rounded-full animate-status-dot" />
-                <span className="text-[11px] text-zinc-500 tracking-wide">Now Generally Available</span>
-              </motion.div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-zinc-200 bg-zinc-50 mb-6">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[12px] font-medium text-zinc-600">Enterprise AI Engine v4.2 Ready</span>
+              </div>
 
-              <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.1, ease: [0.25, 0.46, 0.45, 0.94] as const }} className="text-[clamp(2.2rem,5vw,3.5rem)] font-bold leading-[1.05] tracking-[-0.035em] mb-5">
-                Enterprise AI{" "}<br className="hidden sm:block" />
-                <span className="gradient-text">Automation Platform</span>
+              <h1 className="text-[clamp(2.3rem,5vw,3.6rem)] font-extrabold leading-[1.08] tracking-tight text-zinc-900 mb-6">
+                Enterprise AI{" "}
+                <span className="relative inline-block text-blue-600">
+                  Automation Agent
+                  <DoodleUnderline className="absolute left-0 -bottom-2.5 w-full text-blue-600" />
+                </span>
                 <br />
-                <span className="text-zinc-400 font-medium">for Modern Organizations</span>
-              </motion.h1>
+                Platform for Modern Work
+              </h1>
 
-              <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }} className="text-[15px] text-zinc-500 leading-[1.7] mb-10 max-w-md">
-                Automate repetitive workflows, deploy AI agents, connect enterprise systems, and securely scale knowledge across your organization.
-              </motion.p>
+              <p className="text-[16px] text-zinc-600 leading-relaxed mb-10 max-w-lg">
+                Automate complex enterprise workflows, orchestrate autonomous AI agents, index organizational knowledge with RAG, and scale secure execution across all systems.
+              </p>
 
-              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.3 }} className="flex flex-wrap gap-3">
-                <motion.a href="#cta" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-medium bg-gradient-to-r from-[#3B82F6] to-[#6366F1] text-white shadow-lg shadow-blue-500/15 transition-shadow hover:shadow-blue-500/25">
-                  Start Free <ArrowRight className="w-3.5 h-3.5" />
-                </motion.a>
-                <motion.a href="#platform" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-medium border border-white/[0.08] text-zinc-400 hover:text-zinc-200 hover:border-white/[0.15] hover:bg-white/[0.03] transition-all">
+              <div className="flex flex-wrap items-center gap-4">
+                <Link
+                  href="/rag"
+                  className="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl text-[14px] font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all"
+                >
+                  Launch RAG Workspace <ArrowRight className="w-4 h-4" />
+                </Link>
+
+                <button
+                  onClick={() => setArchModalOpen(true)}
+                  className="inline-flex items-center gap-2 px-5 py-3 rounded-xl text-[14px] font-semibold border border-zinc-200 text-zinc-700 bg-white hover:bg-zinc-50 hover:border-zinc-300 transition-all"
+                >
+                  <Cpu className="w-4 h-4 text-blue-600" />
                   View Architecture
-                </motion.a>
-              </motion.div>
+                </button>
+              </div>
+
+              <div className="mt-10 flex items-center gap-3 pt-6 border-t border-zinc-200/80">
+                <DoodleArrow className="w-8 h-8 text-zinc-400 rotate-12" />
+                <span className="text-xs font-mono text-zinc-500">
+                  <strong className="text-zinc-800">100% Deterministic:</strong> Full audit logs, RBAC permissions & human-in-the-loop controls.
+                </span>
+              </div>
             </div>
 
-            {/* Right: Live AI Agent Workflow */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.35, ease: [0.25, 0.46, 0.45, 0.94] as const }}
-              className="hidden lg:block"
-            >
-              <LiveAgentWorkflow />
-            </motion.div>
+            {/* Right Column: Hero Agent Matrix */}
+            <div className="hidden lg:block relative">
+              <div className="absolute -top-5 -right-3 z-20 bg-amber-100 text-amber-900 border border-amber-300 font-mono text-[11px] px-2.5 py-1 rounded-md shadow-sm transform rotate-3 flex items-center gap-1">
+                <span>✦ Agent Reasoning Loop</span>
+              </div>
+              <HeroAgentMatrix />
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ─── FEATURES BENTO GRID ─── */}
-      <section id="features" className="py-20 relative z-10">
+      {/* ─── CAPABILITIES BENTO GRID (ULTRA AGENTIC) ─── */}
+      <section id="capabilities" className="py-20 relative z-10 border-t border-zinc-200/80 bg-zinc-50/50">
         <div className="max-w-6xl mx-auto px-6">
-          <SectionHeader label="Capabilities" title="Built for Enterprise AI" />
+          <SectionHeader
+            badge="Platform Capabilities"
+            title="Engineered for High-Consequence Enterprise Scale"
+            subtitle="Autonomous reasoning, RAG vector indexing, and zero-trust orchestration."
+          />
 
-          {/* Bento grid — intentionally asymmetric */}
-          <div className="grid md:grid-cols-3 gap-4 mt-14">
-            {/* Row 1: RAG (2 cols) + Onboarding (1 col) */}
+          <div className="grid md:grid-cols-3 gap-6 mt-14">
+            {/* Card 1: RAG (Interactive Embedding Simulator) */}
             <div className="md:col-span-2">
-              <TiltCard>
-                <Link href="/rag" className="block h-full">
-                  <RAGCard />
-                </Link>
-              </TiltCard>
-            </div>
-            <TiltCard><OnboardingCard /></TiltCard>
-
-            {/* Row 2: Knowledge (1) + Automation (2) */}
-            <TiltCard><KnowledgeCard /></TiltCard>
-            <div className="md:col-span-2">
-              <TiltCard><AutomationCard /></TiltCard>
+              <RAGCardInteractive />
             </div>
 
-            {/* Row 3: Reports (1) + Security (1) + Integrations preview (1) */}
-            <TiltCard><ReportsCard /></TiltCard>
-            <TiltCard><SecurityCard /></TiltCard>
-            <TiltCard>
-              <div className="p-6 h-full flex flex-col justify-between">
-                <div>
-                  <div className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.06] flex items-center justify-center mb-4"><Globe className="w-4 h-4 text-zinc-500" /></div>
-                  <h3 className="text-[14px] font-semibold tracking-[-0.01em] mb-1.5">18+ Integrations</h3>
-                  <p className="text-[12px] text-zinc-600 leading-relaxed">Microsoft Teams, Slack, Jira, GitHub, Salesforce, SAP, and more.</p>
+            {/* Card 2: Onboarding (Interactive Task Provisioner) */}
+            <OnboardingCardInteractive />
+
+            {/* Card 3: Knowledge Graph (Interactive Vector Mesh) */}
+            <KnowledgeCardInteractive />
+
+            {/* Card 4: Automation Agent (Interactive Agent DAG Inspector) */}
+            <div className="md:col-span-2">
+              <AutomationCardInteractive />
+            </div>
+
+            {/* Card 5: Reports */}
+            <ReportsCardWhite />
+
+            {/* Card 6: Security */}
+            <SecurityCardWhite />
+
+            {/* Card 7: 18+ Integrations */}
+            <div className="p-6 h-full flex flex-col justify-between bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+              <div>
+                <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
+                  <Globe className="w-5 h-5" />
                 </div>
-                <div className="flex flex-wrap gap-1 mt-4">
-                  {["Teams", "Slack", "Jira", "GitHub", "SAP"].map((n) => (
-                    <span key={n} className="text-[10px] px-2 py-0.5 rounded-md bg-white/[0.03] border border-white/[0.04] text-zinc-600">{n}</span>
-                  ))}
-                </div>
+                <h3 className="text-[15px] font-bold text-zinc-900 mb-1.5">18+ Native Integrations</h3>
+                <p className="text-[12px] text-zinc-600 leading-relaxed">
+                  Teams, Slack, Jira, GitHub, Salesforce, SAP, SharePoint, and custom MCP connectors.
+                </p>
               </div>
-            </TiltCard>
+              <div className="flex flex-wrap gap-1.5 mt-5">
+                {["Teams", "Slack", "Jira", "GitHub", "SAP", "Outlook", "Salesforce"].map((n) => (
+                  <span key={n} className="text-[10px] font-mono px-2 py-1 rounded bg-zinc-100 text-zinc-700 border border-zinc-200">
+                    {n}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* ─── INTEGRATIONS MARQUEE ─── */}
-      <section id="platform" className="py-20 border-t border-white/[0.03]">
+      <section className="py-20 border-t border-zinc-200/80 bg-white">
         <div className="max-w-6xl mx-auto px-6 mb-12">
-          <SectionHeader label="Integrations" title="Connect Your Entire Stack" subtitle="Seamlessly integrates with the tools your teams already use." />
+          <SectionHeader
+            badge="Ecosystem"
+            title="Integrates Seamlessly with Your Stack"
+            subtitle="No vendor lock-in. Plugs directly into your existing enterprise infrastructure."
+          />
         </div>
         <div className="space-y-3">
           <div className="overflow-hidden">
-            <div className="flex animate-marquee gap-3" style={{ width: "max-content" }}>
-              {[...INTEGRATIONS, ...INTEGRATIONS].map((n, i) => <IntegrationPill key={`a${i}`} name={n} />)}
+            <div className="flex animate-marquee-light gap-4" style={{ width: "max-content" }}>
+              {[...INTEGRATIONS, ...INTEGRATIONS].map((n, i) => (
+                <IntegrationPillWhite key={`a${i}`} name={n} />
+              ))}
             </div>
           </div>
           <div className="overflow-hidden">
-            <div className="flex animate-marquee-reverse gap-3" style={{ width: "max-content" }}>
-              {[...INTEGRATIONS.slice().reverse(), ...INTEGRATIONS.slice().reverse()].map((n, i) => <IntegrationPill key={`b${i}`} name={n} />)}
+            <div className="flex animate-marquee-reverse-light gap-4" style={{ width: "max-content" }}>
+              {[...INTEGRATIONS.slice().reverse(), ...INTEGRATIONS.slice().reverse()].map((n, i) => (
+                <IntegrationPillWhite key={`b${i}`} name={n} />
+              ))}
             </div>
           </div>
         </div>
       </section>
 
-      {/* ─── WORKFLOW TIMELINE ─── */}
-      <section className="py-28 border-t border-white/[0.03]">
+      {/* ─── WORKFLOW ARCHITECTURE TIMELINE (INTERACTIVE AGENTIC SIMULATOR) ─── */}
+      <section id="architecture" className="py-28 border-t border-zinc-200/80 bg-zinc-50/50">
         <div className="max-w-6xl mx-auto px-6">
-          <SectionHeader label="How It Works" title="From Connection to Automation" />
-          <WorkflowTimeline />
+          <SectionHeader
+            badge="Interactive Agent Pipeline"
+            title="From Knowledge Import to Automated Action"
+            subtitle="Click any step below to simulate real-time agent execution protocols."
+          />
+          <WorkflowTimelineInteractive onOpenModal={() => setArchModalOpen(true)} />
         </div>
       </section>
 
-      {/* ─── STATISTICS ─── */}
-      <section className="py-20 border-t border-white/[0.03]">
+      {/* ─── STATS ─── */}
+      <section className="py-20 border-t border-zinc-200/80 bg-white">
         <div className="max-w-5xl mx-auto px-6">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard value={95} suffix="%" label="Retrieval Accuracy" delay={0} />
-            <StatCard value={80} suffix="%" label="Faster Onboarding" delay={0.1} />
-            <StatCard value={70} suffix="%" label="Less Manual Work" delay={0.2} />
-            <StatCard value={10} suffix="M+" label="Documents Indexed" delay={0.3} />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatCardWhite value={95} suffix="%" label="Retrieval Accuracy" />
+            <StatCardWhite value={80} suffix="%" label="Faster Onboarding" />
+            <StatCardWhite value={70} suffix="%" label="Manual Work Reduced" />
+            <StatCardWhite value={10} suffix="M+" label="Documents Indexed" />
           </div>
         </div>
       </section>
 
-      {/* ─── CTA ─── */}
-      <section id="cta" className="py-32 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#3B82F6]/[0.03] to-transparent pointer-events-none" />
-        <div className="max-w-2xl mx-auto px-6 text-center relative z-10">
-          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6 }}>
-            <h2 className="text-[clamp(1.8rem,4vw,2.8rem)] font-bold tracking-[-0.03em] mb-4 leading-tight">
-              Automate Your Enterprise<br /><span className="gradient-text">with AI Agents</span>
-            </h2>
-            <p className="text-zinc-500 text-[15px] leading-relaxed mb-8 max-w-md mx-auto">
-              Deploy enterprise-grade AI automation, advanced RAG, onboarding, knowledge transfer, and workflow orchestration from one platform.
-            </p>
-            <div className="flex flex-wrap justify-center gap-3">
-              <motion.a href="#" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} className="px-7 py-2.5 rounded-xl text-[13px] font-medium bg-gradient-to-r from-[#3B82F6] to-[#6366F1] text-white shadow-lg shadow-blue-500/15">Book Demo</motion.a>
-              <motion.a href="#" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="px-7 py-2.5 rounded-xl text-[13px] font-medium border border-white/[0.08] text-zinc-400 hover:text-zinc-200 transition-all">Start Free</motion.a>
-            </div>
+      {/* ─── INTERACTIVE ARCHITECTURE MODAL ─── */}
+      <AnimatePresence>
+        {archModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.96, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 15 }}
+              className="bg-white border border-zinc-300 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden font-sans"
+            >
+              <div className="p-4 bg-zinc-50 border-b border-zinc-200 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Cpu className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-bold text-zinc-900">
+                    Enterprise AI Agentic System Architecture (Interactive Inspector)
+                  </span>
+                </div>
+                <button
+                  onClick={() => setArchModalOpen(false)}
+                  className="p-1 rounded-md hover:bg-zinc-200 text-zinc-600 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-white">
+                <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200">
+                  <div className="text-xs font-mono font-bold text-blue-800 mb-1">
+                    ● DETERMINISTIC MULTI-AGENT EXECUTION PIPELINE
+                  </div>
+                  <p className="text-xs text-blue-900 leading-relaxed">
+                    Click any node in the architecture pipeline to view live vector metrics, token throughput, and tool execution protocol.
+                  </p>
+                </div>
+
+                <div className="grid md:grid-cols-3 gap-4">
+                  {[
+                    { title: "1. Document Ingestion", sub: "PDF / OCR / SharePoint Parse", latency: "14ms" },
+                    { title: "2. Vector Embedding Engine", sub: "Hybrid Qdrant / Chroma Rerank", latency: "22ms" },
+                    { title: "3. Multi-Agent Reasoning", sub: "Claude 3.5 Sonnet / GPT-4o DAG", latency: "180ms" },
+                    { title: "4. Tool & MCP Orchestration", sub: "Slack, Jira, GitHub, SAP APIs", latency: "45ms" },
+                    { title: "5. Human Gate Approval", sub: "RBAC Zero-Trust Audit Log", latency: "Immediate" },
+                    { title: "6. Deterministic Output", sub: "JSON Payload & Action Dispatch", latency: "8ms" },
+                  ].map((node) => (
+                    <div
+                      key={node.title}
+                      className="p-4 rounded-xl bg-zinc-50 border border-zinc-200 hover:border-blue-500 hover:bg-white transition-all cursor-pointer shadow-sm"
+                    >
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-xs font-bold text-zinc-900">{node.title}</span>
+                        <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                          {node.latency}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-600 font-mono">{node.sub}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="p-4 rounded-xl bg-zinc-900 text-zinc-100 font-mono text-xs shadow-inner">
+                  <div className="flex items-center gap-2 mb-2 text-emerald-400">
+                    <Activity className="w-4 h-4" />
+                    <span className="font-bold">SYSTEM TELEMETRY LOG</span>
+                  </div>
+                  <div className="space-y-1 text-[11px] text-zinc-400">
+                    <div>[0.000s] Webhook trigger received from enterprise Slack workspace.</div>
+                    <div>[0.014s] Query vector embedded. Top-K 5 chunks retrieved from vector store.</div>
+                    <div>[0.180s] Agent DAG generated 2 tool executions: [GitHub.issue_create, Jira.assign].</div>
+                    <div>[0.225s] Human-in-the-loop RBAC check: PASSED (Level 4 Authorization).</div>
+                    <div>[0.233s] Actions executed deterministically. Output JSON returned.</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 bg-zinc-50 border-t border-zinc-200 flex items-center justify-between">
+                <span className="text-xs font-mono text-zinc-600">System Status: 100% Operational</span>
+                <Link
+                  href="/rag"
+                  onClick={() => setArchModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors"
+                >
+                  Test in /rag Workspace →
+                </Link>
+              </div>
+            </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── CTA & FOOTER ─── */}
+      <section id="cta" className="py-28 border-t border-zinc-200/80 bg-gradient-to-b from-white to-blue-50/40 relative">
+        <div className="max-w-3xl mx-auto px-6 text-center relative z-10">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-mono mb-4 border border-blue-200">
+            <DoodleSparkle className="w-3.5 h-3.5 text-blue-600" />
+            <span>Ready for Enterprise Deployment</span>
+          </div>
+          <h2 className="text-[clamp(2rem,4vw,3rem)] font-extrabold text-zinc-900 tracking-tight mb-4">
+            Automate Your Organization <br />
+            <span className="text-blue-600">with Enterprise AI Agents</span>
+          </h2>
+          <p className="text-zinc-600 text-[16px] leading-relaxed mb-8 max-w-lg mx-auto">
+            Deploy enterprise-grade AI automation, RAG document search, onboarding workflows, and tool orchestration in hours.
+          </p>
+          <div className="flex flex-wrap justify-center gap-4">
+            <Link
+              href="/rag"
+              className="px-8 py-3.5 rounded-xl text-[14px] font-semibold bg-blue-600 text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all"
+            >
+              Open /rag Workspace
+            </Link>
+            <button
+              onClick={() => setArchModalOpen(true)}
+              className="px-8 py-3.5 rounded-xl text-[14px] font-semibold border border-zinc-300 text-zinc-800 bg-white hover:bg-zinc-50 transition-all"
+            >
+              View Architecture
+            </button>
+          </div>
         </div>
       </section>
 
-      {/* ─── FOOTER ─── */}
-      <footer className="border-t border-white/[0.03] py-14">
+      <footer className="border-t border-zinc-200 bg-white py-14">
         <div className="max-w-6xl mx-auto px-6">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-10 mb-12">
             <div className="col-span-2 md:col-span-1">
               <div className="flex items-center gap-2 mb-3">
-                <div className="w-6 h-6 rounded-[6px] bg-gradient-to-br from-[#3B82F6] to-[#6366F1] flex items-center justify-center"><Sparkles className="w-3 h-3 text-white" /></div>
-                <span className="font-semibold text-[13px]">Enterprise AI</span>
+                <div className="w-6 h-6 rounded bg-zinc-900 text-white flex items-center justify-center">
+                  <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                </div>
+                <span className="font-bold text-[14px] text-zinc-900">Enterprise AI</span>
               </div>
-              <p className="text-[11px] text-zinc-600 leading-relaxed">Enterprise-grade AI automation.</p>
+              <p className="text-[12px] text-zinc-500 leading-relaxed">
+                Autonomous AI automation & RAG platform for modern enterprise teams.
+              </p>
             </div>
             <FooterCol title="Platform" links={["AI Agents", "RAG Engine", "Onboarding", "Knowledge Transfer", "Workflow Builder"]} />
             <FooterCol title="Resources" links={["Documentation", "API Reference", "Guides", "Blog", "Changelog"]} />
             <FooterCol title="Developers" links={["API Docs", "SDKs", "MCP Integration", "GitHub", "Community"]} />
             <FooterCol title="Company" links={["About", "Careers", "Security", "Privacy", "Contact"]} />
           </div>
-          <div className="border-t border-white/[0.03] pt-6 text-center">
-            <p className="text-[11px] text-zinc-700">Built for Enterprise AI Automation · © {new Date().getFullYear()}</p>
+          <div className="border-t border-zinc-100 pt-6 text-center">
+            <p className="text-[12px] text-zinc-500 font-mono">
+              Built for Enterprise AI Automation · © {new Date().getFullYear()} Enterprise AI Platform
+            </p>
           </div>
         </div>
       </footer>
@@ -306,207 +522,246 @@ export default function LandingPage() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   SUB-COMPONENTS
+   SUB-COMPONENTS (WHITE THEME & HIGHLY AGENTIC)
    ═══════════════════════════════════════════════════════════════ */
 
-const INTEGRATIONS = ["Microsoft Teams", "Slack", "Outlook", "Google Workspace", "Jira", "Confluence", "GitHub", "GitLab", "Docker", "Kubernetes", "Azure", "AWS", "Google Drive", "SharePoint", "Salesforce", "SAP", "Notion", "HubSpot"];
+const INTEGRATIONS = [
+  "Microsoft Teams", "Slack", "Outlook", "Google Workspace",
+  "Jira", "Confluence", "GitHub", "GitLab",
+  "Docker", "Kubernetes", "Azure", "AWS",
+  "Google Drive", "SharePoint", "Salesforce", "SAP",
+];
 
-/* ── Section Header ── */
-function SectionHeader({ label, title, subtitle }: { label: string; title: string; subtitle?: string }) {
+function SectionHeader({ badge, title, subtitle }: { badge: string; title: string; subtitle?: string }) {
   return (
-    <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-60px" }} transition={{ duration: 0.5 }} className="text-center max-w-lg mx-auto">
-      <p className="text-[11px] font-medium text-zinc-600 uppercase tracking-[0.15em] mb-3">{label}</p>
-      <h2 className="text-[clamp(1.5rem,3vw,2rem)] font-bold tracking-[-0.03em]">{title}</h2>
-      {subtitle && <p className="text-zinc-500 text-[14px] mt-2">{subtitle}</p>}
-    </motion.div>
+    <div className="text-center max-w-xl mx-auto">
+      <span className="text-xs font-mono uppercase tracking-widest text-blue-600 font-semibold px-2.5 py-1 rounded bg-blue-50 border border-blue-200">
+        {badge}
+      </span>
+      <h2 className="text-[clamp(1.6rem,3vw,2.2rem)] font-extrabold text-zinc-900 tracking-tight mt-4">
+        {title}
+      </h2>
+      {subtitle && <p className="text-zinc-600 text-[15px] mt-2 leading-relaxed">{subtitle}</p>}
+    </div>
   );
 }
 
-/* ── 3D Tilt Card Wrapper ── */
-function TiltCard({ children }: { children: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const rotX = useMotionValue(0);
-  const rotY = useMotionValue(0);
-  const sRotX = useSpring(rotX, { stiffness: 200, damping: 20 });
-  const sRotY = useSpring(rotY, { stiffness: 200, damping: 20 });
-
-  const onMove = useCallback((e: React.MouseEvent) => {
-    if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width - 0.5;
-    const y = (e.clientY - rect.top) / rect.height - 0.5;
-    rotX.set(-y * 6);
-    rotY.set(x * 6);
-  }, [rotX, rotY]);
-
-  const onLeave = useCallback(() => { rotX.set(0); rotY.set(0); }, [rotX, rotY]);
-
-  return (
-    <motion.div
-      ref={ref}
-      onMouseMove={onMove}
-      onMouseLeave={onLeave}
-      style={{ rotateX: sRotX, rotateY: sRotY, transformPerspective: 800 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      initial={{ opacity: 0, y: 24 }}
-      viewport={{ once: true, margin: "-40px" }}
-      transition={{ duration: 0.5 }}
-      className="h-full rounded-2xl bg-white/[0.02] border border-white/[0.05] hover:border-white/[0.09] hover:bg-white/[0.03] transition-all duration-300 overflow-hidden group cursor-default"
-    >
-      {children}
-    </motion.div>
+/* ── Hero Agent Matrix ── */
+function HeroAgentMatrix() {
+  const status = useCycleText(
+    ["Thinking...", "Querying Vector DB...", "Orchestrating MCP Tools...", "Executing Action...", "Awaiting Verification...", "Completed ✓"],
+    2000
   );
-}
 
-/* ── Live Agent Workflow (Hero) ── */
-function LiveAgentWorkflow() {
-  const status = useCycleText(["Thinking...", "Planning...", "Searching knowledge...", "Calling tools...", "Executing...", "Completed ✓"], 2000);
   const nodes = [
-    { label: "Employee Request", icon: <Users className="w-3.5 h-3.5" /> },
-    { label: "AI Automation Agent", icon: <Bot className="w-3.5 h-3.5" /> },
-    { label: "Advanced RAG Engine", icon: <Database className="w-3.5 h-3.5" /> },
-    { label: "Knowledge Base", icon: <Brain className="w-3.5 h-3.5" /> },
-    { label: "Business Apps", icon: <Globe className="w-3.5 h-3.5" /> },
-    { label: "Automated Actions", icon: <Zap className="w-3.5 h-3.5" /> },
+    { label: "Employee Request", sub: "Slack / Teams Webhook", icon: <Users className="w-3.5 h-3.5 text-blue-600" /> },
+    { label: "AI Reasoning Agent", sub: "Claude 3.5 Sonnet / GPT-4o", icon: <Bot className="w-3.5 h-3.5 text-blue-600" /> },
+    { label: "Advanced RAG Engine", sub: "Hybrid Retrieval + Vector Rank", icon: <Database className="w-3.5 h-3.5 text-blue-600" /> },
+    { label: "Enterprise Knowledge Base", sub: "SharePoint & Confluence Index", icon: <Brain className="w-3.5 h-3.5 text-blue-600" /> },
+    { label: "Integrated Business Apps", sub: "GitHub, Jira, SAP, Salesforce", icon: <Globe className="w-3.5 h-3.5 text-blue-600" /> },
+    { label: "Automated Action Dispatcher", sub: "Deterministic Execution", icon: <Zap className="w-3.5 h-3.5 text-blue-600" /> },
   ];
-  const apps = ["Teams", "Outlook", "Slack", "GitHub", "Jira", "Confluence", "SharePoint", "SAP"];
 
   return (
-    <div className="rounded-2xl bg-white/[0.02] border border-white/[0.05] p-6 backdrop-blur-sm">
-      {/* Status bar */}
-      <div className="flex items-center gap-2 mb-5 pb-3 border-b border-white/[0.04]">
-        <div className="w-1.5 h-1.5 rounded-full animate-status-dot" />
+    <div className="rounded-2xl bg-white border border-zinc-200 p-6 shadow-xl relative">
+      <div className="flex items-center justify-between border-b border-zinc-200 pb-3 mb-4">
+        <div className="flex items-center gap-2">
+          <div className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-agent-pulse" />
+          <span className="text-xs font-mono font-bold text-zinc-900 uppercase tracking-wider">Agent Trace Log</span>
+        </div>
         <AnimatePresence mode="wait">
-          <motion.span key={status} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }} className="text-[11px] text-zinc-500 font-mono">{status}</motion.span>
+          <motion.span
+            key={status}
+            initial={{ opacity: 0, y: 3 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -3 }}
+            className="text-[11px] font-mono text-blue-600 font-semibold px-2 py-0.5 rounded bg-blue-50 border border-blue-100"
+          >
+            {status}
+          </motion.span>
         </AnimatePresence>
       </div>
 
-      {nodes.map((node, i) => (
-        <div key={node.label}>
-          <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-white/[0.03] transition-colors">
-            <div className={`w-7 h-7 rounded-lg bg-[#3B82F6]/[0.08] border border-[#3B82F6]/[0.12] flex items-center justify-center text-[#3B82F6]/70 shrink-0 ${i === 1 ? "animate-node-pulse" : ""}`}>
-              {node.icon}
+      <div className="space-y-1">
+        {nodes.map((n, i) => (
+          <div key={n.label}>
+            <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-zinc-50 transition-colors border border-transparent hover:border-zinc-200/80">
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-200/80 flex items-center justify-center shrink-0">
+                  {n.icon}
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-zinc-800">{n.label}</div>
+                  <div className="text-[10px] text-zinc-500 font-mono">{n.sub}</div>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                ACTIVE
+              </span>
             </div>
-            <span className="text-[12px] text-zinc-400">{node.label}</span>
-          </div>
-          {/* Apps under Business Apps */}
-          {node.label === "Business Apps" && (
-            <div className="ml-10 mb-1 flex flex-wrap gap-1 mt-1">
-              {apps.map((a) => (
-                <span key={a} className="text-[9px] px-1.5 py-0.5 rounded bg-white/[0.03] border border-white/[0.04] text-zinc-600">{a}</span>
-              ))}
-            </div>
-          )}
-          {/* Animated connector */}
-          {i < nodes.length - 1 && (
-            <div className="flex items-center justify-center h-5 relative">
-              <div className="w-px h-full bg-gradient-to-b from-[#3B82F6]/20 to-transparent" />
-              <div className="absolute w-1 h-1 rounded-full bg-[#3B82F6]/50 animate-data-packet" style={{ animationDelay: `${i * 0.3}s` }} />
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
 
-/* ═══════════════ FEATURE CARDS ═══════════════ */
-
-/* ── RAG Card (large) ── */
-function RAGCard() {
-  const [progress, setProgress] = useState([0, 0, 0, 0]);
-  const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { once: true });
-
-  useEffect(() => {
-    if (!inView) return;
-    const t = setTimeout(() => setProgress([85, 70, 92, 98]), 300);
-    return () => clearTimeout(t);
-  }, [inView]);
-
-  return (
-    <div ref={ref} className="p-6 h-full flex flex-col md:flex-row gap-6">
-      <div className="flex-1 min-w-0">
-        <div className="w-8 h-8 rounded-lg bg-[#3B82F6]/[0.08] border border-[#3B82F6]/[0.12] flex items-center justify-center mb-4">
-          <Database className="w-4 h-4 text-[#3B82F6]/70" />
-        </div>
-        <h3 className="text-[15px] font-semibold tracking-[-0.01em] mb-2">Advanced Enterprise RAG</h3>
-        <p className="text-[12px] text-zinc-600 leading-relaxed mb-4">Index millions of documents with semantic search, hybrid retrieval and source citations.</p>
-        <div className="flex flex-wrap gap-1.5">
-          {["Hybrid Search", "Vector DB", "Semantic Retrieval", "Citations", "Multi-modal"].map((b) => (
-            <span key={b} className="text-[10px] px-2 py-0.5 rounded-md bg-white/[0.03] border border-white/[0.05] text-zinc-500">{b}</span>
-          ))}
-        </div>
-      </div>
-      {/* Live RAG visualization */}
-      <div className="w-full md:w-48 shrink-0 space-y-2.5 pt-2">
-        <div className="flex items-center gap-2 mb-3">
-          <Search className="w-3 h-3 text-zinc-600" />
-          <div className="flex-1 h-6 rounded-md bg-white/[0.03] border border-white/[0.05] flex items-center px-2">
-            <span className="text-[10px] text-zinc-600 font-mono">query: policy docs</span>
-            <span className="ml-0.5 w-px h-3 bg-[#3B82F6]/60 animate-cursor" />
-          </div>
-        </div>
-        {[
-          { label: "Searching", val: progress[0] },
-          { label: "Embedding", val: progress[1] },
-          { label: "Hybrid Match", val: progress[2] },
-          { label: "Retrieved", val: progress[3] },
-        ].map((item, i) => (
-          <div key={item.label} className="space-y-1">
-            <div className="flex justify-between text-[10px]">
-              <span className="text-zinc-600">{item.label}</span>
-              <span className="text-zinc-500 font-mono">{item.val}%</span>
-            </div>
-            <div className="h-1 rounded-full bg-white/[0.04] overflow-hidden">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${item.val}%` }}
-                transition={{ duration: 1.5, delay: 0.3 + i * 0.2, ease: [0.25, 0.46, 0.45, 0.94] as const }}
-                className="h-full rounded-full bg-gradient-to-r from-[#3B82F6]/60 to-[#6366F1]/60"
-              />
-            </div>
+            {i < nodes.length - 1 && (
+              <div className="flex justify-center h-4 relative">
+                <div className="w-px h-full bg-blue-200" />
+                <div
+                  className="absolute w-1.5 h-1.5 rounded-full bg-blue-600 animate-data-packet"
+                  style={{ animationDelay: `${i * 0.3}s` }}
+                />
+              </div>
+            )}
           </div>
         ))}
-        <div className="flex items-center gap-1.5 pt-1">
-          <CheckCircle2 className="w-3 h-3 text-emerald-500/60" />
-          <span className="text-[10px] text-emerald-500/60 font-mono">Citation Ready</span>
+      </div>
+    </div>
+  );
+}
+
+/* ── Interactive RAG Card with Live Query Switcher ── */
+function RAGCardInteractive() {
+  const sampleQueries = [
+    { query: "Expense Policy Limits", match: 98.4, chunks: 4 },
+    { query: "Termination Notice Period", match: 94.2, chunks: 3 },
+    { query: "NDA & IP Ownership", match: 99.1, chunks: 5 },
+  ];
+  const [selectedIdx, setSelectedIdx] = useState(0);
+
+  return (
+    <div className="p-6 h-full flex flex-col md:flex-row gap-6 bg-white border border-zinc-200/90 rounded-2xl shadow-sm hover:border-blue-300 transition-colors">
+      <div className="flex-1 min-w-0">
+        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
+          <Database className="w-5 h-5" />
+        </div>
+        <h3 className="text-[16px] font-bold text-zinc-900 mb-2">Advanced Enterprise RAG</h3>
+        <p className="text-[13px] text-zinc-600 leading-relaxed mb-4">
+          Index millions of PDFs, emails, SharePoint files, and policies with semantic search, hybrid reranking, and citation tracing.
+        </p>
+
+        {/* Interactive Query Switcher Buttons */}
+        <div className="space-y-1.5 mb-4">
+          <div className="text-[11px] font-mono text-zinc-500">Simulate Test Vector Queries:</div>
+          <div className="flex flex-wrap gap-1.5">
+            {sampleQueries.map((q, i) => (
+              <button
+                key={q.query}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setSelectedIdx(i);
+                }}
+                className={`text-[11px] font-mono px-2.5 py-1 rounded-lg border transition-all ${
+                  selectedIdx === i
+                    ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                    : "bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100"
+                }`}
+              >
+                🔍 {q.query}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <Link
+          href="/rag"
+          className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-blue-600 hover:text-blue-700"
+        >
+          Open Full Interactive Workspace <ArrowUpRight className="w-4 h-4" />
+        </Link>
+      </div>
+
+      {/* RAG Interactive Execution Inspector */}
+      <div className="w-full md:w-56 shrink-0 space-y-3 p-3.5 bg-zinc-50 rounded-xl border border-zinc-200">
+        <div className="flex items-center gap-2 border-b border-zinc-200 pb-2">
+          <Search className="w-3.5 h-3.5 text-blue-600" />
+          <div className="flex-1 text-[11px] font-mono font-bold text-zinc-900 truncate">
+            {sampleQueries[selectedIdx].query}
+          </div>
+        </div>
+
+        <div className="space-y-2 font-mono text-[10px]">
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Similarity Score:</span>
+            <span className="font-bold text-blue-600">{sampleQueries[selectedIdx].match}%</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Chunks Retrieved:</span>
+            <span className="font-bold text-zinc-900">{sampleQueries[selectedIdx].chunks} Vector Chunks</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Vector Metric:</span>
+            <span className="text-emerald-600 font-semibold">Cosine HNSW</span>
+          </div>
+        </div>
+
+        <div className="h-1.5 rounded-full bg-zinc-200 overflow-hidden">
+          <motion.div
+            key={selectedIdx}
+            initial={{ width: 0 }}
+            animate={{ width: `${sampleQueries[selectedIdx].match}%` }}
+            transition={{ duration: 0.8 }}
+            className="h-full rounded-full bg-blue-600"
+          />
+        </div>
+
+        <div className="flex items-center gap-1.5 pt-1 text-[10px] text-emerald-600 font-mono font-semibold">
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          <span>Bounding Box Mapped</span>
         </div>
       </div>
     </div>
   );
 }
 
-/* ── Onboarding Card ── */
-function OnboardingCard() {
-  const steps = ["Create Email", "Create Teams", "Create GitHub", "Create Jira", "Install Software"];
-  const [active, setActive] = useState(0);
+/* ── Interactive Onboarding Card ── */
+function OnboardingCardInteractive() {
+  const steps = ["Outlook Account", "Teams Channel", "GitHub Org Access", "Jira License", "Software Provision"];
+  const [active, setActive] = useState(2);
+  const [isRunning, setIsRunning] = useState(false);
 
-  useEffect(() => {
-    const id = setInterval(() => setActive((a) => (a + 1) % (steps.length + 1)), 1800);
-    return () => clearInterval(id);
-  }, [steps.length]);
+  const runTrigger = () => {
+    setIsRunning(true);
+    setActive(0);
+    let current = 0;
+    const iv = setInterval(() => {
+      current++;
+      setActive(current);
+      if (current >= steps.length) {
+        clearInterval(iv);
+        setIsRunning(false);
+      }
+    }, 800);
+  };
 
   return (
-    <div className="p-6 h-full">
-      <div className="w-8 h-8 rounded-lg bg-[#6366F1]/[0.08] border border-[#6366F1]/[0.12] flex items-center justify-center mb-4">
-        <UserPlus className="w-4 h-4 text-[#6366F1]/70" />
+    <div className="p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+          <UserPlus className="w-5 h-5" />
+        </div>
+        <button
+          onClick={runTrigger}
+          disabled={isRunning}
+          className="text-[10px] font-mono font-bold bg-blue-600 text-white px-2.5 py-1 rounded-lg hover:bg-blue-700 transition-all flex items-center gap-1 disabled:opacity-50"
+        >
+          <Play className="w-3 h-3 fill-white" />
+          <span>{isRunning ? "Running..." : "Run Agent"}</span>
+        </button>
       </div>
-      <h3 className="text-[14px] font-semibold tracking-[-0.01em] mb-1.5">One-click Onboarding</h3>
-      <p className="text-[12px] text-zinc-600 leading-relaxed mb-4">Provision accounts in minutes.</p>
-      <div className="space-y-2">
+
+      <h3 className="text-[15px] font-bold text-zinc-900 mb-1.5">One-click Employee Onboarding</h3>
+      <p className="text-[12px] text-zinc-600 leading-relaxed mb-4">
+        Automatically provision accounts, access permissions, and software in seconds.
+      </p>
+
+      <div className="space-y-1.5">
         {steps.map((s, i) => {
           const done = i < active;
           const current = i === active;
           return (
-            <div key={s} className="flex items-center gap-2.5">
-              <div className={`w-4 h-4 rounded-full flex items-center justify-center transition-all duration-500 ${done ? "bg-emerald-500/20 border border-emerald-500/30" : current ? "bg-[#6366F1]/20 border border-[#6366F1]/30" : "bg-white/[0.03] border border-white/[0.06]"}`}>
-                {done && <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500/80" />}
-                {current && <div className="w-1.5 h-1.5 rounded-full bg-[#6366F1]/60 animate-pulse" />}
-              </div>
-              <span className={`text-[11px] transition-colors duration-300 ${done ? "text-zinc-400" : current ? "text-zinc-300" : "text-zinc-700"}`}>{s}</span>
-              <span className={`ml-auto text-[9px] font-mono ${done ? "text-emerald-500/50" : current ? "text-[#6366F1]/50" : "text-zinc-800"}`}>
-                {done ? "✓" : current ? "..." : "—"}
+            <div key={s} className="flex items-center justify-between px-2.5 py-1.5 rounded bg-zinc-50 border border-zinc-200/80">
+              <span className={`text-[11px] font-mono ${done ? "text-zinc-700 font-medium" : current ? "text-blue-700 font-bold" : "text-zinc-400"}`}>
+                {s}
+              </span>
+              <span className={`text-[10px] font-mono ${done ? "text-emerald-600 font-bold" : current ? "text-blue-600 font-bold animate-pulse" : "text-zinc-400"}`}>
+                {done ? "✓ Done" : current ? "Processing..." : "Pending"}
               </span>
             </div>
           );
@@ -516,73 +771,93 @@ function OnboardingCard() {
   );
 }
 
-/* ── Knowledge Transfer Card ── */
-function KnowledgeCard() {
+/* ── Interactive Knowledge Graph Card ── */
+function KnowledgeCardInteractive() {
+  const [activeNode, setActiveNode] = useState("AI Agent");
+  const nodes = [
+    { label: "Senior Staff", desc: "Transcripts & Meeting Records" },
+    { label: "Docs", desc: "PDF & Policy Index" },
+    { label: "AI Agent", desc: "Active Knowledge Synthesizer" },
+    { label: "Graph", desc: "HNSW Semantic Knowledge Mesh" },
+    { label: "Hire", desc: "Instant Access for New Employees" },
+  ];
+
   return (
-    <div className="p-6 h-full">
-      <div className="w-8 h-8 rounded-lg bg-[#8B5CF6]/[0.08] border border-[#8B5CF6]/[0.12] flex items-center justify-center mb-4">
-        <Brain className="w-4 h-4 text-[#8B5CF6]/70" />
+    <div className="p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+      <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
+        <Brain className="w-5 h-5" />
       </div>
-      <h3 className="text-[14px] font-semibold tracking-[-0.01em] mb-1.5">Knowledge Transfer</h3>
-      <p className="text-[12px] text-zinc-600 leading-relaxed mb-4">Capture, index, and transfer institutional knowledge.</p>
-      {/* Animated graph */}
-      <div className="relative h-32">
-        <svg className="w-full h-full" viewBox="0 0 200 120">
-          {/* Edges */}
-          {[[40,30,100,20],[100,20,160,40],[40,30,80,70],[100,20,120,65],[80,70,120,65],[120,65,160,40],[80,70,140,100],[120,65,140,100]].map(([x1,y1,x2,y2], i) => (
-            <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(139,92,246,0.1)" strokeWidth="1" className="animate-connection-glow" style={{ animationDelay: `${i * 0.4}s` }} />
-          ))}
-          {/* Nodes */}
-          {[[40,30,"S"],[100,20,"D"],[160,40,"M"],[80,70,"G"],[120,65,"AI"],[140,100,"N"]].map(([cx,cy,label], i) => (
-            <g key={i}>
-              <circle cx={Number(cx)} cy={Number(cy)} r="12" fill="rgba(139,92,246,0.06)" stroke="rgba(139,92,246,0.15)" strokeWidth="1" className="animate-node-pulse" style={{ animationDelay: `${i * 0.5}s` }} />
-              <text x={Number(cx)} y={Number(cy) + 3} textAnchor="middle" fill="rgba(139,92,246,0.5)" fontSize="7" fontWeight="600">{String(label)}</text>
-            </g>
-          ))}
-        </svg>
-        <div className="absolute bottom-0 left-0 right-0 text-[9px] text-zinc-700 flex justify-between px-2">
-          <span>Senior → Documents → AI → Graph → New Employee</span>
-        </div>
+      <h3 className="text-[15px] font-bold text-zinc-900 mb-1.5">Knowledge Transfer Engine</h3>
+      <p className="text-[12px] text-zinc-600 leading-relaxed mb-3">
+        Hover on graph nodes to inspect knowledge synthesis path:
+      </p>
+
+      {/* Node Selector Pills */}
+      <div className="flex flex-wrap gap-1 mb-3">
+        {nodes.map((n) => (
+          <button
+            key={n.label}
+            onClick={() => setActiveNode(n.label)}
+            className={`text-[10px] font-mono px-2 py-0.5 rounded border transition-all ${
+              activeNode === n.label
+                ? "bg-blue-600 text-white border-blue-600 font-bold"
+                : "bg-zinc-100 text-zinc-700 border-zinc-200"
+            }`}
+          >
+            {n.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] font-mono text-blue-900">
+        <span className="font-bold">{activeNode}:</span> {nodes.find((n) => n.label === activeNode)?.desc}
       </div>
     </div>
   );
 }
 
-/* ── Automation Card (large) ── */
-function AutomationCard() {
-  const status = useCycleText(["Reasoning...", "Planning execution...", "Selecting tools...", "Awaiting approval...", "Executing action...", "✓ Completed"], 1800);
-  const agentSteps = ["Request", "Reason", "Plan", "Tools", "Approve", "Execute", "Notify"];
+/* ── Interactive Automation Agent DAG Card ── */
+function AutomationCardInteractive() {
+  const [activeTab, setActiveTab] = useState(0);
+  const stages = [
+    { title: "1. Intent Parsing", detail: "NL Query parsed into structured AST intent." },
+    { title: "2. Tool Selection", detail: "MCP Registry dispatched [GitHub, Jira, Slack]." },
+    { title: "3. Approval Gate", detail: "Human RBAC Level 4 Authorization passed." },
+    { title: "4. Execution", detail: "Deterministic API Transaction dispatched." },
+  ];
 
   return (
-    <div className="p-6 h-full">
+    <div className="p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
       <div className="flex flex-col md:flex-row gap-6">
         <div className="flex-1 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-[#3B82F6]/[0.08] border border-[#3B82F6]/[0.12] flex items-center justify-center mb-4">
-            <Bot className="w-4 h-4 text-[#3B82F6]/70" />
+          <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
+            <Bot className="w-5 h-5" />
           </div>
-          <h3 className="text-[15px] font-semibold tracking-[-0.01em] mb-2">Enterprise Automation Agent</h3>
-          <p className="text-[12px] text-zinc-600 leading-relaxed mb-4">Multi-step reasoning, tool orchestration, and human-in-the-loop approval workflows.</p>
-          <div className="flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full animate-status-dot" />
-            <AnimatePresence mode="wait">
-              <motion.span key={status} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-[11px] text-zinc-500 font-mono">{status}</motion.span>
-            </AnimatePresence>
+          <h3 className="text-[16px] font-bold text-zinc-900 mb-2">Enterprise Automation Agent</h3>
+          <p className="text-[13px] text-zinc-600 leading-relaxed mb-4">
+            Autonomous multi-step reasoning, MCP tool selection, human-in-the-loop approvals, and deterministic execution.
+          </p>
+
+          <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-mono text-zinc-800">
+            <div className="font-bold text-blue-600 mb-1">{stages[activeTab].title}</div>
+            <div className="text-[11px] text-zinc-600">{stages[activeTab].detail}</div>
           </div>
         </div>
-        {/* Agent pipeline */}
-        <div className="flex md:flex-col gap-0 items-center md:w-44 shrink-0">
-          {agentSteps.map((s, i) => (
-            <div key={s} className="flex md:flex-col items-center">
-              <div className="w-8 h-8 md:w-9 md:h-9 rounded-lg bg-white/[0.03] border border-white/[0.06] flex items-center justify-center text-[9px] text-zinc-500 font-mono hover:bg-white/[0.06] hover:border-white/[0.1] transition-all">
-                {s.slice(0, 3)}
-              </div>
-              {i < agentSteps.length - 1 && (
-                <div className="w-3 md:w-px h-px md:h-3 relative overflow-visible">
-                  <div className="absolute inset-0 bg-white/[0.06]" />
-                  <div className="absolute w-1 h-1 rounded-full bg-[#3B82F6]/40 animate-data-packet" style={{ animationDelay: `${i * 0.25}s` }} />
-                </div>
-              )}
-            </div>
+
+        {/* Stage Selector Tabs */}
+        <div className="grid grid-cols-2 md:grid-cols-1 gap-1.5 md:w-48 shrink-0">
+          {stages.map((s, i) => (
+            <button
+              key={s.title}
+              onClick={() => setActiveTab(i)}
+              className={`p-2 rounded-lg border text-left text-[11px] font-mono transition-all ${
+                activeTab === i
+                  ? "bg-blue-600 text-white border-blue-600 font-bold shadow-sm"
+                  : "bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100"
+              }`}
+            >
+              {s.title}
+            </button>
           ))}
         </div>
       </div>
@@ -590,119 +865,187 @@ function AutomationCard() {
   );
 }
 
-/* ── Reports Card ── */
-function ReportsCard() {
+/* ── Reports Card White ── */
+function ReportsCardWhite() {
   const metrics = [
     { label: "Automations", value: 1245, suffix: "" },
     { label: "Hours Saved", value: 312, suffix: "" },
     { label: "Docs Indexed", value: 95, suffix: "K" },
     { label: "Cost Saved", value: 18, suffix: "K" },
   ];
+
   return (
-    <div className="p-6 h-full">
-      <div className="w-8 h-8 rounded-lg bg-[#6366F1]/[0.08] border border-[#6366F1]/[0.12] flex items-center justify-center mb-4">
-        <BarChart3 className="w-4 h-4 text-[#6366F1]/70" />
+    <div className="p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+      <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
+        <BarChart3 className="w-5 h-5" />
       </div>
-      <h3 className="text-[14px] font-semibold tracking-[-0.01em] mb-3">Weekly AI Insights</h3>
+      <h3 className="text-[15px] font-bold text-zinc-900 mb-3">Weekly Executive Insights</h3>
       <div className="grid grid-cols-2 gap-2 mb-3">
         {metrics.map((m) => (
-          <LiveMetric key={m.label} label={m.label} end={m.value} suffix={m.suffix} />
+          <div key={m.label} className="bg-zinc-50 border border-zinc-200 rounded-lg p-2.5">
+            <div className="text-[14px] font-bold text-zinc-900 font-mono">
+              <StatSpan end={m.value} suffix={m.suffix} />
+            </div>
+            <div className="text-[10px] text-zinc-500 font-medium">{m.label}</div>
+          </div>
         ))}
       </div>
-      <div className="text-[10px] text-zinc-700 flex items-center gap-1.5">
-        <Activity className="w-3 h-3" /> Report sent every Monday
+      <div className="text-[10px] text-zinc-500 font-mono flex items-center gap-1.5">
+        <Activity className="w-3 h-3 text-blue-600" /> Executive Digest dispatched weekly
       </div>
     </div>
   );
 }
 
-function LiveMetric({ label, end, suffix }: { label: string; end: number; suffix: string }) {
+function StatSpan({ end, suffix }: { end: number; suffix: string }) {
   const { count, ref } = useCountUp(end);
   return (
-    <div className="bg-white/[0.02] border border-white/[0.04] rounded-lg p-2.5">
-      <div className="text-[13px] font-semibold text-white">
-        <span ref={ref}>{count.toLocaleString()}</span>{suffix}
-      </div>
-      <div className="text-[9px] text-zinc-600 mt-0.5">{label}</div>
-    </div>
+    <span>
+      <span ref={ref}>{count.toLocaleString()}</span>
+      {suffix}
+    </span>
   );
 }
 
-/* ── Security Card ── */
-function SecurityCard() {
-  const items = ["SSO", "RBAC", "Audit Logs", "Encryption", "GDPR", "SOC2", "On-prem", "Cloud"];
+/* ── Security Card White ── */
+function SecurityCardWhite() {
+  const items = ["SSO / SAML", "RBAC", "Audit Logs", "AES-256", "GDPR", "SOC2 Type II", "On-Prem", "GovCloud"];
   return (
-    <div className="p-6 h-full">
-      <div className="w-8 h-8 rounded-lg bg-[#8B5CF6]/[0.08] border border-[#8B5CF6]/[0.12] flex items-center justify-center mb-4">
-        <Shield className="w-4 h-4 text-[#8B5CF6]/70" />
+    <div className="p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+      <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
+        <Shield className="w-5 h-5" />
       </div>
-      <h3 className="text-[14px] font-semibold tracking-[-0.01em] mb-3">Enterprise Ready</h3>
-      <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-        {items.map((item, i) => (
-          <motion.div key={item} initial={{ opacity: 0, x: -8 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.06, duration: 0.3 }} className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-3 h-3 text-emerald-500/50 shrink-0" />
-            <span className="text-[11px] text-zinc-500">{item}</span>
-          </motion.div>
+      <h3 className="text-[15px] font-bold text-zinc-900 mb-3">Enterprise Ready Security</h3>
+      <div className="grid grid-cols-2 gap-2">
+        {items.map((item) => (
+          <div key={item} className="flex items-center gap-1.5 text-[11px] font-mono text-zinc-700 bg-zinc-50 px-2 py-1 rounded border border-zinc-200">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span>{item}</span>
+          </div>
         ))}
       </div>
     </div>
   );
 }
 
-/* ── Integration Pill ── */
-function IntegrationPill({ name }: { name: string }) {
+/* ── Integration Pill White ── */
+function IntegrationPillWhite({ name }: { name: string }) {
   return (
-    <div className="shrink-0 px-4 py-2 rounded-lg bg-white/[0.02] border border-white/[0.04] text-[12px] text-zinc-600 hover:text-zinc-400 hover:border-white/[0.08] hover:bg-white/[0.04] transition-all whitespace-nowrap cursor-default">
+    <div className="shrink-0 px-4 py-2 rounded-xl bg-white border border-zinc-200 shadow-sm text-xs font-semibold text-zinc-700 hover:border-blue-300 hover:bg-blue-50/50 transition-all cursor-default whitespace-nowrap">
       {name}
     </div>
   );
 }
 
-/* ── Workflow Timeline ── */
-function WorkflowTimeline() {
-  const steps = ["Connect Enterprise", "Import Knowledge", "Index Documents", "Deploy AI Agents", "Automate Workflows", "Human Approval", "Execute Actions", "Analytics Dashboard"];
+/* ── Interactive Workflow Timeline Visualizer ── */
+function WorkflowTimelineInteractive({ onOpenModal }: { onOpenModal: () => void }) {
+  const steps = [
+    { num: 1, title: "Connect Apps", status: "OAuth2 Ready", protocol: "Slack, Teams, Jira, SAP", detail: "Initializes enterprise webhook protocol listeners and active OAuth2 handshakes." },
+    { num: 2, title: "Import Knowledge", status: "Parsing PDF", protocol: "OCR & PDF Chunker", detail: "Streams unstructured documents into semantic chunking parser at 1,240 pages/sec." },
+    { num: 3, title: "Index Vectors", status: "Embedding", protocol: "Qdrant HNSW 1536d", detail: "Generates high-dimensional vector embeddings with cosine similarity indexing." },
+    { num: 4, title: "Deploy AI Agents", status: "Active DAG", protocol: "Claude 3.5 / GPT-4o", detail: "Spawns autonomous agent reasoning kernel with memory buffer allocation." },
+    { num: 5, title: "Automate Workflows", status: "Orchestrating", protocol: "MCP Registry Dispatch", detail: "Executes tool selection matrix across GitHub, Jira, SAP, and Salesforce." },
+    { num: 6, title: "Human Approval", status: "RBAC Level 4", protocol: "Zero-Trust Audit Gate", detail: "Enforces manager authorization gate before high-consequence system mutations." },
+    { num: 7, title: "Execute Actions", status: "200 OK", protocol: "Idempotent API Call", detail: "Dispatches deterministic, signed API transactions with full audit logging." },
+    { num: 8, title: "Analytics Dashboard", status: "Live Digest", protocol: "Executive Metrics", detail: "Aggregates latency throughput, token metrics, and cost savings telemetry." },
+  ];
+
+  const [activeStep, setActiveStep] = useState(2);
+  const [autoPlay, setAutoPlay] = useState(true);
+
+  useEffect(() => {
+    if (!autoPlay) return;
+    const iv = setInterval(() => {
+      setActiveStep((prev) => (prev + 1) % steps.length);
+    }, 3200);
+    return () => clearInterval(iv);
+  }, [autoPlay, steps.length]);
+
+  const current = steps[activeStep];
+
   return (
-    <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-50px" }} variants={{ visible: { transition: { staggerChildren: 0.08 } } }} className="mt-14">
-      <div className="hidden md:flex items-start relative">
-        <div className="absolute top-6 left-[4%] right-[4%] h-px bg-gradient-to-r from-[#3B82F6]/15 via-[#6366F1]/15 to-[#8B5CF6]/15" />
+    <div className="mt-12 space-y-6">
+      {/* Step Selector Pills */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
         {steps.map((s, i) => (
-          <motion.div
-            key={s}
-            variants={{ hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } }}
-            className="flex-1 flex flex-col items-center text-center px-1 relative z-10"
+          <button
+            key={s.title}
+            onClick={() => {
+              setAutoPlay(false);
+              setActiveStep(i);
+            }}
+            className={`p-3 rounded-xl border text-left transition-all font-mono text-xs flex flex-col justify-between h-20 ${
+              activeStep === i
+                ? "bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-400/30"
+                : "bg-white text-zinc-800 border-zinc-200 hover:border-blue-300"
+            }`}
           >
-            <div className="w-12 h-12 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-3 hover:bg-white/[0.06] hover:border-white/[0.1] transition-all">
-              <span className="text-[13px] font-bold gradient-text">{i + 1}</span>
+            <div className="flex items-center justify-between">
+              <span className={`w-5 h-5 rounded-md text-[10px] font-bold flex items-center justify-center ${activeStep === i ? "bg-white text-blue-600" : "bg-blue-50 text-blue-600"}`}>
+                {s.num}
+              </span>
+              {activeStep === i && <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />}
             </div>
-            <span className="text-[11px] text-zinc-500 leading-snug">{s}</span>
-          </motion.div>
+            <span className="font-bold truncate text-[11px]">{s.title}</span>
+          </button>
         ))}
       </div>
-      <div className="md:hidden space-y-3">
-        {steps.map((s, i) => (
-          <motion.div key={s} variants={{ hidden: { opacity: 0, x: -16 }, visible: { opacity: 1, x: 0 } }} className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center shrink-0">
-              <span className="text-[12px] font-bold gradient-text">{i + 1}</span>
-            </div>
-            <span className="text-[13px] text-zinc-500">{s}</span>
-          </motion.div>
-        ))}
+
+      {/* Live Agentic Stage Inspector Box */}
+      <div className="bg-white border border-zinc-200/90 rounded-2xl p-6 shadow-sm relative overflow-hidden">
+        <div className="flex items-center justify-between pb-4 border-b border-zinc-200 mb-4">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-mono font-bold text-blue-600 px-2.5 py-1 rounded bg-blue-50 border border-blue-200 uppercase">
+              STAGE {current.num} / 8 :: {current.title}
+            </span>
+            <span className="text-xs font-mono text-emerald-600 font-semibold flex items-center gap-1">
+              <Radio className="w-3.5 h-3.5 animate-pulse text-emerald-500" />
+              {current.status}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setAutoPlay(!autoPlay)}
+              className="text-[11px] font-mono text-zinc-600 hover:text-zinc-900 border border-zinc-200 px-2.5 py-1 rounded-lg bg-zinc-50"
+            >
+              {autoPlay ? "⏸ Pause Flow" : "▶ Resume Flow"}
+            </button>
+            <button
+              onClick={onOpenModal}
+              className="text-[11px] font-mono font-bold bg-zinc-900 text-white px-3 py-1 rounded-lg hover:bg-blue-600 transition-colors"
+            >
+              Inspect DAG Modal ↗
+            </button>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-6 font-mono text-xs">
+          <div>
+            <div className="text-zinc-400 text-[10px] uppercase mb-1">Protocol / Engine:</div>
+            <div className="font-bold text-zinc-900">{current.protocol}</div>
+          </div>
+          <div className="md:col-span-2">
+            <div className="text-zinc-400 text-[10px] uppercase mb-1">Live Agent Execution Protocol:</div>
+            <div className="text-zinc-700 leading-relaxed">{current.detail}</div>
+          </div>
+        </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
 
-/* ── Stat Card ── */
-function StatCard({ value, suffix, label, delay }: { value: number; suffix: string; label: string; delay: number }) {
+/* ── Stat Card White ── */
+function StatCardWhite({ value, suffix, label }: { value: number; suffix: string; label: string }) {
   const { count, ref } = useCountUp(value);
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay }} className="rounded-2xl bg-white/[0.02] border border-white/[0.05] p-7 text-center hover:bg-white/[0.03] hover:border-white/[0.08] transition-all duration-300">
-      <div className="text-[clamp(2rem,4vw,2.8rem)] font-bold tracking-[-0.03em] mb-1">
-        <span ref={ref} className="gradient-text">{count}</span>
-        <span className="gradient-text">{suffix}</span>
+    <div className="rounded-2xl bg-white border border-zinc-200 p-6 text-center shadow-sm hover:shadow-md transition-shadow">
+      <div className="text-[clamp(2.2rem,4vw,3rem)] font-extrabold text-blue-600 tracking-tight mb-1 font-mono">
+        <span ref={ref}>{count}</span>
+        {suffix}
       </div>
-      <p className="text-[12px] text-zinc-600">{label}</p>
-    </motion.div>
+      <p className="text-[13px] font-semibold text-zinc-700">{label}</p>
+    </div>
   );
 }
 
@@ -710,9 +1053,15 @@ function StatCard({ value, suffix, label, delay }: { value: number; suffix: stri
 function FooterCol({ title, links }: { title: string; links: string[] }) {
   return (
     <div>
-      <h4 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-[0.1em] mb-3">{title}</h4>
+      <h4 className="text-[11px] font-mono font-bold text-zinc-900 uppercase tracking-widest mb-3">{title}</h4>
       <ul className="space-y-2">
-        {links.map((l) => (<li key={l}><a href="#" className="text-[12px] text-zinc-700 hover:text-zinc-400 transition-colors">{l}</a></li>))}
+        {links.map((l) => (
+          <li key={l}>
+            <a href="#" className="text-[12px] text-zinc-600 hover:text-blue-600 font-medium transition-colors">
+              {l}
+            </a>
+          </li>
+        ))}
       </ul>
     </div>
   );
