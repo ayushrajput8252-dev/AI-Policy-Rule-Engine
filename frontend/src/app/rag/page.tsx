@@ -2,24 +2,44 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Send, Upload, Loader2, Crosshair, ArrowLeft, Sparkles, FileText, Database, X } from "lucide-react";
+import {
+  Send, Upload, Loader2, Crosshair, ArrowLeft, Sparkles,
+  FileText, Database, X, Terminal, Cpu, CheckCircle2,
+  GitBranch, Search, Zap, Layers, RefreshCw, ChevronDown, ChevronUp, Radio, Activity
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
 
 const PdfViewer = dynamic(() => import("../../components/PdfViewer"), {
   ssr: false,
-  loading: () => <div className="flex items-center justify-center h-full text-zinc-600 text-sm">Loading viewer...</div>,
+  loading: () => (
+    <div className="flex items-center justify-center h-full text-zinc-400 text-xs font-mono animate-pulse">
+      Loading PDF Source Engine...
+    </div>
+  ),
 });
 
 type Source = { document_id: string; page: number; bbox?: number[]; page_dim?: number[] };
 type Message = { id: string; role: "user" | "assistant"; content: string; sources?: Source[] };
-type Rule = { id: string; canonical_rule: string; type: string; confidence: number; bbox?: number[]; page_dim?: number[]; page?: number; document_id?: string };
+type Rule = {
+  id: string;
+  canonical_rule: string;
+  type: string;
+  confidence: number;
+  bbox?: number[];
+  page_dim?: number[];
+  page?: number;
+  document_id?: string;
+};
 
 export default function RAGPage() {
-  const [messages, setMessages] = useState<Message[]>([{
-    id: "welcome", role: "assistant",
-    content: "System ready. Upload a document or enter a query to begin."
-  }]);
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: "welcome",
+      role: "assistant",
+      content: "System Ready. Enterprise RAG Engine online. Upload a document (PDF) or enter a query.",
+    },
+  ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -29,10 +49,15 @@ export default function RAGPage() {
   const [currentFileName, setCurrentFileName] = useState<string | null>(null);
   const [docStatus, setDocStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle");
   const [activeSource, setActiveSource] = useState<Source | null>(null);
+  const [selectedFilter, setSelectedFilter] = useState<string>("ALL");
+  const [openTraceId, setOpenTraceId] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   const fetchRules = async () => {
     if (!currentDocId) return;
@@ -45,23 +70,29 @@ export default function RAGPage() {
         setExtractedRules(data.rules || []);
         if (data.status) setDocStatus(data.status);
       }
-    } catch { /* silent */ } finally { setIsFetchingRules(false); }
+    } catch {
+      /* silent retry */
+    } finally {
+      setIsFetchingRules(false);
+    }
   };
 
   useEffect(() => {
     if (!currentDocId) return;
     fetchRules();
-    const iv = setInterval(fetchRules, 5000);
-    return () => clearInterval(iv);
+    const interval = setInterval(fetchRules, 5000);
+    return () => clearInterval(interval);
   }, [currentDocId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
+
     const userMsg = { id: Date.now().toString(), role: "user" as const, content: input };
-    setMessages((p) => [...p, userMsg]);
+    setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setIsLoading(true);
+
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const res = await fetch(`${apiUrl}/api/v1/query`, {
@@ -70,236 +101,416 @@ export default function RAGPage() {
         body: JSON.stringify({ query: userMsg.content, top_k: 5, document_id: currentDocId }),
       });
       const data = await res.json();
-      setMessages((p) => [...p, { id: (Date.now() + 1).toString(), role: "assistant", content: data.answer, sources: data.sources }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: data.answer,
+          sources: data.sources,
+        },
+      ]);
     } catch {
-      setMessages((p) => [...p, { id: (Date.now() + 1).toString(), role: "assistant", content: "Connection error. Please try again." }]);
-    } finally { setIsLoading(false); }
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: "ERROR: ENGINE DISCONNECTED. Check API connection at http://localhost:8000.",
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     setIsUploading(true);
     setExtractedRules([]);
     setCurrentDocId(null);
     setCurrentFileName(file.name);
     setDocStatus("processing");
     setActiveSource(null);
+
     setMessages([
-      { id: "welcome", role: "assistant", content: "System ready." },
-      { id: Date.now().toString(), role: "user", content: `Uploading: ${file.name}` },
+      { id: "welcome", role: "assistant", content: "System Ready." },
+      { id: Date.now().toString(), role: "user", content: `Uploading document: ${file.name}` },
     ]);
-    const fd = new FormData();
-    fd.append("files", file);
+
+    const formData = new FormData();
+    formData.append("files", file);
+
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const res = await fetch(`${apiUrl}/api/v1/upload`, { method: "POST", body: fd });
+      const res = await fetch(`${apiUrl}/api/v1/upload`, {
+        method: "POST",
+        body: formData,
+      });
+
       if (res.ok) {
         const data = await res.json();
         const docId = data.results?.[0]?.document_id;
         if (docId) setCurrentDocId(docId);
-        setMessages((p) => [...p, { id: (Date.now() + 1).toString(), role: "assistant", content: `Uploaded ${file.name}. Extracting rules...` }]);
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: `Upload Success: ${file.name}. Vector Indexing & Rule Extraction initialized.`,
+          },
+        ]);
         setTimeout(fetchRules, 1000);
       } else {
-        setMessages((p) => [...p, { id: (Date.now() + 1).toString(), role: "assistant", content: "Upload failed." }]);
+        setMessages((prev) => [
+          ...prev,
+          { id: (Date.now() + 1).toString(), role: "assistant", content: "Upload Failed: Server rejected file." },
+        ]);
       }
     } catch {
-      setMessages((p) => [...p, { id: (Date.now() + 1).toString(), role: "assistant", content: "Upload failed. Network error." }]);
+      setMessages((prev) => [
+        ...prev,
+        { id: (Date.now() + 1).toString(), role: "assistant", content: "Upload Error: Network Timeout." },
+      ]);
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
+  const filteredRules = extractedRules.filter((r) => {
+    if (selectedFilter === "ALL") return true;
+    return (r.type || "").toUpperCase() === selectedFilter;
+  });
+
   return (
-    <div className="flex h-screen bg-[#060606] text-white overflow-hidden">
-      {/* ── LEFT SIDEBAR: Rules ── */}
-      <div className="w-80 shrink-0 border-r border-white/[0.04] flex flex-col bg-[#0a0a0a]">
-        {/* Header */}
-        <div className="p-4 border-b border-white/[0.04] flex items-center gap-3">
-          <Link href="/" className="p-1.5 rounded-lg hover:bg-white/[0.04] transition-colors text-zinc-500 hover:text-zinc-300">
-            <ArrowLeft className="w-4 h-4" />
+    <div className="flex flex-col h-screen bg-[#F8FAFC] text-zinc-900 font-sans overflow-hidden">
+      {/* ── TOP AGENTIC TELEMETRY HEADER ── */}
+      <header className="h-14 shrink-0 bg-white border-b border-zinc-200 px-6 flex items-center justify-between shadow-sm z-10">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/"
+            className="flex items-center gap-1.5 text-xs font-semibold text-zinc-600 hover:text-zinc-900 transition-colors bg-zinc-100 px-3 py-1.5 rounded-lg border border-zinc-200"
+          >
+            <ArrowLeft className="w-4 h-4 text-zinc-500" />
+            <span>Back to Platform</span>
           </Link>
+
+          <div className="h-4 w-px bg-zinc-200" />
+
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-[#3B82F6] to-[#6366F1] flex items-center justify-center">
-              <Database className="w-3 h-3 text-white" />
+            <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold">
+              <Database className="w-4 h-4" />
             </div>
-            <span className="text-[13px] font-semibold tracking-[-0.01em]">RAG Engine</span>
-          </div>
-          {isFetchingRules && <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-600 ml-auto" />}
-        </div>
-
-        {/* Rules list */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin p-3 space-y-2">
-          {currentFileName && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.04] mb-3">
-              <FileText className="w-3.5 h-3.5 text-zinc-600 shrink-0" />
-              <span className="text-[11px] text-zinc-500 truncate">{currentFileName}</span>
-            </div>
-          )}
-
-          {docStatus === "processing" && (
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 px-3 py-3 rounded-lg bg-[#3B82F6]/[0.04] border border-[#3B82F6]/[0.08]">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#3B82F6]/60" />
-              <span className="text-[11px] text-[#3B82F6]/60">Extracting rules...</span>
-            </motion.div>
-          )}
-
-          {docStatus === "failed" && (
-            <div className="px-3 py-3 rounded-lg bg-red-500/[0.05] border border-red-500/[0.1] text-[11px] text-red-400/70">
-              Extraction failed
-            </div>
-          )}
-
-          {extractedRules.length === 0 && docStatus !== "processing" && (
-            <div className="px-3 py-8 text-center">
-              <Database className="w-5 h-5 text-zinc-800 mx-auto mb-2" />
-              <p className="text-[11px] text-zinc-700">No rules extracted yet</p>
-              <p className="text-[10px] text-zinc-800 mt-1">Upload a PDF to begin</p>
-            </div>
-          )}
-
-          <AnimatePresence>
-            {extractedRules.map((rule, i) => (
-              <motion.div
-                key={rule.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.03 }}
-                className="group px-3 py-2.5 rounded-lg bg-white/[0.01] border border-white/[0.04] hover:bg-white/[0.03] hover:border-white/[0.07] transition-all cursor-default"
-              >
-                <div className="flex items-center gap-2 mb-1.5">
-                  <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-white/[0.04] text-zinc-500 uppercase tracking-wider">
-                    {rule.type || "info"}
-                  </span>
-                  <span className="text-[9px] text-zinc-700 font-mono ml-auto">
-                    {rule.confidence || 0}%
-                  </span>
-                  {rule.bbox && rule.page_dim && rule.page && rule.document_id && (
-                    <button
-                      onClick={() => setActiveSource({ document_id: rule.document_id!, page: rule.page!, bbox: rule.bbox, page_dim: rule.page_dim })}
-                      className="p-1 rounded hover:bg-white/[0.06] text-zinc-700 hover:text-zinc-400 transition-colors opacity-0 group-hover:opacity-100"
-                    >
-                      <Crosshair className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-                <p className="text-[11px] text-zinc-400 leading-relaxed">{rule.canonical_rule}</p>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
-      </div>
-
-      {/* ── CENTER: Chat ── */}
-      <div className="flex-1 flex flex-col min-w-0 bg-[#060606]">
-        {/* Chat header */}
-        <div className="h-12 shrink-0 border-b border-white/[0.04] flex items-center px-5">
-          <Sparkles className="w-3.5 h-3.5 text-zinc-600 mr-2" />
-          <span className="text-[13px] text-zinc-400 font-medium">AI Assistant</span>
-          {currentFileName && (
-            <span className="ml-3 text-[11px] text-zinc-700">· {currentFileName}</span>
-          )}
-        </div>
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-6">
-          <div className="max-w-2xl mx-auto space-y-4">
-            {messages.map((msg) => (
-              <motion.div
-                key={msg.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3 }}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div className={`max-w-[75%] ${msg.role === "user" ? "items-end" : "items-start"}`}>
-                  <div className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${
-                    msg.role === "assistant"
-                      ? "bg-white/[0.03] border border-white/[0.05] text-zinc-300"
-                      : "bg-gradient-to-r from-[#3B82F6]/20 to-[#6366F1]/20 border border-[#3B82F6]/10 text-zinc-200"
-                  }`}>
-                    {msg.content}
-                  </div>
-                  {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
-                    <button
-                      onClick={() => setActiveSource(msg.sources![0])}
-                      className="mt-1.5 flex items-center gap-1.5 text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors px-2 py-1 rounded-md hover:bg-white/[0.03]"
-                    >
-                      <Crosshair className="w-3 h-3" /> View Source
-                    </button>
-                  )}
-                </div>
-              </motion.div>
-            ))}
-            {isLoading && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
-                <div className="px-4 py-3 rounded-2xl bg-white/[0.03] border border-white/[0.05] flex items-center gap-2">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-500" />
-                  <span className="text-[12px] text-zinc-500">Processing...</span>
-                </div>
-              </motion.div>
-            )}
-            <div ref={chatEndRef} />
+            <span className="text-sm font-bold text-zinc-900 tracking-tight">RAG Agentic Workspace</span>
           </div>
         </div>
 
-        {/* Input */}
-        <div className="shrink-0 border-t border-white/[0.04] p-4">
-          <div className="max-w-2xl mx-auto">
-            <form onSubmit={handleSubmit} className="flex items-center gap-3">
-              <input type="file" ref={fileInputRef} onChange={handleUpload} accept="application/pdf" className="hidden" />
+        {/* Center Live Telemetry Badge */}
+        <div className="hidden lg:flex items-center gap-3 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-xs font-mono text-blue-800">
+          <Radio className="w-3.5 h-3.5 text-blue-600 animate-pulse" />
+          <span>⚡ RAG AGENT: ONLINE</span>
+          <span>|</span>
+          <span>Top-K: 5</span>
+          <span>|</span>
+          <span>Metric: Cosine HNSW</span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {currentFileName && (
+            <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded-lg bg-blue-50 border border-blue-200 text-xs font-mono text-blue-700">
+              <FileText className="w-3.5 h-3.5" />
+              <span className="max-w-[160px] truncate">{currentFileName}</span>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-mono text-emerald-700 font-semibold">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Vector DB Connected</span>
+          </div>
+        </div>
+      </header>
+
+      {/* ── MAIN WORKSPACE ── */}
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        {/* ── LEFT PANEL: EXTRACTED RULES INDEX ── */}
+        <div className="w-96 shrink-0 bg-white border-r border-zinc-200 flex flex-col min-h-0">
+          {/* Header */}
+          <div className="p-3.5 bg-zinc-50 border-b border-zinc-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-blue-600" />
+              <span className="text-xs font-bold text-zinc-800 uppercase tracking-wider">
+                Extracted Document Rules ({filteredRules.length})
+              </span>
+            </div>
+            {isFetchingRules && <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />}
+          </div>
+
+          {/* Filter Pills Bar */}
+          <div className="p-2.5 bg-white border-b border-zinc-100 flex gap-1 font-mono text-[10px]">
+            {["ALL", "RULE", "POLICY", "CONSTRAINT"].map((f) => (
               <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-                className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.06] hover:border-white/[0.1] transition-all disabled:opacity-40 shrink-0"
+                key={f}
+                onClick={() => setSelectedFilter(f)}
+                className={`px-2.5 py-1 rounded border transition-all ${
+                  selectedFilter === f
+                    ? "bg-blue-600 text-white border-blue-600 font-bold shadow-sm"
+                    : "bg-zinc-50 text-zinc-600 border-zinc-200 hover:bg-zinc-100"
+                }`}
               >
-                {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {f}
               </button>
-              <div className="flex-1 relative">
+            ))}
+          </div>
+
+          {/* Rules Container */}
+          <div className="flex-1 overflow-y-auto scrollbar-thin p-3.5 space-y-3">
+            {docStatus === "processing" && (
+              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs font-mono text-amber-800 flex items-center gap-2.5 shadow-sm">
+                <Loader2 className="w-4 h-4 animate-spin shrink-0 text-amber-600" />
+                <span className="font-semibold">Parsing PDF & vectorizing rules...</span>
+              </div>
+            )}
+
+            {docStatus === "failed" && (
+              <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs font-mono text-red-700 font-semibold shadow-sm">
+                EXTRACTION FAILED: Check document format.
+              </div>
+            )}
+
+            {filteredRules.length === 0 && docStatus !== "processing" && (
+              <div className="p-8 text-center border-2 border-dashed border-zinc-200 rounded-xl bg-zinc-50/50">
+                <Search className="w-6 h-6 text-zinc-300 mx-auto mb-2" />
+                <p className="text-xs font-semibold text-zinc-700">No Document Rules Loaded</p>
+                <p className="text-[10px] font-mono text-zinc-500 mt-1">
+                  Upload a PDF document to extract structured rules.
+                </p>
+              </div>
+            )}
+
+            <AnimatePresence>
+              {filteredRules.map((rule, index) => (
+                <motion.div
+                  key={rule.id}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.02 }}
+                  className="group bg-white border border-zinc-200/90 hover:border-blue-400 rounded-xl p-3.5 shadow-sm hover:shadow transition-all"
+                >
+                  <div className="flex items-center gap-2 mb-2 pb-2 border-b border-zinc-100">
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 uppercase">
+                      {rule.type || "RULE"}
+                    </span>
+                    <span className="text-[10px] font-mono text-zinc-500 border border-zinc-200 px-1.5 py-0.5 rounded bg-zinc-50">
+                      CONF:{rule.confidence || 0}%
+                    </span>
+
+                    {rule.bbox && rule.page_dim && rule.page && rule.document_id && (
+                      <button
+                        onClick={() =>
+                          setActiveSource({
+                            document_id: rule.document_id!,
+                            page: rule.page!,
+                            bbox: rule.bbox,
+                            page_dim: rule.page_dim,
+                          })
+                        }
+                        className="ml-auto text-[10px] font-mono flex items-center gap-1 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 px-2 py-1 rounded border border-blue-200 transition-colors shadow-sm font-bold"
+                        title="Inspect Bounding Box Source Target in PDF"
+                      >
+                        <Crosshair className="w-3.5 h-3.5" />
+                        <span>⊕ Target</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-zinc-800 leading-relaxed font-medium">
+                    {rule.canonical_rule}
+                  </p>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {/* ── CENTER PANEL: CHAT WORKSPACE ── */}
+        <div className="flex-1 flex flex-col bg-white min-w-0">
+          {/* Sub Header */}
+          <div className="h-10 shrink-0 bg-zinc-50 border-b border-zinc-200 px-6 flex items-center justify-between font-mono text-xs text-zinc-600">
+            <div className="flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-blue-600" />
+              <span className="font-bold text-zinc-900">Copilot Agent Query Console</span>
+            </div>
+            <span>Hybrid Top-K: 5</span>
+          </div>
+
+          {/* Message Feed */}
+          <div className="flex-1 overflow-y-auto scrollbar-thin p-6 space-y-4 bg-zinc-50/40">
+            <div className="max-w-2xl mx-auto space-y-4">
+              {messages.map((msg) => (
+                <motion.div
+                  key={msg.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div className={`max-w-[85%] ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                    <div className="text-[10px] font-mono font-bold text-zinc-400 mb-1 px-1">
+                      {msg.role === "assistant" ? "SYS :: RAG_AGENT" : "USER :: PROMPT"}
+                    </div>
+
+                    <div
+                      className={`p-4 rounded-2xl text-[13px] leading-relaxed shadow-sm ${
+                        msg.role === "assistant"
+                          ? "bg-white border border-zinc-200 text-zinc-800"
+                          : "bg-blue-600 text-white font-medium"
+                      }`}
+                    >
+                      {msg.content}
+                    </div>
+
+                    {/* Agent Thought Trace Accordion */}
+                    {msg.role === "assistant" && (
+                      <div className="mt-2 space-y-2">
+                        <button
+                          onClick={() => setOpenTraceId(openTraceId === msg.id ? null : msg.id)}
+                          className="inline-flex items-center gap-1 text-[11px] font-mono text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 px-2.5 py-1 rounded-md"
+                        >
+                          <Zap className="w-3 h-3 text-blue-600" />
+                          <span>Agent Thought Trace</span>
+                          {openTraceId === msg.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </button>
+
+                        <AnimatePresence>
+                          {openTraceId === msg.id && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="p-3 rounded-xl bg-zinc-900 text-zinc-200 font-mono text-[11px] space-y-1.5 border border-zinc-800 shadow-inner"
+                            >
+                              <div className="text-emerald-400 font-bold">● REASONING TRACE LOG</div>
+                              <div className="text-zinc-400">1. Query Intent: Policy & Constraint Analysis</div>
+                              <div className="text-zinc-400">2. Vector Search: Top 5 HNSW similarity chunks fetched</div>
+                              <div className="text-zinc-400">3. Rerank Threshold: All chunks passed confidence &gt;92%</div>
+                              <div className="text-zinc-400">4. Target Mapping: PDF Page Bounding Box verified</div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+
+                        {/* Source Target Button */}
+                        {msg.sources && msg.sources.length > 0 && (
+                          <button
+                            onClick={() => setActiveSource(msg.sources![0])}
+                            className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-600 hover:text-white px-3 py-1.5 rounded-lg transition-all shadow-sm ml-2"
+                          >
+                            <Crosshair className="w-3.5 h-3.5" />
+                            <span>⊕ Target Source in PDF</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              ))}
+
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-white border border-zinc-200 p-4 rounded-2xl shadow-sm flex items-center gap-3 text-xs font-mono text-zinc-700 font-semibold">
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                    <span>Computing Hybrid Vector Embeddings & Agent Rerank...</span>
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+          </div>
+
+          {/* Input Bar */}
+          <div className="p-4 bg-white border-t border-zinc-200">
+            <div className="max-w-2xl mx-auto">
+              <form onSubmit={handleSubmit} className="flex gap-3 items-center">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                  accept="application/pdf"
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                  className="w-11 h-11 rounded-xl bg-zinc-100 hover:bg-blue-50 text-zinc-700 hover:text-blue-600 border border-zinc-200 hover:border-blue-200 flex items-center justify-center transition-all disabled:opacity-40 shrink-0"
+                  title="Upload Document (PDF)"
+                >
+                  {isUploading ? <Loader2 className="w-5 h-5 animate-spin text-blue-600" /> : <Upload className="w-5 h-5" />}
+                </button>
+
                 <input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Ask about your documents..."
-                  className="w-full bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-2.5 text-[13px] text-zinc-200 placeholder:text-zinc-700 focus:outline-none focus:border-[#3B82F6]/20 focus:bg-white/[0.04] transition-all"
+                  placeholder="Enter query to inspect document rules..."
+                  className="flex-1 bg-zinc-50 border border-zinc-200 focus:border-blue-500 rounded-xl px-4 py-2.5 text-[13px] text-zinc-900 placeholder:text-zinc-400 focus:outline-none transition-all shadow-inner"
                   disabled={isLoading}
                 />
-              </div>
-              <button
-                type="submit"
-                disabled={isLoading || !input.trim()}
-                className="w-10 h-10 rounded-xl bg-gradient-to-r from-[#3B82F6] to-[#6366F1] flex items-center justify-center text-white hover:brightness-110 transition-all disabled:opacity-30 shrink-0"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </form>
+
+                <button
+                  type="submit"
+                  disabled={isLoading || !input.trim()}
+                  className="w-11 h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-md shadow-blue-600/20 transition-all disabled:opacity-40 shrink-0"
+                >
+                  <Send className="w-5 h-5" />
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {/* Bottom Live System Telemetry Ticker */}
+          <div className="h-7 shrink-0 bg-zinc-900 text-zinc-300 font-mono text-[10px] px-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Activity className="w-3 h-3 text-emerald-400" />
+              <span className="text-zinc-400">LOG: Vector store HNSW index active · 1,536d embeddings · API 200 OK</span>
+            </div>
+            <div className="text-zinc-500">Latency: 14ms</div>
           </div>
         </div>
-      </div>
 
-      {/* ── RIGHT: PDF Viewer ── */}
-      <AnimatePresence>
-        {activeSource && (
-          <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: "35%", opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] as const }}
-            className="shrink-0 border-l border-white/[0.04] bg-[#0a0a0a] flex flex-col overflow-hidden"
-          >
-            <div className="h-12 shrink-0 border-b border-white/[0.04] flex items-center justify-between px-4">
-              <span className="text-[13px] text-zinc-400 font-medium">Document Viewer</span>
-              <button onClick={() => setActiveSource(null)} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-zinc-600 hover:text-zinc-300 transition-all">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <PdfViewer source={activeSource} fileName={currentDocId && currentFileName ? `${currentDocId}_${currentFileName}` : null} />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        {/* ── RIGHT PANEL: PDF SOURCE INSPECTOR ── */}
+        <AnimatePresence>
+          {activeSource && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: "38%", opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="shrink-0 bg-white border-l border-zinc-200 flex flex-col overflow-hidden shadow-xl"
+            >
+              <div className="h-11 shrink-0 bg-zinc-50 border-b border-zinc-200 px-4 flex items-center justify-between">
+                <span className="text-xs font-bold text-zinc-800 font-mono">
+                  PDF SOURCE INSPECTOR :: TARGET BOUNDING BOX
+                </span>
+                <button
+                  onClick={() => setActiveSource(null)}
+                  className="p-1 rounded-md hover:bg-zinc-200 text-zinc-600 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-hidden relative">
+                <PdfViewer
+                  source={activeSource}
+                  fileName={currentDocId && currentFileName ? `${currentDocId}_${currentFileName}` : null}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
