@@ -4,16 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
-import { Loader2, FileText, Crosshair, AlertTriangle, ExternalLink } from "lucide-react";
-
-// Safe PDF worker configuration
-if (typeof window !== "undefined" && pdfjs && !pdfjs.GlobalWorkerOptions?.workerSrc) {
-  try {
-    pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version || "3.11.174"}/build/pdf.worker.min.js`;
-  } catch (e) {
-    console.warn("PDF Worker init deferred", e);
-  }
-}
+import { Loader2, FileText, Crosshair, AlertTriangle } from "lucide-react";
 
 type Source = {
   document_id: string;
@@ -29,11 +20,11 @@ export default function PdfViewer({ source, fileName }: { source: Source; fileNa
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && pdfjs) {
+    if (typeof window !== "undefined" && pdfjs?.GlobalWorkerOptions) {
       try {
         pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version || "3.11.174"}/build/pdf.worker.min.js`;
       } catch (e) {
-        console.warn("Worker error", e);
+        console.warn("PDF worker init deferred", e);
       }
     }
   }, []);
@@ -135,8 +126,12 @@ export default function PdfViewer({ source, fileName }: { source: Source; fileNa
                 </div>
               }
               error={
-                <div className="text-red-600 font-bold border border-red-200 p-4 bg-red-50 rounded-xl my-10 text-center">
-                  FAILED TO RENDER CANVAS PDF
+                <div className="w-full h-full min-h-[400px] flex flex-col items-center justify-center p-2">
+                  <iframe
+                    src={`${pdfUrl}#page=${source.page || 1}`}
+                    className="w-full h-[500px] border-0 rounded-xl bg-white shadow-sm"
+                    title="PDF Viewer Fallback"
+                  />
                 </div>
               }
             >
