@@ -798,10 +798,42 @@ function AutomationCardInteractive() {
   }, [stages.length]);
 
   return (
-    <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
-      <div className="flex flex-col md:flex-row gap-6">
+    <div className="cpu-burn-card p-6 h-full bg-gradient-to-br from-amber-50/80 via-yellow-50/40 to-amber-50/60 border border-amber-200/90 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+      
+      {/* ── Background Premium Doodles & Subtle Rays ── */}
+      {/* Sparkle Doodle Overlay */}
+      <svg
+        className="absolute -top-3 -right-3 w-28 h-28 text-amber-500/20 pointer-events-none group-hover:scale-105 transition-transform duration-700"
+        viewBox="0 0 100 100"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeDasharray="4 4"
+      >
+        <path d="M 50 10 Q 65 35 90 50 Q 65 65 50 90 Q 35 65 10 50 Q 35 35 50 10 Z" />
+        <circle cx="50" cy="50" r="10" fill="currentColor" fillOpacity="0.08" />
+      </svg>
+
+      {/* Hand-drawn Star Doodle */}
+      <svg
+        className="absolute bottom-2 right-1/3 w-16 h-16 text-yellow-600/12 pointer-events-none"
+        viewBox="0 0 80 80"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      >
+        <path d="M 40 10 L 44 28 L 62 28 L 47 38 L 53 56 L 40 45 L 27 56 L 33 38 L 18 28 L 36 28 Z" />
+        <path d="M 12 15 L 18 25 M 68 15 L 62 25" strokeDasharray="2 2" />
+      </svg>
+
+      {/* Subtle Glow Rays */}
+      <div className="absolute top-0 right-0 w-36 h-36 bg-amber-200/20 rounded-bl-full pointer-events-none blur-lg" />
+
+      {/* ── Card Content ── */}
+      <div className="flex flex-col md:flex-row gap-6 relative z-10">
         <div className="flex-1 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
+          <div className="w-10 h-10 rounded-xl bg-amber-100/90 border border-amber-200/90 flex items-center justify-center mb-4 text-amber-700 shadow-xs">
             <Bot className="w-5 h-5" />
           </div>
           <h3 className="text-[16px] font-bold text-zinc-900 mb-2">Enterprise Automation Agent</h3>
@@ -809,8 +841,11 @@ function AutomationCardInteractive() {
             Autonomous multi-step reasoning, MCP tool selection, human-in-the-loop approvals, and deterministic execution.
           </p>
 
-          <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-mono text-zinc-800">
-            <div className="font-bold text-blue-600 mb-1">{stages[activeTab].title}</div>
+          <div className="p-3 bg-white/90 backdrop-blur-sm border border-amber-200/80 rounded-xl text-xs font-mono text-zinc-800 shadow-xs">
+            <div className="font-bold text-amber-800 mb-1 flex items-center justify-between">
+              <span>{stages[activeTab].title}</span>
+              <span className="text-[10px] text-amber-700/80 font-normal">STEP {activeTab + 1}/4</span>
+            </div>
             <div className="text-[11px] text-zinc-600">{stages[activeTab].detail}</div>
           </div>
         </div>
@@ -822,8 +857,8 @@ function AutomationCardInteractive() {
               onClick={() => setActiveTab(i)}
               className={`p-2 rounded-lg border text-left text-[11px] font-mono transition-all ${
                 activeTab === i
-                  ? "bg-blue-600 text-white border-blue-600 font-bold shadow-sm"
-                  : "bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100"
+                  ? "bg-amber-500 text-zinc-950 font-bold border-amber-500 shadow-xs"
+                  : "bg-white/80 text-zinc-700 border-zinc-200/80 hover:bg-amber-100/40"
               }`}
             >
               {s.title}

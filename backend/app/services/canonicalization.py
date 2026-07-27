@@ -15,11 +15,51 @@ def get_pinecone_index():
         _index = _pinecone.Index(settings.PINECONE_INDEX_NAME)
     return _index
 
+def store_chunks_batch_in_pinecone(chunks: list[dict]):
+    """
+    Indexes raw document chunks into Pinecone so Normal Chunk RAG can query 100% of document content.
+    """
+    if not chunks:
+        return
+    try:
+        index = get_pinecone_index()
+        model = get_embedding_model()
+        
+        vectors = []
+        for c in chunks:
+            content = c.get("content", "").strip()
+            if not content:
+                continue
+            chunk_id = c.get("chunk_id")
+            doc_id = c.get("document_id")
+            page = c.get("page", 1)
+            section = c.get("section", "")
+            
+            vector = model.encode(content).tolist()
+            metadata = {
+                "vector_type": "chunk",
+                "chunk_id": chunk_id,
+                "document_id": doc_id,
+                "page": page,
+                "section": section,
+                "content": content[:1000]  # Store content preview in metadata
+            }
+            if c.get("bbox") and c.get("page_dim"):
+                import json
+                metadata["bbox"] = json.dumps(c.get("bbox"))
+                metadata["page_dim"] = json.dumps(c.get("page_dim"))
+                
+            vectors.append({"id": f"chunk_{chunk_id}", "values": vector, "metadata": metadata})
+            
+        if vectors:
+            index.upsert(vectors=vectors)
+            print(f"[Pinecone Indexer]: Indexed {len(vectors)} raw chunks into Pinecone.")
+    except Exception as e:
+        print(f"Warning: Failed to store chunks in Pinecone: {str(e)}")
+
 def canonicalize_and_store_rule(document_id: str, page: int, section: str, rule_data: dict, db_session, bbox: list = None, page_dim: list = None) -> dict:
     """
-    Normalizes a rule using embeddings (conceptual clustering).
-    For this POC, we will use the raw text as the canonical rule and store it in Pinecone + SQLite.
-    A full agglomerative clustering implementation would batch rules and cluster them periodically.
+    Normalizes a rule using embeddings and stores it in Pinecone + SQLite.
     """
     canonical_rule = rule_data.get("key_finding", "")
     
@@ -47,11 +87,12 @@ def canonicalize_and_store_rule(document_id: str, page: int, section: str, rule_
         index = get_pinecone_index()
         model = get_embedding_model()
         
-        # We embed the full rule context for better semantic search
+        # Embed the full rule context for semantic search
         text_to_embed = f"Finding: {canonical_rule}. Context: {db_rule.condition}."
         vector = model.encode(text_to_embed).tolist()
         
         metadata = {
+            "vector_type": "rule",
             "rule_id": rule_id,
             "canonical_rule": canonical_rule,
             "type": db_rule.type,
@@ -65,10 +106,9 @@ def canonicalize_and_store_rule(document_id: str, page: int, section: str, rule_
             metadata["bbox"] = json.dumps(bbox)
             metadata["page_dim"] = json.dumps(page_dim)
             
-        index.upsert(vectors=[{"id": rule_id, "values": vector, "metadata": metadata}])
+        index.upsert(vectors=[{"id": f"rule_{rule_id}", "values": vector, "metadata": metadata}])
         
     except Exception as e:
         print(f"Warning: Failed to store rule in Pinecone: {str(e)}")
-        # We don't rollback SQLite on Pinecone failure for this POC
         
     return {"rule_id": rule_id, "canonical_rule": canonical_rule}

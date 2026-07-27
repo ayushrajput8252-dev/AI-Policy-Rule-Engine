@@ -267,3 +267,45 @@
 
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── Mobile Responsiveness for RAG & Policy Engine ── */
+@media (max-width: 1024px) {
+  .rag-main-layout {
+    flex-direction: column !important;
+  }
+  .rag-sidebar {
+    width: 100% !important;
+    max-height: 350px !important;
+    overflow-y: auto !important;
+  }
+  .rag-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 768px) {
+  body {
+    overflow-x: hidden;
+  }
+  .rag-header {
+    padding: 0.75rem 1rem !important;
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
+  }
+  .rag-chat-container {
+    padding: 0.75rem !important;
+    min-height: 400px !important;
+  }
+  .rag-input-box {
+    padding: 0.5rem !important;
+  }
+  .rag-mcp-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .rag-card {
+    padding: 1rem !important;
+  }
+  .pdf-viewer-container {
+    height: 350px !important;
+  }
+}

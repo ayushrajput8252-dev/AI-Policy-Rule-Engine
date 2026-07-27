@@ -1,7 +1,8 @@
 from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException
-from ..services.retrieval import retrieve_rules
-from ..services.reasoning import generate_answer
+from ..services.retrieval import retrieve_rules_and_chunks_parallel
+from ..services.reasoning import generate_answer_with_fallback
+from ..services.cache import get_cached_query, set_cached_query
 from ..services.multilingual import (
     detect_language,
     get_language_name,
@@ -22,6 +23,11 @@ async def process_query(request: QueryRequest):
         raw_query = request.query.strip()
         if not raw_query:
             raise HTTPException(status_code=400, detail="Query string cannot be empty.")
+
+        # 0. Redis Query Cache Check
+        cached_result = get_cached_query(request.document_id, raw_query)
+        if cached_result:
+            return cached_result
             
         # 1. Language Detection via langdetect
         detected_lang = detect_language(raw_query)
@@ -37,27 +43,16 @@ async def process_query(request: QueryRequest):
             translated_to_english = True
             print(f"[Multilingual Pipeline] Translated Query: '{search_query}'")
             
-        # 3. Vector Retrieval with English Query
-        retrieved_rules = retrieve_rules(search_query, request.top_k, request.document_id)
+        # 3. Parallel Vector Retrieval for Rules AND Raw Chunks
+        retrieved_rules, retrieved_chunks = retrieve_rules_and_chunks_parallel(
+            search_query, request.top_k, request.document_id
+        )
         
-        if not retrieved_rules:
-            fallback_answer = "I don't have any policy rules that match your query."
-            if detected_lang != "en":
-                fallback_answer = translate_from_english(fallback_answer, detected_lang)
-            return {
-                "answer": fallback_answer,
-                "sources": [],
-                "detected_language": detected_lang,
-                "language_name": language_name,
-                "original_query": raw_query if translated_to_english else None,
-                "translated_query": search_query if translated_to_english else None
-            }
-            
-        # 4. Reasoning Layer (generates English answer)
-        answer_data = generate_answer(search_query, retrieved_rules)
+        # 4. Dual-Tier Reasoning Layer (Rules -> Chunks -> Required info missing)
+        answer_data = generate_answer_with_fallback(search_query, retrieved_rules, retrieved_chunks)
         
         # 5. Translate English answer back into user's language if non-English
-        if detected_lang != "en" and answer_data.get("answer"):
+        if detected_lang != "en" and answer_data.get("answer") and answer_data["answer"] != "Required info missing from document context.":
             print(f"[Multilingual Pipeline] Translating answer back into {language_name} ({detected_lang})...")
             answer_data["answer"] = translate_from_english(answer_data["answer"], detected_lang)
             
@@ -68,6 +63,9 @@ async def process_query(request: QueryRequest):
             answer_data["original_query"] = raw_query
             answer_data["translated_query"] = search_query
             
+        # 7. Write Result to Redis Cache
+        set_cached_query(request.document_id, raw_query, answer_data)
+        
         return answer_data
         
     except Exception as e:
