@@ -8,7 +8,8 @@ import {
   Folder, FolderPlus, FolderOpen, ChevronRight, ChevronDown, Plus,
   Users, User, Briefcase, Shield, Plug, Mail, MessageSquare,
   Share2, FileCode, Layers, Lock, RefreshCw, SlidersHorizontal,
-  Command, Terminal, Bot, ArrowRight, CornerDownLeft
+  Command, Terminal, Bot, ArrowRight, CornerDownLeft,
+  Mic, MicOff, Volume2, VolumeX, Radio, FileAudio, Disc, Square, Play, Activity
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
@@ -30,7 +31,16 @@ const PdfViewer = dynamic(() => import("../../components/PdfViewer"), {
   ),
 });
 
-type Source = { document_id: string; page: number; bbox?: number[]; page_dim?: number[] };
+type Source = {
+  document_id: string;
+  page: number;
+  bbox?: number[];
+  page_dim?: number[];
+  is_audio?: boolean;
+  timestamp_str?: string;
+  start_time?: number;
+  end_time?: number;
+};
 
 type Message = {
   id: string;
@@ -241,9 +251,138 @@ export default function RAGPage() {
   // ── 7. Employee Active View ──
   const [employeeTab, setEmployeeTab] = useState<"chat" | "connectors">("chat");
 
+  // ── 8. Voice Mode & Big Audio Visualizer State ──
+  const [isVoiceMode, setIsVoiceMode] = useState<boolean>(false);
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+  const [activeSpeechMsgId, setActiveSpeechMsgId] = useState<string | null>(null);
+  const [recordingTime, setRecordingTime] = useState<number>(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Start Mic Recording
+  const startRecording = async () => {
+    try {
+      setRecordingTime(0);
+      audioChunksRef.current = [];
+
+      if (typeof window !== "undefined" && ("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = true;
+        recognition.lang = "en-US";
+
+        recognition.onresult = (event: any) => {
+          const transcript = Array.from(event.results)
+            .map((res: any) => res[0].transcript)
+            .join("");
+          setInput(transcript);
+        };
+
+        recognition.onend = () => {
+          setIsRecording(false);
+          if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+        };
+
+        recognition.start();
+        setIsRecording(true);
+
+        recordingTimerRef.current = setInterval(() => {
+          setRecordingTime((prev) => prev + 1);
+        }, 1000);
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        const formData = new FormData();
+        formData.append("file", audioBlob, "recording.webm");
+
+        try {
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+          const res = await fetch(`${apiUrl}/api/v1/transcribe`, {
+            method: "POST",
+            body: formData,
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.transcript) {
+              setInput(data.transcript);
+            }
+          }
+        } catch (err) {
+          console.error("Transcription error:", err);
+        }
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingTime((prev) => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error("Could not access microphone:", err);
+    }
+  };
+
+  const stopRecording = () => {
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    setIsRecording(false);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
+  const speakText = (text: string, msgId?: string) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      setActiveSpeechMsgId(null);
+      if (msgId === activeSpeechMsgId) return;
+    }
+
+    const cleanText = text.replace(/[*#`_~]/g, "").trim();
+    if (!cleanText) return;
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    utterance.onstart = () => {
+      setIsSpeaking(true);
+      if (msgId) setActiveSpeechMsgId(msgId);
+    };
+
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      setActiveSpeechMsgId(null);
+    };
+
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+      setActiveSpeechMsgId(null);
+    };
+
+    window.speechSynthesis.speak(utterance);
+  };
 
   // Auto-scroll chat
   useEffect(() => {
@@ -536,6 +675,10 @@ export default function RAGPage() {
         }));
       } else {
         setEmployeeMessages((prev) => [...prev, newMsg]);
+      }
+
+      if (isVoiceMode && data.answer) {
+        speakText(data.answer, newMsg.id);
       }
     } catch {
       const errorMsg: Message = {
@@ -882,14 +1025,116 @@ export default function RAGPage() {
                   HR Category Agent — <strong>[{selectedFolder?.name || "No Folder Selected"}]</strong>
                 </span>
               </div>
-              <span className="text-xs font-mono text-zinc-500">
-                {folderDocuments.length > 0 ? `${folderDocuments.length} Docs Indexed` : "0 Docs"}
-              </span>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsVoiceMode(!isVoiceMode)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-2xs border ${
+                    isVoiceMode
+                      ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-500 shadow-blue-500/20 font-bold"
+                      : "bg-white hover:bg-zinc-100 text-zinc-700 border-zinc-200"
+                  }`}
+                >
+                  <Radio className={`w-3.5 h-3.5 ${isVoiceMode ? "text-white animate-pulse" : "text-zinc-500"}`} />
+                  <span>Voice Mode {isVoiceMode ? "ON" : "OFF"}</span>
+                </button>
+                <span className="text-xs font-mono text-zinc-500 hidden sm:inline">
+                  {folderDocuments.length > 0 ? `${folderDocuments.length} Docs Indexed` : "0 Docs"}
+                </span>
+              </div>
             </div>
 
             {/* Chat Messages */}
             <div className="flex-1 overflow-y-auto scrollbar-thin p-6 space-y-4 bg-zinc-50/40">
               <div className="max-w-2xl mx-auto space-y-4">
+                {/* BIG AUDIO VISUALIZER ICON COMPONENT */}
+                <AnimatePresence>
+                  {isVoiceMode && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                      className="bg-gradient-to-br from-zinc-900 via-blue-950 to-zinc-950 border border-blue-500/30 rounded-3xl p-8 mb-6 shadow-2xl flex flex-col items-center justify-center text-center relative overflow-hidden"
+                    >
+                      {/* Background ambient glow */}
+                      <div className={`absolute w-72 h-72 rounded-full blur-3xl pointer-events-none transition-all duration-700 ${
+                        isRecording ? "bg-red-500/25 animate-pulse" : isSpeaking ? "bg-purple-500/25 animate-pulse" : "bg-blue-500/20"
+                      }`} />
+
+                      {/* BIG AUDIO ICON WITH PULSING ANIMATED RINGS */}
+                      <div className="relative mb-5">
+                        <motion.div
+                          animate={{
+                            scale: isRecording ? [1, 1.4, 1] : isSpeaking ? [1, 1.25, 1] : [1, 1.1, 1],
+                            opacity: isRecording ? [0.8, 0.2, 0.8] : [0.4, 0.1, 0.4],
+                          }}
+                          transition={{ repeat: Infinity, duration: isRecording ? 1.2 : 2.5 }}
+                          className={`absolute -inset-5 rounded-full border-2 ${
+                            isRecording ? "border-red-500" : isSpeaking ? "border-purple-500" : "border-blue-400"
+                          }`}
+                        />
+                        <motion.div
+                          animate={{
+                            scale: isRecording ? [1, 1.7, 1] : [1, 1.2, 1],
+                            opacity: isRecording ? [0.5, 0.05, 0.5] : [0.2, 0, 0.2],
+                          }}
+                          transition={{ repeat: Infinity, duration: isRecording ? 1.2 : 2.5, delay: 0.3 }}
+                          className={`absolute -inset-10 rounded-full border ${
+                            isRecording ? "border-red-400" : isSpeaking ? "border-purple-400" : "border-blue-300/40"
+                          }`}
+                        />
+
+                        <button
+                          onClick={isRecording ? stopRecording : startRecording}
+                          className={`w-32 h-32 rounded-full flex items-center justify-center shadow-2xl transition-all relative z-10 ${
+                            isRecording
+                              ? "bg-red-600 hover:bg-red-700 text-white ring-8 ring-red-500/30 scale-105"
+                              : isSpeaking
+                              ? "bg-purple-600 hover:bg-purple-700 text-white ring-8 ring-purple-500/30"
+                              : "bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white ring-8 ring-blue-500/25"
+                          }`}
+                        >
+                          {isRecording ? (
+                            <Square className="w-12 h-12 animate-pulse text-white" />
+                          ) : isSpeaking ? (
+                            <Volume2 className="w-14 h-14 animate-pulse text-white" />
+                          ) : (
+                            <Mic className="w-14 h-14 text-white" />
+                          )}
+                        </button>
+                      </div>
+
+                      {/* Voice Status & Controls */}
+                      <div className="space-y-2 z-10">
+                        <div className="flex items-center justify-center gap-2">
+                          <span className={`w-3 h-3 rounded-full ${
+                            isRecording ? "bg-red-500 animate-ping" : isSpeaking ? "bg-purple-500 animate-pulse" : "bg-emerald-400 animate-pulse"
+                          }`} />
+                          <h3 className="font-bold text-base text-zinc-100 uppercase tracking-wider font-mono">
+                            {isRecording ? `Listening... (${recordingTime}s)` : isSpeaking ? "Speaking AI Answer..." : "Voice Mode Enabled"}
+                          </h3>
+                        </div>
+                        <p className="text-xs text-zinc-300 max-w-sm mx-auto leading-relaxed">
+                          {isRecording
+                            ? "Recording your speech. Click the big red button when finished."
+                            : isSpeaking
+                            ? "AI is reading out response. Click big speaker to stop."
+                            : "Click the BIG mic icon to ask a question via voice. AI will answer back with voice!"}
+                        </p>
+
+                        {isSpeaking && (
+                          <button
+                            onClick={() => speakText("")}
+                            className="mt-2 text-xs font-mono text-purple-300 hover:text-white underline transition-colors"
+                          >
+                            Stop Voice Playback
+                          </button>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 {!selectedFolderId && (
                   <div className="p-8 text-center border-2 border-dashed border-zinc-200/80 rounded-2xl bg-white max-w-md mx-auto my-12 shadow-2xs">
                     <Folder className="w-10 h-10 text-zinc-300 mx-auto mb-3" />
@@ -928,25 +1173,56 @@ export default function RAGPage() {
                         </div>
                       )}
 
-                      <div
-                        className={`p-4 rounded-2xl text-[13px] leading-relaxed shadow-xs ${
-                          msg.role === "assistant"
-                            ? "bg-white border border-zinc-200 text-zinc-800"
-                            : "bg-blue-600 text-white font-medium"
-                        }`}
-                      >
-                        {msg.content}
+                      <div className="flex items-start gap-2">
+                        <div
+                          className={`p-4 rounded-2xl text-[13px] leading-relaxed shadow-xs flex-1 ${
+                            msg.role === "assistant"
+                              ? "bg-white border border-zinc-200 text-zinc-800"
+                              : "bg-blue-600 text-white font-medium"
+                          }`}
+                        >
+                          {msg.content}
+                        </div>
+                        {msg.role === "assistant" && (
+                          <button
+                            type="button"
+                            onClick={() => speakText(msg.content, msg.id)}
+                            className={`p-2 rounded-xl border text-zinc-500 hover:text-blue-600 hover:bg-blue-50 transition-colors shrink-0 ${
+                              activeSpeechMsgId === msg.id && isSpeaking ? "text-purple-600 bg-purple-50 border-purple-200" : "bg-white border-zinc-200"
+                            }`}
+                            title="Listen to Voice Response"
+                          >
+                            {activeSpeechMsgId === msg.id && isSpeaking ? (
+                              <VolumeX className="w-4 h-4 text-purple-600 animate-pulse" />
+                            ) : (
+                              <Volume2 className="w-4 h-4" />
+                            )}
+                          </button>
+                        )}
                       </div>
 
                       {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
-                        <div className="mt-2">
-                          <button
-                            onClick={() => setActiveSource(msg.sources![0])}
-                            className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 px-3 py-1 rounded-lg transition-colors shadow-2xs"
-                          >
-                            <Crosshair className="w-3.5 h-3.5 text-blue-600" />
-                            <span>Target PDF Bounding Box</span>
-                          </button>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {msg.sources.map((src, sIdx) =>
+                            src.is_audio || src.timestamp_str ? (
+                              <div
+                                key={sIdx}
+                                className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1 rounded-lg shadow-2xs"
+                              >
+                                <FileAudio className="w-3.5 h-3.5 text-amber-600" />
+                                <span>Audio Timestamp {src.timestamp_str || `[Page ${src.page}]`}</span>
+                              </div>
+                            ) : (
+                              <button
+                                key={sIdx}
+                                onClick={() => setActiveSource(src)}
+                                className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 px-3 py-1 rounded-lg transition-colors shadow-2xs"
+                              >
+                                <Crosshair className="w-3.5 h-3.5 text-blue-600" />
+                                <span>Target PDF Bounding Box</span>
+                              </button>
+                            )
+                          )}
                         </div>
                       )}
                     </div>
@@ -980,17 +1256,17 @@ export default function RAGPage() {
                       onClick={() => fileInputRef.current?.click()}
                       className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold shrink-0 transition-colors shadow-2xs"
                     >
-                      Upload PDF
+                      Upload File
                     </button>
                   </div>
                 )}
 
-                <form onSubmit={handleSubmit} className="flex gap-3 items-center">
+                <form onSubmit={handleSubmit} className="flex gap-2 items-center">
                   <input
                     type="file"
                     ref={fileInputRef}
                     onChange={handleFileUpload}
-                    accept="application/pdf"
+                    accept=".pdf,.mp3,.wav,.m4a,.ogg,.flac,.aac,.webm,.wma,application/pdf,audio/*"
                     className="hidden"
                   />
                   <button
@@ -998,7 +1274,7 @@ export default function RAGPage() {
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isUploading || !selectedFolderId}
                     className="w-11 h-11 rounded-xl bg-zinc-100 hover:bg-blue-50 text-zinc-700 hover:text-blue-600 border border-zinc-200 hover:border-blue-200 flex items-center justify-center transition-all disabled:opacity-40 shrink-0"
-                    title={selectedFolderId ? `Upload Document to ${selectedFolder?.name}` : "Select folder first"}
+                    title={selectedFolderId ? `Upload File to ${selectedFolder?.name}` : "Select folder first"}
                   >
                     {isUploading ? <Loader2 className="w-5 h-5 animate-spin text-blue-600" /> : <Upload className="w-5 h-5" />}
                   </button>
@@ -1010,12 +1286,25 @@ export default function RAGPage() {
                       !selectedFolderId
                         ? "Select a folder first..."
                         : folderDocuments.length === 0
-                        ? `Upload a document to [${selectedFolder?.name}]...`
+                        ? `Upload a document or audio to [${selectedFolder?.name}]...`
                         : `Query category [${selectedFolder?.name}]...`
                     }
                     className="flex-1 bg-zinc-50 border border-zinc-200 focus:border-blue-500 rounded-xl px-4 py-2.5 text-[13px] text-zinc-900 placeholder:text-zinc-400 focus:outline-none transition-all shadow-inner disabled:bg-zinc-100 disabled:cursor-not-allowed"
                     disabled={isLoading || !selectedFolderId || folderDocuments.length === 0}
                   />
+
+                  <button
+                    type="button"
+                    onClick={isRecording ? stopRecording : startRecording}
+                    className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all shrink-0 border ${
+                      isRecording
+                        ? "bg-red-600 hover:bg-red-700 text-white border-red-500 animate-pulse shadow-md shadow-red-500/30"
+                        : "bg-zinc-100 hover:bg-blue-50 text-zinc-700 hover:text-blue-600 border-zinc-200 hover:border-blue-200"
+                    }`}
+                    title={isRecording ? "Stop Voice Recording" : "Record Voice Query"}
+                  >
+                    {isRecording ? <Square className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                  </button>
 
                   <button
                     type="submit"
@@ -1096,9 +1385,24 @@ export default function RAGPage() {
               </button>
             </div>
 
-            <div className="text-xs font-mono text-zinc-500 hidden sm:flex items-center gap-2">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Auto-Searching Across All {documents.length} HR Documents</span>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsVoiceMode(!isVoiceMode)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-2xs border ${
+                  isVoiceMode
+                    ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-500 shadow-blue-500/20 font-bold"
+                    : "bg-zinc-100 hover:bg-zinc-200 text-zinc-700 border-zinc-200"
+                }`}
+              >
+                <Radio className={`w-3.5 h-3.5 ${isVoiceMode ? "text-white animate-pulse" : "text-zinc-500"}`} />
+                <span>Voice Mode {isVoiceMode ? "ON" : "OFF"}</span>
+              </button>
+
+              <div className="text-xs font-mono text-zinc-500 hidden sm:flex items-center gap-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Auto-Searching Across All {documents.length} HR Documents</span>
+              </div>
             </div>
           </div>
 
@@ -1107,6 +1411,93 @@ export default function RAGPage() {
             <div className="flex-1 flex flex-col min-h-0 bg-white">
               <div className="flex-1 overflow-y-auto scrollbar-thin p-6 space-y-4 bg-zinc-50/40">
                 <div className="max-w-2xl mx-auto space-y-4">
+                  {/* BIG AUDIO VISUALIZER ICON COMPONENT */}
+                  <AnimatePresence>
+                    {isVoiceMode && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                        className="bg-gradient-to-br from-zinc-900 via-blue-950 to-zinc-950 border border-blue-500/30 rounded-3xl p-8 mb-6 shadow-2xl flex flex-col items-center justify-center text-center relative overflow-hidden"
+                      >
+                        {/* Background ambient glow */}
+                        <div className={`absolute w-72 h-72 rounded-full blur-3xl pointer-events-none transition-all duration-700 ${
+                          isRecording ? "bg-red-500/25 animate-pulse" : isSpeaking ? "bg-purple-500/25 animate-pulse" : "bg-blue-500/20"
+                        }`} />
+
+                        {/* BIG AUDIO ICON WITH PULSING ANIMATED RINGS */}
+                        <div className="relative mb-5">
+                          <motion.div
+                            animate={{
+                              scale: isRecording ? [1, 1.4, 1] : isSpeaking ? [1, 1.25, 1] : [1, 1.1, 1],
+                              opacity: isRecording ? [0.8, 0.2, 0.8] : [0.4, 0.1, 0.4],
+                            }}
+                            transition={{ repeat: Infinity, duration: isRecording ? 1.2 : 2.5 }}
+                            className={`absolute -inset-5 rounded-full border-2 ${
+                              isRecording ? "border-red-500" : isSpeaking ? "border-purple-500" : "border-blue-400"
+                            }`}
+                          />
+                          <motion.div
+                            animate={{
+                              scale: isRecording ? [1, 1.7, 1] : [1, 1.2, 1],
+                              opacity: isRecording ? [0.5, 0.05, 0.5] : [0.2, 0, 0.2],
+                            }}
+                            transition={{ repeat: Infinity, duration: isRecording ? 1.2 : 2.5, delay: 0.3 }}
+                            className={`absolute -inset-10 rounded-full border ${
+                              isRecording ? "border-red-400" : isSpeaking ? "border-purple-400" : "border-blue-300/40"
+                            }`}
+                          />
+
+                          <button
+                            onClick={isRecording ? stopRecording : startRecording}
+                            className={`w-32 h-32 rounded-full flex items-center justify-center shadow-2xl transition-all relative z-10 ${
+                              isRecording
+                                ? "bg-red-600 hover:bg-red-700 text-white ring-8 ring-red-500/30 scale-105"
+                                : isSpeaking
+                                ? "bg-purple-600 hover:bg-purple-700 text-white ring-8 ring-purple-500/30"
+                                : "bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white ring-8 ring-blue-500/25"
+                            }`}
+                          >
+                            {isRecording ? (
+                              <Square className="w-12 h-12 animate-pulse text-white" />
+                            ) : isSpeaking ? (
+                              <Volume2 className="w-14 h-14 animate-pulse text-white" />
+                            ) : (
+                              <Mic className="w-14 h-14 text-white" />
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Voice Status & Controls */}
+                        <div className="space-y-2 z-10">
+                          <div className="flex items-center justify-center gap-2">
+                            <span className={`w-3 h-3 rounded-full ${
+                              isRecording ? "bg-red-500 animate-ping" : isSpeaking ? "bg-purple-500 animate-pulse" : "bg-emerald-400 animate-pulse"
+                            }`} />
+                            <h3 className="font-bold text-base text-zinc-100 uppercase tracking-wider font-mono">
+                              {isRecording ? `Listening... (${recordingTime}s)` : isSpeaking ? "Speaking AI Answer..." : "Voice Mode Enabled"}
+                            </h3>
+                          </div>
+                          <p className="text-xs text-zinc-300 max-w-sm mx-auto leading-relaxed">
+                            {isRecording
+                              ? "Recording your speech. Click the big red button when finished."
+                              : isSpeaking
+                              ? "AI is reading out response. Click big speaker to stop."
+                              : "Click the BIG mic icon to ask a question via voice. AI will answer back with voice!"}
+                          </p>
+
+                          {isSpeaking && (
+                            <button
+                              onClick={() => speakText("")}
+                              className="mt-2 text-xs font-mono text-purple-300 hover:text-white underline transition-colors"
+                            >
+                              Stop Voice Playback
+                            </button>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                   {employeeMessages.map((msg) => (
                     <motion.div
                       key={msg.id}
@@ -1139,15 +1530,58 @@ export default function RAGPage() {
                           </div>
                         )}
 
-                        <div
-                          className={`p-4 rounded-2xl text-[13px] leading-relaxed shadow-xs whitespace-pre-wrap ${
-                            msg.role === "assistant"
-                              ? "bg-white border border-zinc-200 text-zinc-800 font-sans"
-                              : "bg-blue-600 text-white font-medium font-sans"
-                          }`}
-                        >
-                          {msg.content}
+                        <div className="flex items-start gap-2">
+                          <div
+                            className={`p-4 rounded-2xl text-[13px] leading-relaxed shadow-xs whitespace-pre-wrap flex-1 ${
+                              msg.role === "assistant"
+                                ? "bg-white border border-zinc-200 text-zinc-800 font-sans"
+                                : "bg-blue-600 text-white font-medium font-sans"
+                            }`}
+                          >
+                            {msg.content}
+                          </div>
+                          {msg.role === "assistant" && (
+                            <button
+                              type="button"
+                              onClick={() => speakText(msg.content, msg.id)}
+                              className={`p-2 rounded-xl border text-zinc-500 hover:text-blue-600 hover:bg-blue-50 transition-colors shrink-0 ${
+                                activeSpeechMsgId === msg.id && isSpeaking ? "text-purple-600 bg-purple-50 border-purple-200" : "bg-white border-zinc-200"
+                              }`}
+                              title="Listen to Voice Response"
+                            >
+                              {activeSpeechMsgId === msg.id && isSpeaking ? (
+                                <VolumeX className="w-4 h-4 text-purple-600 animate-pulse" />
+                              ) : (
+                                <Volume2 className="w-4 h-4" />
+                              )}
+                            </button>
+                          )}
                         </div>
+
+                        {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {msg.sources.map((src, sIdx) =>
+                              src.is_audio || src.timestamp_str ? (
+                                <div
+                                  key={sIdx}
+                                  className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1 rounded-lg shadow-2xs"
+                                >
+                                  <FileAudio className="w-3.5 h-3.5 text-amber-600" />
+                                  <span>Audio Timestamp {src.timestamp_str || `[Page ${src.page}]`}</span>
+                                </div>
+                              ) : (
+                                <button
+                                  key={sIdx}
+                                  onClick={() => setActiveSource(src)}
+                                  className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 px-3 py-1 rounded-lg transition-colors shadow-2xs"
+                                >
+                                  <Crosshair className="w-3.5 h-3.5 text-blue-600" />
+                                  <span>Target PDF Bounding Box</span>
+                                </button>
+                              )
+                            )}
+                          </div>
+                        )}
                       </div>
                     </motion.div>
                   ))}
@@ -1244,7 +1678,7 @@ export default function RAGPage() {
                     )}
                   </AnimatePresence>
 
-                  <form onSubmit={handleSubmit} className="flex gap-3 items-center">
+                  <form onSubmit={handleSubmit} className="flex gap-2 items-center">
                     <div className="relative flex-1">
                       <input
                         ref={inputRef}
@@ -1260,6 +1694,19 @@ export default function RAGPage() {
                         </span>
                       )}
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={isRecording ? stopRecording : startRecording}
+                      className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all shrink-0 border ${
+                        isRecording
+                          ? "bg-red-600 hover:bg-red-700 text-white border-red-500 animate-pulse shadow-md shadow-red-500/30"
+                          : "bg-zinc-100 hover:bg-blue-50 text-zinc-700 hover:text-blue-600 border-zinc-200 hover:border-blue-200"
+                      }`}
+                      title={isRecording ? "Stop Voice Recording" : "Record Voice Query"}
+                    >
+                      {isRecording ? <Square className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                    </button>
 
                     <button
                       type="submit"
