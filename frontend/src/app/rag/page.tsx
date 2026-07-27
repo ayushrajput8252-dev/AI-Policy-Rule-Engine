@@ -43,6 +43,7 @@ type Message = {
   translated_query?: string;
   isAgentic?: boolean;
   latencyMs?: number;
+  retrieval_mode?: "rules" | "chunks" | "missing";
 };
 
 type Rule = {
@@ -265,85 +266,54 @@ export default function RAGPage() {
   );
 
   // Fetch Rules from Backend API
-  const fetchRules = async () => {
-    if (!currentDocId) return;
+  const fetchRules = async (docIdOverride?: string | null) => {
+    const targetDocId = docIdOverride !== undefined ? docIdOverride : currentDocId;
     setIsFetchingRules(true);
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const res = await fetch(`${apiUrl}/api/v1/rules?document_id=${currentDocId}`).catch(() => null);
+      const url = targetDocId 
+        ? `${apiUrl}/api/v1/rules?document_id=${targetDocId}` 
+        : `${apiUrl}/api/v1/rules`;
+      const res = await fetch(url).catch(() => null);
 
       if (res && res.ok) {
         const data = await res.json();
         const rules = data.rules || [];
-        if (rules.length > 0) {
-          setExtractedRules(rules);
-          setDocStatus("completed");
+        const status = data.status || "completed";
+
+        setExtractedRules(rules);
+        setDocStatus(status);
+        if (targetDocId) {
           setDocuments((prev) =>
             prev.map((doc) =>
-              doc.id === currentDocId
-                ? { ...doc, extractedRules: rules, status: "completed" }
+              doc.id === targetDocId
+                ? { ...doc, extractedRules: rules, status: status }
                 : doc
             )
           );
-          return;
         }
+      } else {
+        setExtractedRules([]);
       }
-
-      // Fallback preview rules
-      const fallbackRules: Rule[] = [
-        {
-          id: `rule-1-${currentDocId}`,
-          canonical_rule: `[Policy Standard]: Employees must adhere to data security controls & compliance standards specified in ${currentFileName || "document"}.`,
-          type: "SECURITY_POLICY",
-          confidence: 97,
-          document_id: currentDocId,
-          page: 1,
-          bbox: [100, 150, 450, 200],
-          page_dim: [612, 792]
-        },
-        {
-          id: `rule-2-${currentDocId}`,
-          canonical_rule: `[Financial Governance]: Expenses over $1,000 require multi-tier manager authorization prior to disbursement.`,
-          type: "FINANCE_CONTROL",
-          confidence: 95,
-          document_id: currentDocId,
-          page: 1,
-          bbox: [120, 250, 480, 310],
-          page_dim: [612, 792]
-        },
-        {
-          id: `rule-3-${currentDocId}`,
-          canonical_rule: `[Compliance Mandate]: Annual policy review and security awareness attestation required by end of Q4.`,
-          type: "COMPLIANCE_MANDATE",
-          confidence: 99,
-          document_id: currentDocId,
-          page: 2,
-          bbox: [80, 180, 500, 240],
-          page_dim: [612, 792]
-        }
-      ];
-
-      setExtractedRules(fallbackRules);
-      setDocStatus("completed");
-      setDocuments((prev) =>
-        prev.map((doc) =>
-          doc.id === currentDocId
-            ? { ...doc, extractedRules: fallbackRules, status: "completed" }
-            : doc
-        )
-      );
     } catch {
-      setDocStatus("completed");
+      setExtractedRules([]);
     } finally {
       setIsFetchingRules(false);
     }
   };
 
   useEffect(() => {
-    if (currentDocId && docStatus === "processing") {
-      fetchRules();
-    }
-  }, [currentDocId, docStatus]);
+    fetchRules();
+
+    // Poll for updates if document status is still processing
+    const interval = setInterval(() => {
+      if (docStatus === "processing") {
+        fetchRules();
+      }
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [currentDocId, sidebarTab, docStatus]);
 
   // Handle Folder Creation
   const handleAddFolder = (e?: React.FormEvent) => {
@@ -555,6 +525,7 @@ export default function RAGPage() {
         language_name: data.language_name,
         original_query: data.original_query,
         translated_query: data.translated_query,
+        retrieval_mode: data.retrieval_mode,
         latencyMs: latency,
       };
 

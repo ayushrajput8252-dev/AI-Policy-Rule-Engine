@@ -17,7 +17,7 @@ def extract_rules_batch(chunks_batch: list[dict], max_retries: int = 4) -> list[
     chunks_text = "\n\n".join(formatted_chunks)
     
     prompt = f"""
-    You are an AI Document Intelligence Assistant. Evaluate each document chunk below and extract any actionable business rules, compliance requirements, guidelines, obligations, permissions, or prohibitions.
+    You are an AI Document Intelligence Assistant. Evaluate each document chunk below and extract all actionable business rules, compliance requirements, guidelines, obligations, permissions, or prohibitions.
 
     Chunks to process:
     {chunks_text}
@@ -27,16 +27,22 @@ def extract_rules_batch(chunks_batch: list[dict], max_retries: int = 4) -> list[
       {{
         "chunk_index": 0,
         "is_candidate": true,
-        "key_finding": "Summary of rule or requirement",
-        "actor": "Who must follow this rule (e.g. Employee, User, Admin, Contractor)",
+        "key_finding": "Exact summary of rule or requirement",
+        "actor": "Who must follow this rule (e.g. Employee, Admin, Contractor, User)",
         "action": "Action required, prohibited, or allowed",
         "condition": "Applicable context or condition under which rule applies",
         "type": "OBLIGATION | PROHIBITION | PERMISSION | RECOMMENDATION | GUIDELINE",
-        "confidence": 85
+        "confidence": 90
       }}
     ]
 
-    Only set is_candidate to true if the chunk actually contains a business rule, policy, guideline, or requirement (skip pure titles/headers or page numbers).
+    Rules guidelines:
+    - OBLIGATION: Mandatory requirements ("must", "shall", "required to").
+    - PROHIBITION: Forbidden actions ("must not", "prohibited", "never").
+    - PERMISSION: Allowed privileges ("may", "allowed to", "permitted").
+    - RECOMMENDATION / GUIDELINE: Best practices and standard procedures ("should", "recommended").
+    
+    Extract every valid policy sentence or rule statement. Skip pure document page numbers or cover page headers.
     Return ONLY valid JSON.
     """
     
@@ -44,24 +50,60 @@ def extract_rules_batch(chunks_batch: list[dict], max_retries: int = 4) -> list[
         data = generate_json(prompt)
         if isinstance(data, dict) and "rules" in data:
             data = data["rules"]
+        if isinstance(data, dict) and "results" in data:
+            data = data["results"]
         if not isinstance(data, list):
-            data = [data]
-        return data
+            data = [data] if isinstance(data, dict) else []
+            
+        if data:
+            return data
     except Exception as e:
-        print(f"[Extraction Error] Fallback to chunk text: {str(e)}")
-        fallback_results = []
-        for idx, c in enumerate(chunks_batch):
+        print(f"[Extraction Error] Fallback to sentence extraction: {str(e)}")
+        
+    # Robust fallback: extract clean sentences from chunks
+    fallback_results = []
+    rule_keywords = ["must", "shall", "should", "required", "prohibited", "allowed", "may", "never", "policy", "ensure", "guideline"]
+    
+    for idx, c in enumerate(chunks_batch):
+        content = c.get("content", "").strip()
+        if not content:
+            continue
+            
+        sentences = [s.strip() for s in re.split(r'[.\n]+', content) if len(s.strip()) > 15]
+        found_rule = False
+        
+        for s in sentences:
+            s_lower = s.lower()
+            if any(k in s_lower for k in rule_keywords):
+                rule_type = "PROHIBITION" if any(p in s_lower for p in ["prohibited", "must not", "never"]) else (
+                    "OBLIGATION" if any(o in s_lower for o in ["must", "shall", "required"]) else "GUIDELINE"
+                )
+                fallback_results.append({
+                    "chunk_index": idx,
+                    "is_candidate": True,
+                    "key_finding": s,
+                    "actor": "Applicable Subject",
+                    "action": "Policy Compliance",
+                    "condition": c.get("section", "General Section"),
+                    "type": rule_type,
+                    "confidence": 85
+                })
+                found_rule = True
+                
+        if not found_rule and sentences:
+            # Fall back to first key sentence of chunk
             fallback_results.append({
                 "chunk_index": idx,
                 "is_candidate": True,
-                "key_finding": c.get("content", "").strip()[:200],
-                "actor": "General User",
-                "action": "Compliance",
-                "condition": c.get("section", "General"),
+                "key_finding": sentences[0],
+                "actor": "Organization Member",
+                "action": "Procedural Standard",
+                "condition": c.get("section", "General Section"),
                 "type": "GUIDELINE",
-                "confidence": 75
+                "confidence": 80
             })
-        return fallback_results
+            
+    return fallback_results
 
 def extract_rule(text: str, rule_type: str) -> dict:
     """

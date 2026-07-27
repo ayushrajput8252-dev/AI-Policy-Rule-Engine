@@ -40,7 +40,8 @@ def _call_grok_groq_api(prompt: str, system_instruction: str = None) -> str:
 
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "User-Agent": "AI-Policy-Rule-Engine/1.0"
     }
 
     req = urllib.request.Request(
@@ -56,7 +57,7 @@ def _call_grok_groq_api(prompt: str, system_instruction: str = None) -> str:
 
 def _call_gemini_api(prompt: str, system_instruction: str = None) -> str:
     """
-    Calls fallback Gemini 2.5 Flash API.
+    Calls fallback Gemini API (tries gemini-flash-latest, gemini-2.5-flash, gemini-2.0-flash).
     """
     if not gemini_client:
         raise ValueError("Gemini API key not configured.")
@@ -65,14 +66,21 @@ def _call_gemini_api(prompt: str, system_instruction: str = None) -> str:
     if system_instruction:
         full_prompt = f"{system_instruction}\n\n{prompt}"
 
-    response = gemini_client.models.generate_content(
-        model='gemini-2.5-flash',
-        contents=full_prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-        ),
-    )
-    return response.text
+    for model_name in ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"]:
+        try:
+            response = gemini_client.models.generate_content(
+                model=model_name,
+                contents=full_prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                ),
+            )
+            if response and response.text:
+                return response.text
+        except Exception as e:
+            print(f"[Gemini Model {model_name} Warning]: {e}")
+            
+    raise ValueError("All Gemini model attempts failed.")
 
 def generate_json(prompt: str, system_instruction: str = None) -> dict | list:
     """

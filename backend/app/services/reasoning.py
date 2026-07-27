@@ -1,60 +1,175 @@
 import json
 from .llm_service import generate_json
+from ..database import SessionLocal
+from ..models import Chunk
 
-def generate_answer(query: str, retrieved_rules: list[dict]) -> dict:
-    """
-    Uses Grok (primary) / Gemini (fallback) to reason over the retrieved rules and answer the user query.
-    Never sends the entire document, only top-K validated rules.
-    """
-    
-    rules_context = "\n".join([
-        f"- Rule ID: {r['rule_id']}\n"
-        f"  Type: {r['metadata'].get('type', 'Unknown')}\n"
-        f"  Rule: {r['metadata'].get('canonical_rule', '')}\n"
-        f"  Source: Doc {r['metadata'].get('document_id', '')}, Page {r['metadata'].get('page', '')}, Section {r['metadata'].get('section', '')}"
-        for r in retrieved_rules
-    ])
-    
-    prompt = f"""
-    You are an AI Document Intelligence Engine. Answer the user's question using the provided context. 
-    If the provided context does not fully contain the answer, you may supplement it with your general knowledge, but prioritize the context.
+def _is_truthy(val) -> bool:
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, str):
+        return val.strip().lower() in ("true", "1", "yes")
+    return bool(val)
 
-    User Question: "{query}"
-    
-    Retrieved Rules Context:
-    {rules_context}
-    
-    Return a JSON object with the following schema:
-    {{
-      "answer": "Your comprehensive answer based on the rules (string)"
-    }}
-    
-    Return ONLY valid JSON.
+def generate_answer_with_fallback(query: str, retrieved_rules: list[dict], retrieved_chunks: list[dict]) -> dict:
+    """
+    Dual-tier reasoning pipeline:
+    1. First tries answering using retrieved Rules.
+    2. If Rules context does not contain the answer, falls back to Normal Chunk context.
+    3. If neither contains the required info, returns "Required info missing".
     """
     
-    data = generate_json(prompt)
-    if not isinstance(data, dict):
-        data = {"answer": str(data)}
-        
-    sources = []
+    # ── Tier 1: Try Rule-Based Reasoning ──
+    rules_text_list = []
+    rule_sources = []
     for r in retrieved_rules:
         meta = r.get("metadata", {})
-        bbox = meta.get("bbox")
-        page_dim = meta.get("page_dim")
-        if isinstance(bbox, str):
-            try: bbox = json.loads(bbox)
-            except: pass
-        if isinstance(page_dim, str):
-            try: page_dim = json.loads(page_dim)
-            except: pass
-            
-        sources.append({
-            "document_id": meta.get("document_id"),
-            "page": meta.get("page"),
-            "bbox": bbox,
-            "page_dim": page_dim
-        })
-        
-    data["sources"] = sources
-    return data
+        rule_str = meta.get("canonical_rule") or meta.get("key_finding", "")
+        # Include match if score > 0.15
+        if rule_str and r.get("score", 0) > 0.15:
+            rules_text_list.append(
+                f"- [Rule ID: {meta.get('rule_id', r.get('rule_id', 'N/A'))}] ({meta.get('type', 'GUIDELINE')}): {rule_str}. Section: {meta.get('section', 'General')}"
+            )
+            bbox = meta.get("bbox")
+            page_dim = meta.get("page_dim")
+            if isinstance(bbox, str):
+                try: bbox = json.loads(bbox)
+                except: pass
+            if isinstance(page_dim, str):
+                try: page_dim = json.loads(page_dim)
+                except: pass
+            rule_sources.append({
+                "document_id": meta.get("document_id"),
+                "page": meta.get("page"),
+                "bbox": bbox,
+                "page_dim": page_dim
+            })
 
+    if rules_text_list:
+        rules_context = "\n".join(rules_text_list)
+        prompt_rules = f"""
+        You are an AI Policy Intelligence Engine. Answer the user question using the extracted policy rules context below.
+
+        User Question: "{query}"
+
+        Extracted Policy Rules Context:
+        {rules_context}
+
+        Instructions:
+        1. If the rules context contains relevant information or allows answering the user question, provide a detailed answer and set "has_info": true.
+        2. ONLY set "has_info": false if the rules context is completely unrelated or missing the required information.
+
+        Return ONLY a JSON object:
+        {{
+          "has_info": true,
+          "answer": "Your comprehensive answer based on rules"
+        }}
+        """
+        try:
+            res_rules = generate_json(prompt_rules)
+            if isinstance(res_rules, dict):
+                has_info = _is_truthy(res_rules.get("has_info"))
+                answer = res_rules.get("answer", "").strip()
+                if has_info and answer and "required info missing" not in answer.lower():
+                    return {
+                        "answer": answer,
+                        "sources": rule_sources,
+                        "retrieval_mode": "rules"
+                    }
+        except Exception as e:
+            print(f"[Reasoning Tier 1 Error]: {e}")
+            # Direct text fallback from top matched rule
+            top_rule_strs = [r.get("metadata", {}).get("canonical_rule", "") for r in retrieved_rules if r.get("metadata", {}).get("canonical_rule")]
+            if top_rule_strs:
+                return {
+                    "answer": f"Based on policy rules: {top_rule_strs[0]}",
+                    "sources": rule_sources,
+                    "retrieval_mode": "rules"
+                }
+
+    # ── Tier 2: Fallback to Normal Chunk-Based RAG ──
+    chunks_text_list = []
+    chunk_sources = []
+    
+    # Expand chunk content from DB if needed
+    db = SessionLocal()
+    try:
+        for c in retrieved_chunks:
+            meta = c.get("metadata", {})
+            chunk_id = meta.get("chunk_id")
+            content = meta.get("content", "")
+            
+            # Fetch full content from DB if metadata preview is short
+            if chunk_id and len(content) < 50:
+                db_chunk = db.query(Chunk).filter(Chunk.id == chunk_id).first()
+                if db_chunk and db_chunk.content:
+                    content = db_chunk.content
+                    
+            if content and c.get("score", 0) > 0.15:
+                chunks_text_list.append(f"- [Section: {meta.get('section', 'General')}, Page {meta.get('page', 1)}]: {content}")
+                bbox = meta.get("bbox")
+                page_dim = meta.get("page_dim")
+                if isinstance(bbox, str):
+                    try: bbox = json.loads(bbox)
+                    except: pass
+                if isinstance(page_dim, str):
+                    try: page_dim = json.loads(page_dim)
+                    except: pass
+                chunk_sources.append({
+                    "document_id": meta.get("document_id"),
+                    "page": meta.get("page"),
+                    "bbox": bbox,
+                    "page_dim": page_dim
+                })
+    finally:
+        db.close()
+
+    if chunks_text_list:
+        chunks_context = "\n".join(chunks_text_list)
+        prompt_chunks = f"""
+        You are an AI Document Assistant. Answer the user question using the raw document text context below.
+
+        User Question: "{query}"
+
+        Document Text Context:
+        {chunks_context}
+
+        Instructions:
+        1. If the document context contains relevant information or allows answering the question, provide a complete response and set "has_info": true.
+        2. ONLY set "has_info": false if the document context is completely unrelated or missing the required information.
+
+        Return ONLY a JSON object:
+        {{
+          "has_info": true,
+          "answer": "Your detailed answer based on document text"
+        }}
+        """
+        try:
+            res_chunks = generate_json(prompt_chunks)
+            if isinstance(res_chunks, dict):
+                has_info = _is_truthy(res_chunks.get("has_info"))
+                answer = res_chunks.get("answer", "").strip()
+                if has_info and answer and "required info missing" not in answer.lower():
+                    return {
+                        "answer": answer,
+                        "sources": chunk_sources,
+                        "retrieval_mode": "chunks"
+                    }
+        except Exception as e:
+            print(f"[Reasoning Tier 2 Error]: {e}")
+            top_chunk_strs = [c.get("metadata", {}).get("content", "") for c in retrieved_chunks if c.get("metadata", {}).get("content")]
+            if top_chunk_strs:
+                return {
+                    "answer": f"Based on document context: {top_chunk_strs[0][:300]}...",
+                    "sources": chunk_sources,
+                    "retrieval_mode": "chunks"
+                }
+
+    # ── Tier 3: Final Fallback - Required info missing ──
+    return {
+        "answer": "Required info missing from document context.",
+        "sources": [],
+        "retrieval_mode": "missing"
+    }
+
+def generate_answer(query: str, retrieved_rules: list[dict]) -> dict:
+    return generate_answer_with_fallback(query, retrieved_rules, [])

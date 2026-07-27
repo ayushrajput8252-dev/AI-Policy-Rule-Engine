@@ -60,46 +60,53 @@ def process_document_task(document_id: str, file_path: str):
         db.add_all(db_chunks)
         db.commit()
         
+        from .services.canonicalization import store_chunks_batch_in_pinecone
         from .services.extraction import extract_rules_batch
+        from concurrent.futures import ThreadPoolExecutor
         
-        valid_rules_count = 0
-        BATCH_SIZE = 10
-        
-        # Process ALL chunks in batches without artificial sleep delays or chunk limits
-        for i in range(0, len(chunks), BATCH_SIZE):
-            batch = chunks[i : i + BATCH_SIZE]
-            batch_results = extract_rules_batch(batch)
+        # 1. Parallel Task A: Index raw document chunks into Pinecone for Normal Chunk RAG
+        # 2. Parallel Task B: Extract structured rules from chunks
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            chunk_indexing_future = executor.submit(store_chunks_batch_in_pinecone, chunks)
             
-            # Map batch results back to individual chunks and canonicalize/store
-            for res in batch_results:
-                chunk_idx = res.get("chunk_index")
-                if chunk_idx is not None and 0 <= chunk_idx < len(batch):
-                    c = batch[chunk_idx]
-                else:
-                    c = batch[0] if batch else {}
-                    
-                if not res.get("is_candidate", True):
-                    continue
-                    
-                extracted = {
-                    "key_finding": res.get("key_finding", c.get("content", "")[:200]),
-                    "context": res.get("condition") or c.get("content", ""),
-                    "actor": res.get("actor", "N/A"),
-                    "action": res.get("action", "N/A"),
-                    "type": res.get("type", "GUIDELINE"),
-                    "confidence": res.get("confidence", 85)
-                }
+            valid_rules_count = 0
+            BATCH_SIZE = 10
+            
+            for i in range(0, len(chunks), BATCH_SIZE):
+                batch = chunks[i : i + BATCH_SIZE]
+                batch_results = extract_rules_batch(batch)
                 
-                canonicalize_and_store_rule(
-                    document_id=document_id,
-                    page=c.get("page"),
-                    section=c.get("section"),
-                    rule_data=extracted,
-                    db_session=db,
-                    bbox=c.get("bbox"),
-                    page_dim=c.get("page_dim")
-                )
-                valid_rules_count += 1
+                for res in batch_results:
+                    chunk_idx = res.get("chunk_index")
+                    if chunk_idx is not None and 0 <= chunk_idx < len(batch):
+                        c = batch[chunk_idx]
+                    else:
+                        c = batch[0] if batch else {}
+                        
+                    if not res.get("is_candidate", True):
+                        continue
+                        
+                    extracted = {
+                        "key_finding": res.get("key_finding", c.get("content", "")[:200]),
+                        "context": res.get("condition") or c.get("content", ""),
+                        "actor": res.get("actor", "N/A"),
+                        "action": res.get("action", "N/A"),
+                        "type": res.get("type", "GUIDELINE"),
+                        "confidence": res.get("confidence", 85)
+                    }
+                    
+                    canonicalize_and_store_rule(
+                        document_id=document_id,
+                        page=c.get("page"),
+                        section=c.get("section"),
+                        rule_data=extracted,
+                        db_session=db,
+                        bbox=c.get("bbox"),
+                        page_dim=c.get("page_dim")
+                    )
+                    valid_rules_count += 1
+                    
+            chunk_indexing_future.result() # ensure chunk indexing completed
         
         print(f"Processed {valid_rules_count} valid rules for document {document_id}")
         
