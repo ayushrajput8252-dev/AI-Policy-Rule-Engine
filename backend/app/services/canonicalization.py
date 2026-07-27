@@ -44,6 +44,14 @@ def store_chunks_batch_in_pinecone(chunks: list[dict]):
                 "section": section,
                 "content": content[:1000]  # Store content preview in metadata
             }
+            if c.get("is_audio"):
+                metadata["is_audio"] = True
+                metadata["timestamp_str"] = c.get("timestamp_str", "")
+                if c.get("start_time") is not None:
+                    metadata["start_time"] = float(c.get("start_time"))
+                if c.get("end_time") is not None:
+                    metadata["end_time"] = float(c.get("end_time"))
+
             if c.get("bbox") and c.get("page_dim"):
                 import json
                 metadata["bbox"] = json.dumps(c.get("bbox"))

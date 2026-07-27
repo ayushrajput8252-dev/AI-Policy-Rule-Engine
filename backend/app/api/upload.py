@@ -11,13 +11,16 @@ router = APIRouter()
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+ALLOWED_EXTENSIONS = {".pdf", ".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".webm", ".wma"}
+
 @router.post("/upload")
 async def upload_documents(background_tasks: BackgroundTasks, files: List[UploadFile] = File(...), db: Session = Depends(get_db)):
     results = []
     
     for file in files:
-        if not file.filename.endswith(".pdf"):
-            results.append({"filename": file.filename, "status": "failed", "reason": "Only PDF files are supported."})
+        ext = os.path.splitext(file.filename)[1].lower() if file.filename else ""
+        if ext not in ALLOWED_EXTENSIONS:
+            results.append({"filename": file.filename, "status": "failed", "reason": f"Unsupported file type. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"})
             continue
             
         doc_id = str(uuid.uuid4())
