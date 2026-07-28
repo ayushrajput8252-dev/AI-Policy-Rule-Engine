@@ -41,6 +41,57 @@ def process_document_task(document_id: str, file_path: str):
             meta["status"] = "processing"
             doc.metadata_ = meta
             db.commit()
+
+        ext = os.path.splitext(file_path)[1].lower()
+        AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".webm", ".wma"}
+
+        if ext in AUDIO_EXTS:
+            from .services.audio_service import (
+                validate_audio_format,
+                transcribe_audio,
+                merge_small_segments,
+                chunk_audio_transcript
+            )
+            from .services.canonicalization import store_chunks_batch_in_pinecone
+            
+            print(f"[Worker] Starting Audio Processing Pipeline for {document_id} ({ext})...")
+            validation = validate_audio_format(file_path)
+            if not validation.get("is_valid", True):
+                raise ValueError(validation.get("reason", "Invalid audio file"))
+                
+            raw_segments = transcribe_audio(file_path)
+            merged_segments = merge_small_segments(raw_segments)
+            chunks = chunk_audio_transcript(document_id, merged_segments)
+            print(f"[Worker] Created {len(chunks)} audio transcript chunks for {document_id}")
+            
+            # Save chunks to DB
+            db_chunks = []
+            for c in chunks:
+                db_chunks.append(
+                    Chunk(
+                        id=c["chunk_id"],
+                        document_id=c["document_id"],
+                        page=c["page"],
+                        section=c["section"],
+                        content=c["content"]
+                    )
+                )
+            db.add_all(db_chunks)
+            db.commit()
+            
+            # Index into Pinecone
+            store_chunks_batch_in_pinecone(chunks)
+            
+            if doc:
+                meta = dict(doc.metadata_ or {})
+                meta["status"] = "completed"
+                meta["is_audio"] = True
+                meta["audio_segments_count"] = len(merged_segments)
+                doc.metadata_ = meta
+                db.commit()
+                
+            return {"status": "success", "chunks_count": len(chunks), "type": "audio"}
+
         md_content = parse_pdf(file_path)
         chunks = chunk_document(document_id, md_content)
         print(f"Generated {len(chunks)} chunks for {document_id}")

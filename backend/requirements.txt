@@ -15,3 +15,6 @@ python-multipart
 pydantic
 pydantic-settings
 langdetect
+gTTS
+pydub
+faster-whisper
