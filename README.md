@@ -1,47 +1,60 @@
-# 🚀 AI Policy Rule Engine
+# AI Policy Rule Engine
 
-![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white) ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi) ![Celery](https://img.shields.io/badge/Celery-37814A?style=for-the-badge&logo=celery&logoColor=white) ![Redis](https://img.shields.io/badge/redis-%23DD0031.svg?style=for-the-badge&logo=redis&logoColor=white) ![Pinecone](https://img.shields.io/badge/Pinecone-000000?style=for-the-badge&logo=pinecone&logoColor=white) ![Next JS](https://img.shields.io/badge/Next-black?style=for-the-badge&logo=next.js&logoColor=white)
+Turns messy policy PDFs (HR manuals, compliance docs, contracts) into structured, queryable business rules — with every answer traced back to the exact page and paragraph it came from.
 
-An AI-powered platform that automatically reads complex documents (like compliance manuals or contracts) and extracts structured business rules. It turns messy, unstructured paragraphs into clean, searchable data.
+![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat-square&logo=fastapi) ![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat-square&logo=next.js) ![Pinecone](https://img.shields.io/badge/Pinecone-000000?style=flat-square&logo=pinecone) ![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat-square&logo=redis&logoColor=white)
 
-![alt text](image.png)
+**[Live Demo](https://ai-policy-rule-engine.vercel.app)** · [Architecture](#how-it-works) · [Run Locally](#run-locally)
 
-## ✨ Why this project stands out (Engineering Highlights)
-- **Scalable Background Processing**: Built with **Celery & Redis** to handle heavy AI workloads in the background, ensuring the main API never slows down or freezes.
-- **Advanced AI Pipeline**: Instead of a basic "zero-shot" prompt, it uses a multi-step LLM process to guarantee high accuracy and zero hallucinations.
-- **Lightning Fast RAG Search**: Integrated **Pinecone Vector DB** and local embeddings to enable instant semantic search across thousands of extracted rules.
-- **Modern Full-Stack**: Engineered end-to-end with a responsive **Next.js** frontend, a **FastAPI** backend, and a strict **SQL** database schema.
+![Screenshot](image.png)
 
-## 🧠 How the AI Pipeline Works
-The engine doesn't just guess; it follows a strict, step-by-step flow:
-1. **Ingest**: Parses PDFs to retain document layout and context.
-2. **Detect**: Uses NLP to identify which blocks of text actually contain rules.
-3. **Classify**: Categorizes the text (e.g., *Rule*, *Guideline*, *Obligation*).
-4. **Extract**: Structurally maps the text into rigid JSON (`Actor`, `Action`, `Condition`).
-5. **Validate**: Self-evaluates the extracted data and rejects anything under 85% confidence.
+## The problem
 
-## 🛠️ Tech Stack
-- **Frontend**: Next.js (React 19), Tailwind CSS v4, shadcn/ui
-- **Backend**: FastAPI (Python), Pydantic, SQLAlchemy, PostgreSQL/SQLite
-- **AI & Infrastructure**: Google GenAI, Pinecone, Sentence-Transformers, Celery, Redis
+Compliance and HR teams sit on hundreds of pages of policy documents. Answering "can an employee expense a business dinner?" means someone manually re-reading a PDF. This engine reads it once, extracts every rule as structured data, and answers questions in seconds — citing the exact sentence and page it used.
 
-## 🚀 Quick Start
+## How it works
 
-**1. Start Backend & Background Worker**
+A 6-stage pipeline turns raw PDF text into grounded, structured knowledge:
+
+`Parse → Chunk → Detect → Classify → Extract → Validate` → dual-indexed in **Pinecone** (vector search) + **SQL** (structured queries).
+
+Queries then run through a **dual-tier RAG reasoner**: try answering from structured rules first, fall back to raw document chunks if the rules don't cover it, and only then admit "not found" — instead of guessing.
+
+## Why it's more than a wrapper around an LLM API
+
+- **Self-validating extraction** — every extracted rule gets a confidence score; anything under 85% is discarded before it ever reaches the database, not surfaced to the user as a guess.
+- **Dual-provider LLM fallback** — primary calls go to Groq/Grok; on failure (rate limit, timeout, bad key) the pipeline transparently retries on Gemini, so a single provider outage doesn't take down the product.
+- **Grounded citations, not just text** — each rule retains its page number and bounding box, so the UI can highlight the *exact* source sentence in the original PDF next to the answer.
+- **Multilingual retrieval** — non-English queries are detected, translated for retrieval/reasoning (so vector search quality doesn't degrade), then translated back for the user.
+- **Redis-backed caching** for both query results and embeddings, keeping repeat queries fast without re-hitting the LLM or vector DB.
+
+## Tech stack
+
+| Layer | Stack |
+|---|---|
+| Frontend | Next.js 16 (React 19), Tailwind CSS v4, shadcn/ui, react-pdf |
+| Backend | FastAPI, SQLAlchemy, Pydantic |
+| AI / Retrieval | Groq/Grok + Gemini (fallback), Pinecone, Sentence-Transformers |
+| Infra | Redis (caching), Celery (async task scaffolding), SQLite/PostgreSQL |
+
+## Run locally
+
 ```bash
+# Backend
 cd backend
 pip install -r requirements.txt
-
-# Start the API (Terminal 1)
 uvicorn app.main:app --reload
 
-# Start the AI Worker (Terminal 2)
-celery -A app.worker.celery_app worker --loglevel=info
-```
-
-**2. Start Frontend UI**
-```bash
+# Frontend
 cd frontend
 npm install
 npm run dev
 ```
+
+Copy `.env.example` → `.env` and add your `GEMINI_API_KEY` / `GROQ_API_KEY` and `PINECONE_API_KEY`.
+
+## Author
+
+**Ayush Singh** — [GitHub](https://github.com/ayushrajput8252-dev) · [LinkedIn](https://www.linkedin.com/in/ayush-singh-aiml/)
+
+Licensed under [MIT](LICENSE).

@@ -71,10 +71,12 @@ def process_document_task(document_id: str, file_path: str):
             
             valid_rules_count = 0
             BATCH_SIZE = 10
+            import time
             
             for i in range(0, len(chunks), BATCH_SIZE):
                 batch = chunks[i : i + BATCH_SIZE]
                 batch_results = extract_rules_batch(batch)
+                time.sleep(0.3)
                 
                 for res in batch_results:
                     chunk_idx = res.get("chunk_index")
