@@ -118,7 +118,11 @@ def generate_answer_with_fallback(query: str, retrieved_rules: list[dict], retri
                     "document_id": meta.get("document_id"),
                     "page": meta.get("page"),
                     "bbox": bbox,
-                    "page_dim": page_dim
+                    "page_dim": page_dim,
+                    "is_audio": meta.get("is_audio", False),
+                    "timestamp_str": meta.get("timestamp_str", ""),
+                    "start_time": meta.get("start_time"),
+                    "end_time": meta.get("end_time")
                 })
     finally:
         db.close()

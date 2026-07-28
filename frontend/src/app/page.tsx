@@ -299,85 +299,8 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ─── ARCHITECTURE MODAL ─── */}
-      <AnimatePresence>
-        {archModalOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.96, y: 15 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.96, y: 15 }}
-              className="bg-white border border-zinc-300 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden font-sans"
-            >
-              <div className="p-4 bg-zinc-50 border-b border-zinc-200 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Cpu className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm font-bold text-zinc-900">
-                    AgenticFlow AI System Architecture
-                  </span>
-                </div>
-                <button
-                  onClick={() => setArchModalOpen(false)}
-                  className="p-1 rounded-md hover:bg-zinc-200 text-zinc-600 transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-white">
-                <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200">
-                  <div className="text-xs font-mono font-bold text-blue-800 mb-1">
-                    ● DETERMINISTIC MULTI-AGENT EXECUTION PIPELINE
-                  </div>
-                  <p className="text-xs text-blue-900 leading-relaxed">
-                    Click any node in the architecture pipeline to view live vector metrics and tool execution protocols.
-                  </p>
-                </div>
-
-                <div className="grid md:grid-cols-3 gap-4">
-                  {[
-                    { title: "1. Document Ingestion", sub: "PDF / OCR / SharePoint Parse", latency: "14ms" },
-                    { title: "2. Vector Embedding Engine", sub: "Hybrid Qdrant / Chroma Rerank", latency: "22ms" },
-                    { title: "3. Multi-Agent Reasoning", sub: "Claude 3.5 Sonnet / GPT-4o DAG", latency: "180ms" },
-                    { title: "4. Tool & MCP Orchestration", sub: "Slack, Jira, GitHub, SAP APIs", latency: "45ms" },
-                    { title: "5. Human Gate Approval", sub: "RBAC Zero-Trust Audit Log", latency: "Immediate" },
-                    { title: "6. Deterministic Output", sub: "JSON Payload & Action Dispatch", latency: "8ms" },
-                  ].map((node) => (
-                    <div
-                      key={node.title}
-                      className="p-4 rounded-xl bg-zinc-50 border border-zinc-200 hover:border-blue-500 hover:bg-white transition-all cursor-pointer shadow-sm"
-                    >
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-xs font-bold text-zinc-900">{node.title}</span>
-                        <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                          {node.latency}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-zinc-600 font-mono">{node.sub}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="p-4 bg-zinc-50 border-t border-zinc-200 flex items-center justify-between">
-                <span className="text-xs font-mono text-zinc-600">System Status: 100% Operational</span>
-                <Link
-                  href="/rag"
-                  onClick={() => setArchModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors"
-                >
-                  Test in /rag Workspace →
-                </Link>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* ─── ARCHITECTURE MODAL WITH BURNING LINES ─── */}
+      <BurningArchitectureModal isOpen={archModalOpen} onClose={() => setArchModalOpen(false)} />
 
       {/* ─── CTA & FOOTER ─── */}
       <section id="pricing" className="py-28 border-t border-zinc-200/80 bg-gradient-to-b from-white to-blue-50/40 relative">
@@ -427,8 +350,177 @@ export default function LandingPage() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   SUB-COMPONENTS
+   SUB-COMPONENTS & ULTRA-PREMIUM ARCHITECTURE MODAL
    ═══════════════════════════════════════════════════════════════ */
+
+function BurningArchitectureModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const [selectedNode, setSelectedNode] = useState(0);
+
+  const nodes = [
+    { title: "1. Document Ingestion", sub: "PDF / OCR / Audio Transcribe", latency: "14ms", details: "Parses PDF bounding boxes & transcribes audio files with Faster-Whisper." },
+    { title: "2. Vector Embedding Engine", sub: "BGE / Pinecone HNSW Vector Store", latency: "22ms", details: "Generates high-dimensional vector embeddings and indexes into Pinecone." },
+    { title: "3. Multi-Agent Reasoning", sub: "Gemini 2.5 / Dual-Tier RAG", latency: "180ms", details: "Dual-tier fallback reasoning engine (Rule-based -> Raw Chunk RAG -> Missing)." },
+    { title: "4. Tool & MCP Orchestration", sub: "Slack, GitHub, Jira, Teams APIs", latency: "45ms", details: "Orchestrates Model Context Protocol server tools and webhook connectors." },
+    { title: "5. Human Gate Approval", sub: "RBAC Zero-Trust Audit Log", latency: "Immediate", details: "Enforces Level 4 human-in-the-loop authorization gates for system safety." },
+    { title: "6. Deterministic Output", sub: "JSON Payload & Voice Synthesis", latency: "8ms", details: "Dispatches signed structured payloads and triggers gTTS Voice Output." },
+  ];
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 bg-zinc-900/40 backdrop-blur-md flex items-center justify-center p-4"
+        >
+          <motion.div
+            initial={{ scale: 0.96, y: 15 }}
+            animate={{ scale: 1, y: 0 }}
+            exit={{ scale: 0.96, y: 15 }}
+            className="bg-white border border-zinc-200/90 rounded-3xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden font-sans relative"
+          >
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-zinc-50/90 border-b border-zinc-200/80 flex items-center justify-between z-20">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-2xs">
+                  <Cpu className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-zinc-900 flex items-center gap-2">
+                    <span>System Execution Architecture</span>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                      LIVE NEURAL BUS
+                    </span>
+                  </h3>
+                  <p className="text-xs text-zinc-500">Realtime data streams flowing from central orchestration engine to system node cards</p>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className="p-2 rounded-xl text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-white relative scrollbar-thin">
+              {/* TOP EMMITER BUS NODE */}
+              <div className="relative flex flex-col items-center justify-center text-center pt-2 pb-1 z-20">
+                <div className="relative">
+                  <div className="relative z-10 px-6 py-2.5 rounded-2xl bg-zinc-900 text-white font-mono text-xs font-bold border border-zinc-800 shadow-lg shadow-zinc-900/10 flex items-center gap-3">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+                    <span>CENTRAL MULTI-AGENT KERNEL & ORCHESTRATION BUS</span>
+                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+                  </div>
+                </div>
+                <p className="text-[11px] font-mono text-blue-600 mt-2 font-bold tracking-wider uppercase flex items-center gap-1">
+                  <Radio className="w-3.5 h-3.5 animate-pulse text-blue-600" />
+                  <span>Electric Laser Line Traces Flowing Into Node Cards Below ↓</span>
+                </p>
+              </div>
+
+              {/* ULTRA-PREMIUM SLEEK LASER TRACE SVG PATHS */}
+              <div className="relative w-full h-16 -my-2 z-10 hidden md:block">
+                <svg className="w-full h-full overflow-visible" viewBox="0 0 900 60" fill="none">
+                  <defs>
+                    <linearGradient id="laserGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stopColor="#2563eb" stopOpacity="1" />
+                      <stop offset="60%" stopColor="#3b82f6" stopOpacity="0.8" />
+                      <stop offset="100%" stopColor="#60a5fa" stopOpacity="1" />
+                    </linearGradient>
+                    <filter id="subtleGlow" x="-20%" y="-20%" width="140%" height="140%">
+                      <feGaussianBlur stdDeviation="2" result="blur" />
+                      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                    </filter>
+                  </defs>
+
+                  {/* Laser Stream Left Card */}
+                  <path d="M 450 0 C 450 25, 150 15, 150 60" stroke="url(#laserGrad)" strokeWidth="2.5" filter="url(#subtleGlow)" strokeDasharray="6 3" className="animate-pulse" />
+                  <circle cx="150" cy="60" r="4" fill="#2563eb" className="animate-ping" />
+
+                  {/* Laser Stream Middle Card */}
+                  <path d="M 450 0 C 450 30, 450 30, 450 60" stroke="url(#laserGrad)" strokeWidth="3" filter="url(#subtleGlow)" strokeDasharray="6 3" className="animate-pulse" />
+                  <circle cx="450" cy="60" r="4" fill="#2563eb" className="animate-ping" />
+
+                  {/* Laser Stream Right Card */}
+                  <path d="M 450 0 C 450 25, 750 15, 750 60" stroke="url(#laserGrad)" strokeWidth="2.5" filter="url(#subtleGlow)" strokeDasharray="6 3" className="animate-pulse" />
+                  <circle cx="750" cy="60" r="4" fill="#2563eb" className="animate-ping" />
+                </svg>
+              </div>
+
+              {/* NODE CARDS GRID */}
+              <div className="grid md:grid-cols-3 gap-5 relative z-20">
+                {nodes.map((node, index) => {
+                  const isSelected = selectedNode === index;
+                  return (
+                    <motion.div
+                      key={node.title}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                      onClick={() => setSelectedNode(index)}
+                      className={`relative p-5 rounded-2xl border transition-all cursor-pointer overflow-hidden group ${
+                        isSelected
+                          ? "bg-blue-50/40 border-blue-500 ring-2 ring-blue-500/20 shadow-md"
+                          : "bg-white border-zinc-200/90 hover:border-blue-300 hover:shadow-sm"
+                      }`}
+                    >
+                      {/* Top Laser Contact Bar */}
+                      <div className={`absolute top-0 left-0 right-0 h-1 transition-all ${
+                        isSelected ? "bg-gradient-to-r from-blue-500 via-indigo-500 to-blue-600" : "bg-zinc-100 group-hover:bg-blue-400"
+                      }`} />
+
+                      {/* Laser Contact Pulse Point */}
+                      <div className={`absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full border transition-all ${
+                        isSelected ? "bg-blue-600 border-white ring-4 ring-blue-500/30 animate-pulse" : "bg-zinc-300 border-zinc-200 group-hover:bg-blue-500"
+                      }`} />
+
+                      <div className="flex justify-between items-center mb-2.5 pt-1">
+                        <span className="text-xs font-bold text-zinc-900">{node.title}</span>
+                        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                          isSelected ? "bg-blue-100 text-blue-700 border-blue-300" : "bg-zinc-100 text-zinc-600 border-zinc-200"
+                        }`}>
+                          {node.latency}
+                        </span>
+                      </div>
+
+                      <p className="text-[12px] text-zinc-500 font-mono mb-3 leading-relaxed">{node.sub}</p>
+
+                      <div className={`p-3 rounded-xl border text-[11px] font-sans leading-relaxed transition-all ${
+                        isSelected
+                          ? "bg-white border-blue-200 text-zinc-800 shadow-2xs font-medium"
+                          : "bg-zinc-50/70 border-zinc-200/70 text-zinc-600"
+                      }`}>
+                        {node.details}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-zinc-50/90 border-t border-zinc-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 z-20">
+              <div className="flex items-center gap-2 text-xs font-mono text-zinc-600">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <span>6 Connected System Execution Nodes Ready</span>
+              </div>
+              <Link
+                href="/rag"
+                onClick={onClose}
+                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all shadow-md shadow-blue-600/20"
+              >
+                Launch RAG Workspace →
+              </Link>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
 
 function SectionHeader({ badge, title, subtitle }: { badge: string; title: string; subtitle?: string }) {
   return (
@@ -694,14 +786,13 @@ function OnboardingCardInteractive() {
         <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
           <UserPlus className="w-5 h-5" />
         </div>
-        <button
-          onClick={runTrigger}
-          disabled={isRunning}
-          className="text-[10px] font-mono font-bold bg-blue-600 text-white px-2.5 py-1 rounded-lg hover:bg-blue-700 transition-all flex items-center gap-1 disabled:opacity-50"
+        <Link
+          href="/onboarding"
+          className="text-[10px] font-mono font-bold bg-blue-600 text-white px-2.5 py-1 rounded-lg hover:bg-blue-700 transition-all flex items-center gap-1"
         >
           <Play className="w-3 h-3 fill-white" />
-          <span>{isRunning ? "Running..." : "Run Agent"}</span>
-        </button>
+          <span>Run Agent</span>
+        </Link>
       </div>
 
       <h3 className="text-[15px] font-bold text-zinc-900 mb-1.5">One-click Employee Onboarding</h3>
@@ -750,8 +841,17 @@ function KnowledgeCardInteractive() {
 
   return (
     <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
-      <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
-        <Brain className="w-5 h-5" />
+      <div className="flex items-center justify-between mb-4">
+        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+          <Brain className="w-5 h-5" />
+        </div>
+        <Link
+          href="/knowledge"
+          className="text-[10px] font-mono font-bold bg-blue-600 text-white px-2.5 py-1 rounded-lg hover:bg-blue-700 transition-all flex items-center gap-1"
+        >
+          <ArrowUpRight className="w-3 h-3" />
+          <span>Try Engine</span>
+        </Link>
       </div>
       <h3 className="text-[15px] font-bold text-zinc-900 mb-1.5">Knowledge Transfer Engine</h3>
       <p className="text-[12px] text-zinc-600 leading-relaxed mb-3">
