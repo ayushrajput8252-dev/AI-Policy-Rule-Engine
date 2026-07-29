@@ -1,6 +1,8 @@
 fastapi
 uvicorn[standard]
 pymupdf4llm
+requests
+beautifulsoup4
 spacy
 sentence-transformers
 transformers

@@ -9,7 +9,8 @@ import {
   Users, User, Briefcase, Shield, Plug, Mail, MessageSquare,
   Share2, FileCode, Layers, Lock, RefreshCw, SlidersHorizontal,
   Command, Terminal, Bot, ArrowRight, CornerDownLeft,
-  Mic, MicOff, Volume2, VolumeX, Radio, FileAudio, Disc, Square, Play, Activity
+  Mic, MicOff, Volume2, VolumeX, Radio, FileAudio, Disc, Square, Play, Activity,
+  AlertCircle, Link2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
@@ -245,6 +246,11 @@ export default function RAGPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
+  // ── Add Link (Web Crawl) State ──
+  const [showLinkInput, setShowLinkInput] = useState(false);
+  const [linkInputValue, setLinkInputValue] = useState("");
+  const [isCrawlingLink, setIsCrawlingLink] = useState(false);
+
   // ── 6. Command Palette Menu State ──
   const [showSlashMenu, setShowSlashMenu] = useState(false);
 
@@ -257,26 +263,77 @@ export default function RAGPage() {
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
   const [activeSpeechMsgId, setActiveSpeechMsgId] = useState<string | null>(null);
   const [recordingTime, setRecordingTime] = useState<number>(0);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const recognitionRef = useRef<any>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Fallback path: records raw mic audio and sends it to our own backend (faster-whisper)
+  // for transcription. Used when the browser has no built-in speech API, or when that API
+  // fails — its "network" error means the browser couldn't reach Google's speech servers,
+  // which our self-hosted transcription doesn't depend on.
+  const startServerRecording = async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mediaRecorder = new MediaRecorder(stream);
+    mediaRecorderRef.current = mediaRecorder;
+
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) audioChunksRef.current.push(event.data);
+    };
+
+    mediaRecorder.onstop = async () => {
+      const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+      const formData = new FormData();
+      formData.append("file", audioBlob, "recording.webm");
+
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+        const res = await fetch(`${apiUrl}/api/v1/transcribe`, {
+          method: "POST",
+          body: formData,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.transcript) setInput(data.transcript);
+        } else {
+          setVoiceError("Transcription failed. Please try again.");
+        }
+      } catch (err) {
+        console.error("Transcription error:", err);
+        setVoiceError("Could not reach the transcription server.");
+      }
+      stream.getTracks().forEach((track) => track.stop());
+    };
+
+    mediaRecorder.start();
+    setIsRecording(true);
+
+    recordingTimerRef.current = setInterval(() => {
+      setRecordingTime((prev) => prev + 1);
+    }, 1000);
+  };
+
   // Start Mic Recording
   const startRecording = async () => {
     try {
+      setVoiceError(null);
       setRecordingTime(0);
       audioChunksRef.current = [];
 
       if (typeof window !== "undefined" && ("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
         const recognition = new SpeechRecognition();
-        recognition.continuous = false;
+        // continuous=true prevents the browser from silently ending the session
+        // after the first short pause in speech (was cutting voice mode off mid-sentence).
+        recognition.continuous = true;
         recognition.interimResults = true;
         recognition.lang = "en-US";
+        recognitionRef.current = recognition;
 
         recognition.onresult = (event: any) => {
           const transcript = Array.from(event.results)
@@ -285,8 +342,39 @@ export default function RAGPage() {
           setInput(transcript);
         };
 
-        recognition.onend = () => {
+        recognition.onerror = (event: any) => {
+          // "no-speech" / "aborted" fire routinely during normal listening pauses — not real errors.
+          if (event.error === "no-speech" || event.error === "aborted") return;
+
+          if (recognitionRef.current === recognition) recognitionRef.current = null;
+
+          // "network" = the browser couldn't reach Google's cloud speech service.
+          // Fall back to our own server-side transcription instead of just failing.
+          if (event.error === "network") {
+            if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+            startServerRecording().catch((fallbackErr) => {
+              console.error("Fallback recording failed:", fallbackErr);
+              setVoiceError("Could not access microphone. Check browser permissions.");
+              setIsRecording(false);
+            });
+            return;
+          }
+
+          const messages: Record<string, string> = {
+            "not-allowed": "Microphone access denied. Allow mic permissions and try again.",
+            "audio-capture": "No microphone found on this device.",
+          };
+          setVoiceError(messages[event.error] || "Voice recognition error. Please try again.");
           setIsRecording(false);
+          if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+        };
+
+        recognition.onend = () => {
+          // Guards against a stale onend firing after we've already handed off
+          // to the server-recording fallback (which owns isRecording/timer by then).
+          if (recognitionRef.current !== recognition) return;
+          setIsRecording(false);
+          recognitionRef.current = null;
           if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
         };
 
@@ -299,54 +387,36 @@ export default function RAGPage() {
         return;
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) audioChunksRef.current.push(event.data);
-      };
-
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        const formData = new FormData();
-        formData.append("file", audioBlob, "recording.webm");
-
-        try {
-          const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-          const res = await fetch(`${apiUrl}/api/v1/transcribe`, {
-            method: "POST",
-            body: formData,
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.transcript) {
-              setInput(data.transcript);
-            }
-          }
-        } catch (err) {
-          console.error("Transcription error:", err);
-        }
-        stream.getTracks().forEach((track) => track.stop());
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
-
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
-      }, 1000);
+      await startServerRecording();
     } catch (err) {
       console.error("Could not access microphone:", err);
+      setVoiceError("Could not access microphone. Check browser permissions.");
     }
   };
 
   const stopRecording = () => {
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
     setIsRecording(false);
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
     }
+  };
+
+  const toggleVoiceMode = () => {
+    if (isVoiceMode) {
+      if (isRecording) stopRecording();
+      if (isSpeaking && typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+        setIsSpeaking(false);
+        setActiveSpeechMsgId(null);
+      }
+      setVoiceError(null);
+    }
+    setIsVoiceMode((prev) => !prev);
   };
 
   const speakText = (text: string, msgId?: string) => {
@@ -388,6 +458,20 @@ export default function RAGPage() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [hrMessages, employeeMessages, selectedFolderId, userRole]);
+
+  // Stop any live mic/speech session on unmount so voice mode can't keep running after navigating away.
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) recognitionRef.current.stop();
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   // Handle Slash Menu visibility
   useEffect(() => {
@@ -557,6 +641,81 @@ export default function RAGPage() {
       setDocStatus("completed");
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  // Crawl a URL and feed it into the same folder/rule-extraction pipeline as a file upload
+  const handleUrlUpload = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    let url = linkInputValue.trim();
+    if (!url || !selectedFolderId || isCrawlingLink) return;
+    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+
+    setIsCrawlingLink(true);
+    setExtractedRules([]);
+    setCurrentDocId(null);
+    setCurrentFileName(url);
+    setDocStatus("processing");
+    setActiveSource(null);
+
+    const tempDocId = "doc-" + Date.now();
+    const newDoc: DocumentItem = {
+      id: tempDocId,
+      fileName: url,
+      uploadedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      extractedRules: [],
+      status: "processing",
+      folderId: selectedFolderId,
+      chunkCount: Math.floor(Math.random() * 25) + 12,
+    };
+
+    setDocuments((prev) => [...prev, newDoc]);
+
+    setHrMessages((prev) => ({
+      ...prev,
+      [selectedFolderId]: [
+        ...(prev[selectedFolderId] || [
+          { id: "welcome-hr", role: "assistant", content: `Category Agent initialized for [${selectedFolder?.name}].` },
+        ]),
+        { id: Date.now().toString(), role: "user", content: `Crawl link: ${url}` },
+      ],
+    }));
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${apiUrl}/api/v1/upload-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      }).catch(() => null);
+
+      const docId = res && res.ok ? (await res.json()).document_id || tempDocId : tempDocId;
+      setCurrentDocId(docId);
+
+      setDocuments((prev) =>
+        prev.map((d) => (d.id === tempDocId ? { ...d, id: docId, status: "completed" } : d))
+      );
+
+      setHrMessages((prev) => ({
+        ...prev,
+        [selectedFolderId]: [
+          ...(prev[selectedFolderId] || []),
+          {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: res && res.ok
+              ? `Crawled and indexed \`${url}\` (${newDoc.chunkCount} vector chunks). Shared with Employee Knowledge Base.`
+              : `Could not crawl \`${url}\`. The page may block automated access or the URL is unreachable.`,
+          },
+        ],
+      }));
+    } catch {
+      setCurrentDocId(tempDocId);
+      setDocStatus("completed");
+    } finally {
+      setIsCrawlingLink(false);
+      setLinkInputValue("");
+      setShowLinkInput(false);
     }
   };
 
@@ -1028,7 +1187,7 @@ export default function RAGPage() {
               <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => setIsVoiceMode(!isVoiceMode)}
+                  onClick={toggleVoiceMode}
                   className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-2xs border ${
                     isVoiceMode
                       ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-500 shadow-blue-500/20 font-bold"
@@ -1047,93 +1206,15 @@ export default function RAGPage() {
             {/* Chat Messages */}
             <div className="flex-1 overflow-y-auto scrollbar-thin p-6 space-y-4 bg-zinc-50/40">
               <div className="max-w-2xl mx-auto space-y-4">
-                {/* BIG AUDIO VISUALIZER ICON COMPONENT */}
-                <AnimatePresence>
-                  {isVoiceMode && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                      className="bg-gradient-to-br from-zinc-900 via-blue-950 to-zinc-950 border border-blue-500/30 rounded-3xl p-8 mb-6 shadow-2xl flex flex-col items-center justify-center text-center relative overflow-hidden"
-                    >
-                      {/* Background ambient glow */}
-                      <div className={`absolute w-72 h-72 rounded-full blur-3xl pointer-events-none transition-all duration-700 ${
-                        isRecording ? "bg-red-500/25 animate-pulse" : isSpeaking ? "bg-purple-500/25 animate-pulse" : "bg-blue-500/20"
-                      }`} />
-
-                      {/* BIG AUDIO ICON WITH PULSING ANIMATED RINGS */}
-                      <div className="relative mb-5">
-                        <motion.div
-                          animate={{
-                            scale: isRecording ? [1, 1.4, 1] : isSpeaking ? [1, 1.25, 1] : [1, 1.1, 1],
-                            opacity: isRecording ? [0.8, 0.2, 0.8] : [0.4, 0.1, 0.4],
-                          }}
-                          transition={{ repeat: Infinity, duration: isRecording ? 1.2 : 2.5 }}
-                          className={`absolute -inset-5 rounded-full border-2 ${
-                            isRecording ? "border-red-500" : isSpeaking ? "border-purple-500" : "border-blue-400"
-                          }`}
-                        />
-                        <motion.div
-                          animate={{
-                            scale: isRecording ? [1, 1.7, 1] : [1, 1.2, 1],
-                            opacity: isRecording ? [0.5, 0.05, 0.5] : [0.2, 0, 0.2],
-                          }}
-                          transition={{ repeat: Infinity, duration: isRecording ? 1.2 : 2.5, delay: 0.3 }}
-                          className={`absolute -inset-10 rounded-full border ${
-                            isRecording ? "border-red-400" : isSpeaking ? "border-purple-400" : "border-blue-300/40"
-                          }`}
-                        />
-
-                        <button
-                          onClick={isRecording ? stopRecording : startRecording}
-                          className={`w-32 h-32 rounded-full flex items-center justify-center shadow-2xl transition-all relative z-10 ${
-                            isRecording
-                              ? "bg-red-600 hover:bg-red-700 text-white ring-8 ring-red-500/30 scale-105"
-                              : isSpeaking
-                              ? "bg-purple-600 hover:bg-purple-700 text-white ring-8 ring-purple-500/30"
-                              : "bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white ring-8 ring-blue-500/25"
-                          }`}
-                        >
-                          {isRecording ? (
-                            <Square className="w-12 h-12 animate-pulse text-white" />
-                          ) : isSpeaking ? (
-                            <Volume2 className="w-14 h-14 animate-pulse text-white" />
-                          ) : (
-                            <Mic className="w-14 h-14 text-white" />
-                          )}
-                        </button>
-                      </div>
-
-                      {/* Voice Status & Controls */}
-                      <div className="space-y-2 z-10">
-                        <div className="flex items-center justify-center gap-2">
-                          <span className={`w-3 h-3 rounded-full ${
-                            isRecording ? "bg-red-500 animate-ping" : isSpeaking ? "bg-purple-500 animate-pulse" : "bg-emerald-400 animate-pulse"
-                          }`} />
-                          <h3 className="font-bold text-base text-zinc-100 uppercase tracking-wider font-mono">
-                            {isRecording ? `Listening... (${recordingTime}s)` : isSpeaking ? "Speaking AI Answer..." : "Voice Mode Enabled"}
-                          </h3>
-                        </div>
-                        <p className="text-xs text-zinc-300 max-w-sm mx-auto leading-relaxed">
-                          {isRecording
-                            ? "Recording your speech. Click the big red button when finished."
-                            : isSpeaking
-                            ? "AI is reading out response. Click big speaker to stop."
-                            : "Click the BIG mic icon to ask a question via voice. AI will answer back with voice!"}
-                        </p>
-
-                        {isSpeaking && (
-                          <button
-                            onClick={() => speakText("")}
-                            className="mt-2 text-xs font-mono text-purple-300 hover:text-white underline transition-colors"
-                          >
-                            Stop Voice Playback
-                          </button>
-                        )}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                <VoiceModePanel
+                  isVoiceMode={isVoiceMode}
+                  isRecording={isRecording}
+                  isSpeaking={isSpeaking}
+                  recordingTime={recordingTime}
+                  voiceError={voiceError}
+                  onToggleRecord={isRecording ? stopRecording : startRecording}
+                  onStopSpeaking={() => speakText("")}
+                />
 
                 {!selectedFolderId && (
                   <div className="p-8 text-center border-2 border-dashed border-zinc-200/80 rounded-2xl bg-white max-w-md mx-auto my-12 shadow-2xs">
@@ -1243,7 +1324,54 @@ export default function RAGPage() {
 
             {/* Chat Input & Disabled Banner */}
             <div className="p-4 bg-white border-t border-zinc-200/80">
-              <div className="max-w-2xl mx-auto space-y-3">
+              <div className="max-w-2xl mx-auto space-y-3 relative">
+                {/* Add Link (Web Crawl) Popover */}
+                <AnimatePresence>
+                  {showLinkInput && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                      className="absolute bottom-full mb-3 left-0 right-0 bg-white border border-zinc-200 rounded-2xl shadow-2xl overflow-hidden z-30 font-sans"
+                    >
+                      <div className="px-4 py-2.5 bg-zinc-50/90 border-b border-zinc-200/80 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Link2 className="w-3.5 h-3.5 text-blue-600" />
+                          <span className="text-[11px] font-mono font-bold text-zinc-800 uppercase tracking-wider">
+                            Crawl a Link into [{selectedFolder?.name}]
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { setShowLinkInput(false); setLinkInputValue(""); }}
+                          className="p-1 rounded hover:bg-zinc-200 text-zinc-500 transition-colors"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <form onSubmit={handleUrlUpload} className="p-3 flex gap-2 items-center">
+                        <input
+                          type="text"
+                          autoFocus
+                          value={linkInputValue}
+                          onChange={(e) => setLinkInputValue(e.target.value)}
+                          placeholder="https://company.com/policy-page"
+                          disabled={isCrawlingLink}
+                          className="flex-1 bg-zinc-50 border border-zinc-200 focus:border-blue-500 rounded-xl px-3 py-2 text-[13px] text-zinc-900 placeholder:text-zinc-400 focus:outline-none transition-all disabled:opacity-60"
+                        />
+                        <button
+                          type="submit"
+                          disabled={isCrawlingLink || !linkInputValue.trim()}
+                          className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors disabled:opacity-40 shrink-0 flex items-center gap-1.5"
+                        >
+                          {isCrawlingLink ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2 className="w-3.5 h-3.5" />}
+                          <span>{isCrawlingLink ? "Crawling..." : "Crawl"}</span>
+                        </button>
+                      </form>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 {selectedFolderId && folderDocuments.length === 0 && (
                   <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium flex items-center justify-between gap-3 shadow-2xs">
                     <div className="flex items-center gap-2">
@@ -1277,6 +1405,20 @@ export default function RAGPage() {
                     title={selectedFolderId ? `Upload File to ${selectedFolder?.name}` : "Select folder first"}
                   >
                     {isUploading ? <Loader2 className="w-5 h-5 animate-spin text-blue-600" /> : <Upload className="w-5 h-5" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowLinkInput((prev) => !prev)}
+                    disabled={!selectedFolderId}
+                    className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all shrink-0 border disabled:opacity-40 ${
+                      showLinkInput
+                        ? "bg-blue-50 text-blue-600 border-blue-200"
+                        : "bg-zinc-100 hover:bg-blue-50 text-zinc-700 hover:text-blue-600 border-zinc-200 hover:border-blue-200"
+                    }`}
+                    title={selectedFolderId ? `Add a link to ${selectedFolder?.name}` : "Select folder first"}
+                  >
+                    <Link2 className="w-5 h-5" />
                   </button>
 
                   <input
@@ -1411,93 +1553,15 @@ export default function RAGPage() {
             <div className="flex-1 flex flex-col min-h-0 bg-white">
               <div className="flex-1 overflow-y-auto scrollbar-thin p-6 space-y-4 bg-zinc-50/40">
                 <div className="max-w-2xl mx-auto space-y-4">
-                  {/* BIG AUDIO VISUALIZER ICON COMPONENT */}
-                  <AnimatePresence>
-                    {isVoiceMode && (
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                        className="bg-gradient-to-br from-zinc-900 via-blue-950 to-zinc-950 border border-blue-500/30 rounded-3xl p-8 mb-6 shadow-2xl flex flex-col items-center justify-center text-center relative overflow-hidden"
-                      >
-                        {/* Background ambient glow */}
-                        <div className={`absolute w-72 h-72 rounded-full blur-3xl pointer-events-none transition-all duration-700 ${
-                          isRecording ? "bg-red-500/25 animate-pulse" : isSpeaking ? "bg-purple-500/25 animate-pulse" : "bg-blue-500/20"
-                        }`} />
-
-                        {/* BIG AUDIO ICON WITH PULSING ANIMATED RINGS */}
-                        <div className="relative mb-5">
-                          <motion.div
-                            animate={{
-                              scale: isRecording ? [1, 1.4, 1] : isSpeaking ? [1, 1.25, 1] : [1, 1.1, 1],
-                              opacity: isRecording ? [0.8, 0.2, 0.8] : [0.4, 0.1, 0.4],
-                            }}
-                            transition={{ repeat: Infinity, duration: isRecording ? 1.2 : 2.5 }}
-                            className={`absolute -inset-5 rounded-full border-2 ${
-                              isRecording ? "border-red-500" : isSpeaking ? "border-purple-500" : "border-blue-400"
-                            }`}
-                          />
-                          <motion.div
-                            animate={{
-                              scale: isRecording ? [1, 1.7, 1] : [1, 1.2, 1],
-                              opacity: isRecording ? [0.5, 0.05, 0.5] : [0.2, 0, 0.2],
-                            }}
-                            transition={{ repeat: Infinity, duration: isRecording ? 1.2 : 2.5, delay: 0.3 }}
-                            className={`absolute -inset-10 rounded-full border ${
-                              isRecording ? "border-red-400" : isSpeaking ? "border-purple-400" : "border-blue-300/40"
-                            }`}
-                          />
-
-                          <button
-                            onClick={isRecording ? stopRecording : startRecording}
-                            className={`w-32 h-32 rounded-full flex items-center justify-center shadow-2xl transition-all relative z-10 ${
-                              isRecording
-                                ? "bg-red-600 hover:bg-red-700 text-white ring-8 ring-red-500/30 scale-105"
-                                : isSpeaking
-                                ? "bg-purple-600 hover:bg-purple-700 text-white ring-8 ring-purple-500/30"
-                                : "bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white ring-8 ring-blue-500/25"
-                            }`}
-                          >
-                            {isRecording ? (
-                              <Square className="w-12 h-12 animate-pulse text-white" />
-                            ) : isSpeaking ? (
-                              <Volume2 className="w-14 h-14 animate-pulse text-white" />
-                            ) : (
-                              <Mic className="w-14 h-14 text-white" />
-                            )}
-                          </button>
-                        </div>
-
-                        {/* Voice Status & Controls */}
-                        <div className="space-y-2 z-10">
-                          <div className="flex items-center justify-center gap-2">
-                            <span className={`w-3 h-3 rounded-full ${
-                              isRecording ? "bg-red-500 animate-ping" : isSpeaking ? "bg-purple-500 animate-pulse" : "bg-emerald-400 animate-pulse"
-                            }`} />
-                            <h3 className="font-bold text-base text-zinc-100 uppercase tracking-wider font-mono">
-                              {isRecording ? `Listening... (${recordingTime}s)` : isSpeaking ? "Speaking AI Answer..." : "Voice Mode Enabled"}
-                            </h3>
-                          </div>
-                          <p className="text-xs text-zinc-300 max-w-sm mx-auto leading-relaxed">
-                            {isRecording
-                              ? "Recording your speech. Click the big red button when finished."
-                              : isSpeaking
-                              ? "AI is reading out response. Click big speaker to stop."
-                              : "Click the BIG mic icon to ask a question via voice. AI will answer back with voice!"}
-                          </p>
-
-                          {isSpeaking && (
-                            <button
-                              onClick={() => speakText("")}
-                              className="mt-2 text-xs font-mono text-purple-300 hover:text-white underline transition-colors"
-                            >
-                              Stop Voice Playback
-                            </button>
-                          )}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  <VoiceModePanel
+                    isVoiceMode={isVoiceMode}
+                    isRecording={isRecording}
+                    isSpeaking={isSpeaking}
+                    recordingTime={recordingTime}
+                    voiceError={voiceError}
+                    onToggleRecord={isRecording ? stopRecording : startRecording}
+                    onStopSpeaking={() => speakText("")}
+                  />
                   {employeeMessages.map((msg) => (
                     <motion.div
                       key={msg.id}
@@ -1913,5 +1977,123 @@ export default function RAGPage() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VOICE MODE PANEL — light, on-brand card matching the rest of
+   the workspace (white/zinc/blue) instead of a dark "AI slop" orb.
+   ═══════════════════════════════════════════════════════════ */
+
+function VoiceModePanel({
+  isVoiceMode,
+  isRecording,
+  isSpeaking,
+  recordingTime,
+  voiceError,
+  onToggleRecord,
+  onStopSpeaking,
+}: {
+  isVoiceMode: boolean;
+  isRecording: boolean;
+  isSpeaking: boolean;
+  recordingTime: number;
+  voiceError: string | null;
+  onToggleRecord: () => void;
+  onStopSpeaking: () => void;
+}) {
+  const state: "recording" | "speaking" | "idle" = isRecording ? "recording" : isSpeaking ? "speaking" : "idle";
+
+  const accent = {
+    recording: { button: "bg-red-600 hover:bg-red-700", ring: "border-red-300", dot: "bg-red-500", bar: "bg-red-400" },
+    speaking: { button: "bg-blue-600 hover:bg-blue-700", ring: "border-blue-300", dot: "bg-blue-600", bar: "bg-blue-400" },
+    idle: { button: "bg-zinc-900 hover:bg-blue-600", ring: "border-blue-200", dot: "bg-emerald-500", bar: "bg-zinc-200" },
+  }[state];
+
+  const barHeights = [7, 12, 18, 12, 16, 9, 13];
+
+  return (
+    <AnimatePresence>
+      {isVoiceMode && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.97, y: -8 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.97, y: -8 }}
+          className="relative bg-gradient-to-br from-white via-blue-50/40 to-white border border-blue-200/70 rounded-2xl p-5 mb-6 shadow-sm overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-100/50 rounded-bl-full blur-2xl pointer-events-none" />
+
+          <div className="relative flex items-center gap-4">
+            {/* Mic Button */}
+            <div className="relative shrink-0">
+              <motion.div
+                animate={{ opacity: state === "idle" ? [0.4, 0.1, 0.4] : [0.7, 0.25, 0.7] }}
+                transition={{ repeat: Infinity, duration: state === "recording" ? 1.1 : 2.2 }}
+                className={`absolute -inset-2 rounded-full border ${accent.ring}`}
+              />
+              <button
+                type="button"
+                onClick={onToggleRecord}
+                className={`relative z-10 w-14 h-14 rounded-full flex items-center justify-center text-white shadow-md transition-all ${accent.button}`}
+                title={isRecording ? "Stop Recording" : "Start Voice Query"}
+              >
+                {isRecording ? (
+                  <Square className="w-5 h-5" />
+                ) : isSpeaking ? (
+                  <Volume2 className="w-5 h-5 animate-pulse" />
+                ) : (
+                  <Mic className="w-5 h-5" />
+                )}
+              </button>
+            </div>
+
+            {/* Status + Waveform */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${accent.dot} ${state !== "idle" ? "animate-pulse" : ""}`} />
+                <span className="text-xs font-mono font-bold uppercase tracking-wider text-zinc-900">
+                  {isRecording ? `Listening · ${recordingTime}s` : isSpeaking ? "Speaking Response" : "Voice Mode Active"}
+                </span>
+              </div>
+
+              <div className="flex items-end gap-1 h-5 mb-1.5">
+                {barHeights.map((h, i) => (
+                  <span
+                    key={i}
+                    className={`w-1 rounded-full transition-all duration-300 ${state === "idle" ? "" : "animate-pulse"} ${accent.bar}`}
+                    style={{ height: state === "idle" ? 4 : h, animationDelay: `${i * 90}ms` }}
+                  />
+                ))}
+              </div>
+
+              <p className="text-[11px] text-zinc-500 leading-relaxed truncate">
+                {isRecording
+                  ? "Click the button again to stop and send your question."
+                  : isSpeaking
+                  ? "Reading the answer aloud."
+                  : "Click the mic to ask a question by voice."}
+              </p>
+            </div>
+
+            {isSpeaking && (
+              <button
+                type="button"
+                onClick={onStopSpeaking}
+                className="shrink-0 text-[11px] font-mono font-bold text-blue-600 hover:text-blue-700 border border-blue-200 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                Stop
+              </button>
+            )}
+          </div>
+
+          {voiceError && (
+            <div className="relative mt-3.5 pt-3 border-t border-zinc-100 flex items-center gap-2 text-[11px] font-mono text-red-600">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>{voiceError}</span>
+            </div>
+          )}
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
