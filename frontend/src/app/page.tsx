@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, useInView, AnimatePresence } from "framer-motion";
+import WeeklyReportModal from "@/components/weekly-report/WeeklyReportModal";
 import {
   Database, UserPlus, Brain, Bot, BarChart3, Shield,
   ArrowRight, Menu, X, Zap, Users, Globe, CheckCircle2,
@@ -67,6 +68,7 @@ function useCountUp(end: number, duration = 1800) {
 export default function LandingPage() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [archModalOpen, setArchModalOpen] = useState(false);
+  const [weeklyReportOpen, setWeeklyReportOpen] = useState(false);
 
   const navLinks = [
     { label: "Platform", href: "#platform" },
@@ -264,7 +266,7 @@ export default function LandingPage() {
             </div>
 
             {/* Card 5: Reports */}
-            <ReportsCardWhite />
+            <ReportsCardWhite onOpenReport={() => setWeeklyReportOpen(true)} />
 
             {/* Card 6: Security */}
             <SecurityCardWhite />
@@ -301,6 +303,9 @@ export default function LandingPage() {
 
       {/* ─── ARCHITECTURE MODAL WITH BURNING LINES ─── */}
       <BurningArchitectureModal isOpen={archModalOpen} onClose={() => setArchModalOpen(false)} />
+
+      {/* ─── WEEKLY EXECUTIVE REPORT MODAL ─── */}
+      <WeeklyReportModal isOpen={weeklyReportOpen} onClose={() => setWeeklyReportOpen(false)} />
 
       {/* ─── CTA & FOOTER ─── */}
       <section id="pricing" className="py-28 border-t border-zinc-200/80 bg-gradient-to-b from-white to-blue-50/40 relative">
@@ -353,16 +358,39 @@ export default function LandingPage() {
    SUB-COMPONENTS & ULTRA-PREMIUM ARCHITECTURE MODAL
    ═══════════════════════════════════════════════════════════════ */
 
+const KERNEL_SUB_AGENTS = [
+  { label: "Reasoning Agent", icon: <Bot className="w-3 h-3" />, color: "bg-blue-500" },
+  { label: "Retrieval Agent", icon: <Search className="w-3 h-3" />, color: "bg-indigo-500" },
+  { label: "Tool Agent", icon: <Zap className="w-3 h-3" />, color: "bg-amber-500" },
+  { label: "Validator Agent", icon: <CheckCircle2 className="w-3 h-3" />, color: "bg-emerald-500" },
+];
+
+const KERNEL_TRACE_LINES = [
+  "Reasoning Agent → parsing intent, dispatching retrieval request ↓",
+  "Retrieval Agent → querying Pinecone HNSW index, top-k=5 ↓",
+  "Tool Agent → invoking MCP connector, awaiting response ↓",
+  "Validator Agent → scoring extraction confidence ≥ 85% ↓",
+];
+
 function BurningArchitectureModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const [selectedNode, setSelectedNode] = useState(0);
+  const [kernelLine, setKernelLine] = useState(0);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const iv = setInterval(() => {
+      setKernelLine((prev) => (prev + 1) % KERNEL_TRACE_LINES.length);
+    }, 2000);
+    return () => clearInterval(iv);
+  }, [isOpen]);
 
   const nodes = [
-    { title: "1. Document Ingestion", sub: "PDF / OCR / Audio Transcribe", latency: "14ms", details: "Parses PDF bounding boxes & transcribes audio files with Faster-Whisper." },
-    { title: "2. Vector Embedding Engine", sub: "BGE / Pinecone HNSW Vector Store", latency: "22ms", details: "Generates high-dimensional vector embeddings and indexes into Pinecone." },
-    { title: "3. Multi-Agent Reasoning", sub: "Gemini 2.5 / Dual-Tier RAG", latency: "180ms", details: "Dual-tier fallback reasoning engine (Rule-based -> Raw Chunk RAG -> Missing)." },
-    { title: "4. Tool & MCP Orchestration", sub: "Slack, GitHub, Jira, Teams APIs", latency: "45ms", details: "Orchestrates Model Context Protocol server tools and webhook connectors." },
-    { title: "5. Human Gate Approval", sub: "RBAC Zero-Trust Audit Log", latency: "Immediate", details: "Enforces Level 4 human-in-the-loop authorization gates for system safety." },
-    { title: "6. Deterministic Output", sub: "JSON Payload & Voice Synthesis", latency: "8ms", details: "Dispatches signed structured payloads and triggers gTTS Voice Output." },
+    { title: "Document Ingestion", sub: "PDF / OCR / Audio Transcribe", latency: "14ms", details: "Parses PDF bounding boxes & transcribes audio files with Faster-Whisper.", icon: <FileText className="w-4 h-4" />, agentIndex: 1 },
+    { title: "Vector Embedding Engine", sub: "BGE / Pinecone HNSW Vector Store", latency: "22ms", details: "Generates high-dimensional vector embeddings and indexes into Pinecone.", icon: <Database className="w-4 h-4" />, agentIndex: 1 },
+    { title: "Multi-Agent Reasoning", sub: "Gemini 2.5 / Dual-Tier RAG", latency: "180ms", details: "Dual-tier fallback reasoning engine (Rule-based -> Raw Chunk RAG -> Missing).", icon: <Bot className="w-4 h-4" />, agentIndex: 0 },
+    { title: "Tool & MCP Orchestration", sub: "Slack, GitHub, Jira, Teams APIs", latency: "45ms", details: "Orchestrates Model Context Protocol server tools and webhook connectors.", icon: <Plug className="w-4 h-4" />, agentIndex: 2 },
+    { title: "Human Gate Approval", sub: "RBAC Zero-Trust Audit Log", latency: "Immediate", details: "Enforces Level 4 human-in-the-loop authorization gates for system safety.", icon: <Shield className="w-4 h-4" />, agentIndex: 3 },
+    { title: "Deterministic Output", sub: "JSON Payload & Voice Synthesis", latency: "8ms", details: "Dispatches signed structured payloads and triggers gTTS Voice Output.", icon: <Zap className="w-4 h-4" />, agentIndex: 0 },
   ];
 
   return (
@@ -381,79 +409,99 @@ function BurningArchitectureModal({ isOpen, onClose }: { isOpen: boolean; onClos
             className="bg-white border border-zinc-200/90 rounded-3xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden font-sans relative"
           >
             {/* Modal Header */}
-            <div className="px-6 py-4 bg-zinc-50/90 border-b border-zinc-200/80 flex items-center justify-between z-20">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-2xs">
-                  <Cpu className="w-5 h-5" />
+            <div className="px-4 sm:px-6 py-3 sm:py-4 bg-zinc-50/90 border-b border-zinc-200/80 flex items-start sm:items-center justify-between gap-2 z-20">
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-2xs shrink-0">
+                  <Bot className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-zinc-900 flex items-center gap-2">
+                <div className="min-w-0">
+                  <h3 className="text-sm sm:text-base font-bold text-zinc-900 flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span>System Execution Architecture</span>
-                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                      LIVE NEURAL BUS
+                    <span className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-white text-blue-700 border border-blue-200">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                      {KERNEL_SUB_AGENTS.length} AGENTS LIVE
                     </span>
                   </h3>
-                  <p className="text-xs text-zinc-500">Realtime data streams flowing from central orchestration engine to system node cards</p>
+                  <p className="hidden sm:block text-xs text-zinc-500 mt-0.5">Multi-agent kernel streaming reasoning, retrieval, and tool-execution traces to each node below</p>
                 </div>
               </div>
               <button
                 onClick={onClose}
-                className="p-2 rounded-xl text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 transition-colors"
+                className="p-2 rounded-xl text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 transition-colors shrink-0"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Modal Body */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-white relative scrollbar-thin">
-              {/* TOP EMMITER BUS NODE */}
-              <div className="relative flex flex-col items-center justify-center text-center pt-2 pb-1 z-20">
-                <div className="relative">
-                  <div className="relative z-10 px-6 py-2.5 rounded-2xl bg-zinc-900 text-white font-mono text-xs font-bold border border-zinc-800 shadow-lg shadow-zinc-900/10 flex items-center gap-3">
-                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
-                    <span>CENTRAL MULTI-AGENT KERNEL & ORCHESTRATION BUS</span>
-                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 sm:space-y-6 bg-zinc-50/40 relative scrollbar-thin">
+              {/* AGENT STATUS BAR — unified kernel control strip */}
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="relative rounded-2xl bg-zinc-900 border border-zinc-800 p-4 sm:p-5 shadow-lg shadow-zinc-900/10 overflow-hidden"
+              >
+                <div className="absolute -top-12 -right-12 w-48 h-48 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
+                <div className="relative flex flex-col md:flex-row md:items-center gap-4">
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/15 border border-blue-400/30 flex items-center justify-center text-blue-400">
+                      <Bot className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-white text-sm font-bold flex items-center gap-2">
+                        Multi-Agent Kernel
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
+                      </div>
+                      <div className="text-[10px] text-zinc-400 font-mono">Orchestrating {nodes.length} pipeline nodes</div>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 flex flex-wrap items-center gap-1.5 md:justify-end">
+                    {KERNEL_SUB_AGENTS.map((agent, i) => (
+                      <div
+                        key={agent.label}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold transition-all ${
+                          kernelLine === i ? "bg-white/10 border-white/30 text-white" : "border-white/10 text-zinc-400"
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${agent.color} ${kernelLine === i ? "animate-ping" : "opacity-40"}`} />
+                        {agent.icon}
+                        <span>{agent.label}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <p className="text-[11px] font-mono text-blue-600 mt-2 font-bold tracking-wider uppercase flex items-center gap-1">
-                  <Radio className="w-3.5 h-3.5 animate-pulse text-blue-600" />
-                  <span>Electric Laser Line Traces Flowing Into Node Cards Below ↓</span>
-                </p>
-              </div>
 
-              {/* ULTRA-PREMIUM SLEEK LASER TRACE SVG PATHS */}
-              <div className="relative w-full h-16 -my-2 z-10 hidden md:block">
-                <svg className="w-full h-full overflow-visible" viewBox="0 0 900 60" fill="none">
-                  <defs>
-                    <linearGradient id="laserGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stopColor="#2563eb" stopOpacity="1" />
-                      <stop offset="60%" stopColor="#3b82f6" stopOpacity="0.8" />
-                      <stop offset="100%" stopColor="#60a5fa" stopOpacity="1" />
-                    </linearGradient>
-                    <filter id="subtleGlow" x="-20%" y="-20%" width="140%" height="140%">
-                      <feGaussianBlur stdDeviation="2" result="blur" />
-                      <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                    </filter>
-                  </defs>
+                <div className="relative mt-4 pt-3 border-t border-white/10 flex items-center gap-1.5 text-[11px] font-mono text-blue-300">
+                  <Radio className="w-3.5 h-3.5 animate-pulse shrink-0" />
+                  <AnimatePresence mode="wait">
+                    <motion.span
+                      key={kernelLine}
+                      initial={{ opacity: 0, y: 3 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -3 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      {KERNEL_TRACE_LINES[kernelLine]}
+                    </motion.span>
+                  </AnimatePresence>
+                </div>
+              </motion.div>
 
-                  {/* Laser Stream Left Card */}
-                  <path d="M 450 0 C 450 25, 150 15, 150 60" stroke="url(#laserGrad)" strokeWidth="2.5" filter="url(#subtleGlow)" strokeDasharray="6 3" className="animate-pulse" />
-                  <circle cx="150" cy="60" r="4" fill="#2563eb" className="animate-ping" />
-
-                  {/* Laser Stream Middle Card */}
-                  <path d="M 450 0 C 450 30, 450 30, 450 60" stroke="url(#laserGrad)" strokeWidth="3" filter="url(#subtleGlow)" strokeDasharray="6 3" className="animate-pulse" />
-                  <circle cx="450" cy="60" r="4" fill="#2563eb" className="animate-ping" />
-
-                  {/* Laser Stream Right Card */}
-                  <path d="M 450 0 C 450 25, 750 15, 750 60" stroke="url(#laserGrad)" strokeWidth="2.5" filter="url(#subtleGlow)" strokeDasharray="6 3" className="animate-pulse" />
-                  <circle cx="750" cy="60" r="4" fill="#2563eb" className="animate-ping" />
-                </svg>
+              {/* SECTION DIVIDER */}
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-zinc-200" />
+                <span className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider">
+                  {nodes.length} Pipeline Nodes
+                </span>
+                <div className="h-px flex-1 bg-zinc-200" />
               </div>
 
               {/* NODE CARDS GRID */}
-              <div className="grid md:grid-cols-3 gap-5 relative z-20">
+              <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-5 relative z-20">
                 {nodes.map((node, index) => {
                   const isSelected = selectedNode === index;
+                  const agent = KERNEL_SUB_AGENTS[node.agentIndex];
                   return (
                     <motion.div
                       key={node.title}
@@ -461,25 +509,22 @@ function BurningArchitectureModal({ isOpen, onClose }: { isOpen: boolean; onClos
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.05 }}
                       onClick={() => setSelectedNode(index)}
-                      className={`relative p-5 rounded-2xl border transition-all cursor-pointer overflow-hidden group ${
+                      className={`relative p-4 sm:p-5 rounded-2xl border transition-all cursor-pointer overflow-hidden group ${
                         isSelected
                           ? "bg-blue-50/40 border-blue-500 ring-2 ring-blue-500/20 shadow-md"
                           : "bg-white border-zinc-200/90 hover:border-blue-300 hover:shadow-sm"
                       }`}
                     >
-                      {/* Top Laser Contact Bar */}
-                      <div className={`absolute top-0 left-0 right-0 h-1 transition-all ${
-                        isSelected ? "bg-gradient-to-r from-blue-500 via-indigo-500 to-blue-600" : "bg-zinc-100 group-hover:bg-blue-400"
-                      }`} />
-
-                      {/* Laser Contact Pulse Point */}
-                      <div className={`absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full border transition-all ${
-                        isSelected ? "bg-blue-600 border-white ring-4 ring-blue-500/30 animate-pulse" : "bg-zinc-300 border-zinc-200 group-hover:bg-blue-500"
-                      }`} />
-
-                      <div className="flex justify-between items-center mb-2.5 pt-1">
-                        <span className="text-xs font-bold text-zinc-900">{node.title}</span>
-                        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                      <div className="flex items-start justify-between gap-2 mb-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all ${
+                            isSelected ? "bg-blue-600 text-white" : "bg-blue-50 text-blue-600"
+                          }`}>
+                            {node.icon}
+                          </div>
+                          <span className="text-xs font-bold text-zinc-900 leading-tight">{node.title}</span>
+                        </div>
+                        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border shrink-0 ${
                           isSelected ? "bg-blue-100 text-blue-700 border-blue-300" : "bg-zinc-100 text-zinc-600 border-zinc-200"
                         }`}>
                           {node.latency}
@@ -488,12 +533,17 @@ function BurningArchitectureModal({ isOpen, onClose }: { isOpen: boolean; onClos
 
                       <p className="text-[12px] text-zinc-500 font-mono mb-3 leading-relaxed">{node.sub}</p>
 
-                      <div className={`p-3 rounded-xl border text-[11px] font-sans leading-relaxed transition-all ${
+                      <div className={`p-3 rounded-xl border text-[11px] font-sans leading-relaxed transition-all mb-3 ${
                         isSelected
                           ? "bg-white border-blue-200 text-zinc-800 shadow-2xs font-medium"
                           : "bg-zinc-50/70 border-zinc-200/70 text-zinc-600"
                       }`}>
                         {node.details}
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <span className={`w-1.5 h-1.5 rounded-full ${agent.color}`} />
+                        <span className="text-[10px] font-mono font-bold text-zinc-500">{agent.label}</span>
                       </div>
                     </motion.div>
                   );
@@ -502,15 +552,15 @@ function BurningArchitectureModal({ isOpen, onClose }: { isOpen: boolean; onClos
             </div>
 
             {/* Modal Footer */}
-            <div className="px-6 py-4 bg-zinc-50/90 border-t border-zinc-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 z-20">
-              <div className="flex items-center gap-2 text-xs font-mono text-zinc-600">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                <span>6 Connected System Execution Nodes Ready</span>
+            <div className="px-4 sm:px-6 py-3 sm:py-4 bg-zinc-50/90 border-t border-zinc-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 z-20">
+              <div className="flex items-center gap-2 text-xs font-mono text-zinc-600 text-center sm:text-left">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                <span>{KERNEL_SUB_AGENTS.length} agents orchestrating {nodes.length} execution nodes</span>
               </div>
               <Link
                 href="/rag"
                 onClick={onClose}
-                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all shadow-md shadow-blue-600/20"
+                className="w-full sm:w-auto text-center px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all shadow-md shadow-blue-600/20"
               >
                 Launch RAG Workspace →
               </Link>
@@ -970,7 +1020,7 @@ function AutomationCardInteractive() {
   );
 }
 
-function ReportsCardWhite() {
+function ReportsCardWhite({ onOpenReport }: { onOpenReport: () => void }) {
   const metrics = [
     { label: "Automations", value: 1245, suffix: "" },
     { label: "Hours Saved", value: 312, suffix: "" },
@@ -980,8 +1030,17 @@ function ReportsCardWhite() {
 
   return (
     <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
-      <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
-        <BarChart3 className="w-5 h-5" />
+      <div className="flex items-center justify-between mb-4">
+        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+          <BarChart3 className="w-5 h-5" />
+        </div>
+        <button
+          onClick={onOpenReport}
+          className="text-[10px] font-mono font-bold bg-blue-600 text-white px-2.5 py-1 rounded-lg hover:bg-blue-700 transition-all flex items-center gap-1"
+        >
+          <ArrowUpRight className="w-3 h-3" />
+          <span>Try</span>
+        </button>
       </div>
       <h3 className="text-[15px] font-bold text-zinc-900 mb-3">Weekly Executive Insights</h3>
       <div className="grid grid-cols-2 gap-2 mb-3">
