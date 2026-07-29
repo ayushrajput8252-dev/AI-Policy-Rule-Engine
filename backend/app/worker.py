@@ -17,17 +17,137 @@ celery_app.conf.update(
     task_always_eager=False,
 )
 
+def _process_text_blocks(document_id: str, blocks_data: list[dict], db) -> dict:
+    """
+    Shared tail of the ingestion pipeline: chunks raw text blocks, indexes them
+    into Pinecone, and runs rule extraction. Used by both the PDF path and the
+    URL-crawl path so they stay in sync instead of duplicating this logic.
+    """
+    from .services.chunking import chunk_document
+    from .services.canonicalization import store_chunks_batch_in_pinecone, canonicalize_and_store_rule
+    from .services.extraction import extract_rules_batch
+    from .models import Chunk, Document
+    from concurrent.futures import ThreadPoolExecutor
+    import time
+
+    chunks = chunk_document(document_id, blocks_data)
+    print(f"Generated {len(chunks)} chunks for {document_id}")
+
+    db_chunks = [
+        Chunk(
+            id=c["chunk_id"],
+            document_id=c["document_id"],
+            page=c["page"],
+            section=c["section"],
+            content=c["content"]
+        )
+        for c in chunks
+    ]
+    db.add_all(db_chunks)
+    db.commit()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        chunk_indexing_future = executor.submit(store_chunks_batch_in_pinecone, chunks)
+
+        valid_rules_count = 0
+        BATCH_SIZE = 10
+
+        for i in range(0, len(chunks), BATCH_SIZE):
+            batch = chunks[i : i + BATCH_SIZE]
+            batch_results = extract_rules_batch(batch)
+            time.sleep(0.3)
+
+            for res in batch_results:
+                chunk_idx = res.get("chunk_index")
+                if chunk_idx is not None and 0 <= chunk_idx < len(batch):
+                    c = batch[chunk_idx]
+                else:
+                    c = batch[0] if batch else {}
+
+                if not res.get("is_candidate", True):
+                    continue
+
+                extracted = {
+                    "key_finding": res.get("key_finding", c.get("content", "")[:200]),
+                    "context": res.get("condition") or c.get("content", ""),
+                    "actor": res.get("actor", "N/A"),
+                    "action": res.get("action", "N/A"),
+                    "type": res.get("type", "GUIDELINE"),
+                    "confidence": res.get("confidence", 85)
+                }
+
+                canonicalize_and_store_rule(
+                    document_id=document_id,
+                    page=c.get("page"),
+                    section=c.get("section"),
+                    rule_data=extracted,
+                    db_session=db,
+                    bbox=c.get("bbox"),
+                    page_dim=c.get("page_dim")
+                )
+                valid_rules_count += 1
+
+        chunk_indexing_future.result()  # ensure chunk indexing completed
+
+    print(f"Processed {valid_rules_count} valid rules for document {document_id}")
+
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if doc:
+        meta = dict(doc.metadata_ or {})
+        meta["status"] = "completed"
+        doc.metadata_ = meta
+        db.commit()
+
+    return {"status": "success", "chunks_count": len(chunks), "rules_extracted": valid_rules_count}
+
+
+@celery_app.task(name="process_url")
+def process_url_task(document_id: str, url: str):
+    from .services.web_service import crawl_url_to_blocks
+    from .database import SessionLocal
+    from .models import Document
+
+    print(f"[Worker] Crawling URL for {document_id}: {url}")
+    db = SessionLocal()
+    try:
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if doc:
+            meta = dict(doc.metadata_ or {})
+            meta["status"] = "processing"
+            doc.metadata_ = meta
+            db.commit()
+
+        blocks_data, title = crawl_url_to_blocks(url)
+        if not blocks_data:
+            raise ValueError("No content could be extracted from this URL.")
+
+        if doc and title:
+            doc.name = title
+            db.commit()
+
+        return _process_text_blocks(document_id, blocks_data, db)
+    except Exception as e:
+        print(f"Error crawling URL for {document_id}: {str(e)}")
+        db.rollback()
+
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if doc:
+            meta = dict(doc.metadata_ or {})
+            meta["status"] = "failed"
+            meta["error"] = str(e)
+            doc.metadata_ = meta
+            db.commit()
+
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
+
 @celery_app.task(name="process_document")
 def process_document_task(document_id: str, file_path: str):
     # This will be implemented in the pipeline phase
     # For now, it will just call the parsing and chunking services
     from .services.parsing import parse_pdf
-    from .services.chunking import chunk_document
-    from .services.detection import detect_candidate
-    from .services.classification import classify_rule
-    from .services.extraction import extract_rule
-    from .services.validation import validate_rule
-    from .services.canonicalization import canonicalize_and_store_rule
     from .database import SessionLocal
     from .models import Chunk, Document
     
@@ -93,84 +213,7 @@ def process_document_task(document_id: str, file_path: str):
             return {"status": "success", "chunks_count": len(chunks), "type": "audio"}
 
         md_content = parse_pdf(file_path)
-        chunks = chunk_document(document_id, md_content)
-        print(f"Generated {len(chunks)} chunks for {document_id}")
-        
-        # Save chunks to DB
-        db_chunks = []
-        for c in chunks:
-            db_chunks.append(
-                Chunk(
-                    id=c["chunk_id"],
-                    document_id=c["document_id"],
-                    page=c["page"],
-                    section=c["section"],
-                    content=c["content"]
-                )
-            )
-        db.add_all(db_chunks)
-        db.commit()
-        
-        from .services.canonicalization import store_chunks_batch_in_pinecone
-        from .services.extraction import extract_rules_batch
-        from concurrent.futures import ThreadPoolExecutor
-        
-        # 1. Parallel Task A: Index raw document chunks into Pinecone for Normal Chunk RAG
-        # 2. Parallel Task B: Extract structured rules from chunks
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            chunk_indexing_future = executor.submit(store_chunks_batch_in_pinecone, chunks)
-            
-            valid_rules_count = 0
-            BATCH_SIZE = 10
-            import time
-            
-            for i in range(0, len(chunks), BATCH_SIZE):
-                batch = chunks[i : i + BATCH_SIZE]
-                batch_results = extract_rules_batch(batch)
-                time.sleep(0.3)
-                
-                for res in batch_results:
-                    chunk_idx = res.get("chunk_index")
-                    if chunk_idx is not None and 0 <= chunk_idx < len(batch):
-                        c = batch[chunk_idx]
-                    else:
-                        c = batch[0] if batch else {}
-                        
-                    if not res.get("is_candidate", True):
-                        continue
-                        
-                    extracted = {
-                        "key_finding": res.get("key_finding", c.get("content", "")[:200]),
-                        "context": res.get("condition") or c.get("content", ""),
-                        "actor": res.get("actor", "N/A"),
-                        "action": res.get("action", "N/A"),
-                        "type": res.get("type", "GUIDELINE"),
-                        "confidence": res.get("confidence", 85)
-                    }
-                    
-                    canonicalize_and_store_rule(
-                        document_id=document_id,
-                        page=c.get("page"),
-                        section=c.get("section"),
-                        rule_data=extracted,
-                        db_session=db,
-                        bbox=c.get("bbox"),
-                        page_dim=c.get("page_dim")
-                    )
-                    valid_rules_count += 1
-                    
-            chunk_indexing_future.result() # ensure chunk indexing completed
-        
-        print(f"Processed {valid_rules_count} valid rules for document {document_id}")
-        
-        # Mark as completed
-        if doc:
-            meta = dict(doc.metadata_ or {})
-            meta["status"] = "completed"
-            doc.metadata_ = meta
-            db.commit()
-            
-        return {"status": "success", "chunks_count": len(chunks), "rules_extracted": valid_rules_count}
+        return _process_text_blocks(document_id, md_content, db)
     except Exception as e:
         print(f"Error processing document {document_id}: {str(e)}")
         db.rollback()
