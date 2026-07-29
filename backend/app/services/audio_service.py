@@ -65,9 +65,10 @@ def transcribe_audio(file_path: str) -> List[Dict[str, Any]]:
     # 1. Try faster-whisper
     try:
         from faster_whisper import WhisperModel
-        print("[Audio Pipeline] Loading Faster-Whisper model (tiny/base for CPU efficiency)...")
-        # Use tiny model for maximum speed and compatibility
-        model = WhisperModel("tiny", device="cpu", compute_type="int8")
+        print("[Audio Pipeline] Loading Faster-Whisper model (base, CPU)...")
+        # "base" trades a little speed for materially better accuracy than "tiny",
+        # which was misreading short mic clips and even mis-detecting the spoken language.
+        model = WhisperModel("base", device="cpu", compute_type="int8")
         raw_segments, info = model.transcribe(target_path, beam_size=5, vad_filter=True)
         
         for s in raw_segments:
@@ -105,15 +106,14 @@ def transcribe_audio(file_path: str) -> List[Dict[str, Any]]:
     except Exception as hf_err:
         print(f"[Audio Pipeline Warning] HuggingFace ASR failed: {hf_err}.")
 
-    # 3. Emergency fallback parser for testing/graceful degradation if no speech model works offline
-    print("[Audio Pipeline Fallback] Returning structured fallback audio transcript segment...")
-    return [
-        {
-            "start": 0.0,
-            "end": 10.0,
-            "text": f"Audio file '{os.path.basename(file_path)}' uploaded and registered for RAG analysis."
-        }
-    ]
+    # 3. Both engines failed to produce any speech — raise instead of fabricating a
+    # placeholder transcript. Silently returning fake text here would mean a live voice
+    # query gets "answered" based on words the user never said, and an audio document
+    # upload would silently index made-up content as if it were real.
+    raise RuntimeError(
+        "Could not transcribe this audio: no speech was detected and the fallback "
+        "engine failed (ffmpeg may be missing on the server)."
+    )
 
 def merge_small_segments(segments: List[Dict[str, Any]], max_duration: float = 30.0, min_chars: int = 120) -> List[Dict[str, Any]]:
     """
