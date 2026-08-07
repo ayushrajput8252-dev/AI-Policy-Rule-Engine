@@ -4,11 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, useInView, AnimatePresence } from "framer-motion";
 import WeeklyReportModal from "@/components/weekly-report/WeeklyReportModal";
+import { askAssistant } from "@/components/ai-assistant/AIAssistantWidget";
 import {
   Database, UserPlus, Brain, Bot, BarChart3, Shield,
   ArrowRight, Menu, X, Zap, Users, Globe, CheckCircle2,
   Sparkles, Search, FileText, Cpu, Activity, Play, ArrowUpRight, Radio, Terminal, Pause, SkipForward,
-  MessageSquare, Layers, Server, Cloud, Plug, Share2, CheckSquare
+  MessageSquare, Layers, Server, Cloud, Plug, Share2, CheckSquare,
+  Wallet, CalendarCheck, FileCheck,
+  FolderOpen,
 } from "lucide-react";
 
 /* ── Inline GitHub Icon ── */
@@ -41,6 +44,56 @@ function DoodleUnderline({ className = "w-48 text-blue-600" }: { className?: str
         className="doodle-path"
       />
     </svg>
+  );
+}
+
+/* ── Floating Hero Doodles: payroll / attendance / policy ──
+   Clickable shortcuts into the AI Assistant widget — each one opens it with a
+   relevant question already asked, via the same window event the widget listens
+   for (see askAssistant in AIAssistantWidget), so no prop-drilling is needed. */
+function FloatingHeroDoodles() {
+  const doodles = [
+    {
+      label: "Payroll",
+      icon: <Wallet className="w-3.5 h-3.5" />,
+      className: "top-2 right-6 sm:right-10",
+      delay: "0s",
+      query: "Tell me about our payroll process and salary cycles.",
+    },
+    {
+      label: "Attendance",
+      icon: <CalendarCheck className="w-3.5 h-3.5" />,
+      className: "-bottom-10 left-4 sm:left-10",
+      delay: "1.2s",
+      query: "How does attendance and leave tracking work?",
+    },
+    {
+      label: "Policy",
+      icon: <FileCheck className="w-3.5 h-3.5" />,
+      className: "-bottom-2 right-16 sm:right-28",
+      delay: "2.1s",
+      query: "What HR policies should I know about?",
+    },
+  ];
+
+  return (
+    <div className="hidden md:block absolute inset-0 -z-0">
+      {doodles.map((d) => (
+        <button
+          key={d.label}
+          type="button"
+          onClick={() => askAssistant(d.query)}
+          title={`Ask the AI assistant about ${d.label.toLowerCase()}`}
+          className={`absolute animate-doodle-float hover:[animation-play-state:paused] group ${d.className}`}
+          style={{ animationDelay: d.delay }}
+        >
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-sm border border-zinc-200 shadow-sm text-zinc-500 transition-all group-hover:-translate-y-0.5 group-hover:shadow-md group-hover:border-blue-300 group-hover:bg-white group-hover:text-blue-700 cursor-pointer">
+            <span className="text-blue-500 group-hover:text-blue-600">{d.icon}</span>
+            <span className="text-[11px] font-mono font-semibold tracking-wide">{d.label}</span>
+          </div>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -202,11 +255,11 @@ export default function LandingPage() {
               <h1 className="text-[clamp(2.3rem,5vw,3.6rem)] font-extrabold leading-[1.08] tracking-tight text-zinc-900 mb-6">
                 AgenticFlow AI —{" "}
                 <span className="relative inline-block text-blue-600">
-                  Autonomous Policy
+                  Talent Intelligence
                   <DoodleUnderline className="absolute left-0 -bottom-2.5 w-full text-blue-600" />
                 </span>
                 <br />
-                & RAG Engine
+                Platform
               </h1>
 
               <p className="text-[16px] text-zinc-600 leading-relaxed mb-10 max-w-lg">
@@ -229,6 +282,8 @@ export default function LandingPage() {
                   View Architecture
                 </button>
               </div>
+
+              <FloatingHeroDoodles />
             </div>
 
             {/* Right Column: Hero Agent Matrix */}
@@ -934,10 +989,11 @@ function KnowledgeCardInteractive() {
 function AutomationCardInteractive() {
   const [activeTab, setActiveTab] = useState(0);
   const stages = [
-    { title: "1. Intent Parsing", detail: "NL Query parsed into structured AST intent." },
-    { title: "2. Tool Selection", detail: "MCP Registry dispatched [GitHub, Jira, Slack]." },
-    { title: "3. Approval Gate", detail: "Human RBAC Level 4 Authorization passed." },
-    { title: "4. Execution", detail: "Deterministic API Transaction dispatched." },
+    { title: "Live Agent Workflow", detail: "Multi-agent kernel orchestrates the end-to-end hiring pipeline autonomously." },
+    { title: "Resume Intelligence", detail: "Parses bulk resumes, extracting ATS scores, skills, and contact signals." },
+    { title: "Candidate Processing", detail: "Matches requirements, generates assignments, and evaluates submissions." },
+    { title: "Human Review & Approval", detail: "HR & hiring managers confirm every candidate before onboarding fires." },
+    { title: "Hiring Automation", detail: "Onboarding and knowledge transfer agents run automatically on approval." },
   ];
 
   useEffect(() => {
@@ -983,12 +1039,21 @@ function AutomationCardInteractive() {
       {/* ── Card Content ── */}
       <div className="flex flex-col md:flex-row gap-6 relative z-10">
         <div className="flex-1 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-amber-100/90 border border-amber-200/90 flex items-center justify-center mb-4 text-amber-700 shadow-xs">
-            <Bot className="w-5 h-5" />
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-amber-100/90 border border-amber-200/90 flex items-center justify-center text-amber-700 shadow-xs">
+              <Bot className="w-5 h-5" />
+            </div>
+            <Link
+              href="/hiring-automation"
+              className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-mono font-bold bg-zinc-900 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-all shadow-sm"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+              <span>Test Power</span>
+            </Link>
           </div>
           <h3 className="text-[16px] font-bold text-zinc-900 mb-2">Enterprise Automation Agent</h3>
           <p className="text-[13px] text-zinc-600 leading-relaxed mb-4">
-            Autonomous multi-step reasoning, MCP tool selection, human-in-the-loop approvals, and deterministic execution.
+            Autonomous multi-step reasoning, MCP tool selection, human-in-the-loop approvals, and deterministic execution — see it run a full agentic hiring pipeline.
           </p>
 
           <div className="p-3 bg-white/90 backdrop-blur-sm border border-amber-200/80 rounded-xl text-xs font-mono text-zinc-800 shadow-xs">
@@ -1070,17 +1135,35 @@ function StatSpan({ end, suffix }: { end: number; suffix: string }) {
   );
 }
 
+/* ── Security folder taxonomy — mirrors what a real enterprise security/compliance
+   surface tracks. Each "folder" drills down into the concrete data points it covers. ── */
+const SECURITY_CATEGORY_LABELS = [
+  "Role Based Access Control (RBAC)",
+  "Audit Logs",
+  "Activity Monitoring",
+  "Backup & Disaster Recovery",
+  "Secure File Uploads",
+];
+
 function SecurityCardWhite() {
-  const items = ["SSO / SAML", "RBAC", "Audit Logs", "AES-256", "GDPR", "SOC2 Type II"];
   return (
     <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
-      <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
-        <Shield className="w-5 h-5" />
+      <div className="flex items-center justify-between mb-4">
+        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+          <Shield className="w-5 h-5" />
+        </div>
+        <Link
+          href="/security"
+          className="text-[10px] font-mono font-bold bg-blue-600 text-white px-2.5 py-1 rounded-lg hover:bg-blue-700 transition-all flex items-center gap-1"
+        >
+          <FolderOpen className="w-3 h-3" />
+          <span>View</span>
+        </Link>
       </div>
       <h3 className="text-[15px] font-bold text-zinc-900 mb-3">Enterprise Ready Security</h3>
-      <div className="grid grid-cols-2 gap-2">
-        {items.map((item) => (
-          <div key={item} className="flex items-center gap-1.5 text-[11px] font-mono text-zinc-700 bg-zinc-50 px-2 py-1 rounded border border-zinc-200">
+      <div className="space-y-1.5">
+        {SECURITY_CATEGORY_LABELS.map((item) => (
+          <div key={item} className="flex items-center gap-1.5 text-[11px] font-mono text-zinc-700 bg-zinc-50 px-2.5 py-1.5 rounded-lg border border-zinc-200">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
             <span>{item}</span>
           </div>

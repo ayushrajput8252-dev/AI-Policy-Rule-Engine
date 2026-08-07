@@ -1,14 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, UserPlus, Users, FileText, Shield, GitBranch,
   Share2, CheckCircle2, XCircle, Clock, Plus, Search, X,
   Mail, Building, ChevronRight, Eye, Briefcase, FolderOpen,
-  AlertCircle, User, Zap
+  AlertCircle, User, Zap, Upload, Link2, Newspaper, Loader2, Paperclip, Sparkles
 } from "lucide-react";
+import {
+  getSyncedHiresSnapshot, getSyncedHiresServerSnapshot, subscribeSyncedHires, type SyncedHire,
+} from "@/lib/hiringSync";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 /* ═══════════════════════════════════════════════════════════
    TYPES
@@ -25,12 +30,17 @@ interface Employee {
   managerId: string | null;
   sharedDocs: string[];
   repoAccess: Record<string, RepoStatus>;
+  source?: string;
 }
+
+type DocType = "pdf" | "article" | "blog";
 
 interface Document {
   id: string;
   name: string;
   sharedWith: string[];
+  type?: DocType;
+  url?: string;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -47,9 +57,9 @@ const INITIAL_EMPLOYEES: Employee[] = [
 ];
 
 const INITIAL_DOCS: Document[] = [
-  { id: "d1", name: "design.pdf", sharedWith: ["e1"] },
-  { id: "d2", name: "software.pdf", sharedWith: ["e3"] },
-  { id: "d3", name: "ai.pdf", sharedWith: [] },
+  { id: "d1", name: "design.pdf", sharedWith: ["e1"], type: "pdf" },
+  { id: "d2", name: "software.pdf", sharedWith: ["e3"], type: "pdf" },
+  { id: "d3", name: "ai.pdf", sharedWith: [], type: "pdf" },
 ];
 
 const MANAGERS = [
@@ -67,6 +77,37 @@ export default function OnboardingPage() {
   const [documents, setDocuments] = useState<Document[]>(INITIAL_DOCS);
   const [currentManagerId, setCurrentManagerId] = useState("m1");
   const [currentEmployeeId, setCurrentEmployeeId] = useState("e1");
+
+  // Picks up candidates handed off by the Agentic Hiring Pipeline demo (/hiring-automation)
+  // so they show up here as real new employees instead of staying siloed in that page.
+  // sessionStorage doesn't exist during SSR, so this reads via useSyncExternalStore (server
+  // snapshot = []) rather than an effect, avoiding a hydration mismatch on first paint.
+  const syncedHires = useSyncExternalStore(subscribeSyncedHires, getSyncedHiresSnapshot, getSyncedHiresServerSnapshot);
+  const [appliedSynced, setAppliedSynced] = useState<SyncedHire[] | null>(null);
+
+  // Merges newly-synced hires into `employees` the moment the store snapshot changes.
+  // This runs during render (React's documented "adjusting state" pattern), guarded by
+  // reference equality so it only fires once per distinct sync payload — not in an effect,
+  // so there's no extra post-mount render flash.
+  if (syncedHires !== appliedSynced) {
+    setAppliedSynced(syncedHires);
+    if (syncedHires.length > 0) {
+      const existingIds = new Set(employees.map((e) => e.id));
+      const additions: Employee[] = syncedHires
+        .filter((h) => !existingIds.has(h.id))
+        .map((h) => ({
+          id: h.id,
+          name: h.name,
+          email: h.email,
+          designation: h.designation,
+          managerId: "m1",
+          sharedDocs: [],
+          repoAccess: Object.fromEntries(REPOS.map((r) => [r, "not_granted" as RepoStatus])),
+          source: "Agentic Hiring Pipeline",
+        }));
+      if (additions.length > 0) setEmployees((prev) => [...prev, ...additions]);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-white text-zinc-900 bg-white-grid relative selection:bg-blue-500/20">
@@ -127,6 +168,7 @@ export default function OnboardingPage() {
         <EmployeePortal
           employee={employees.find(e => e.id === currentEmployeeId) || employees[0]}
           documents={documents}
+          setEmployees={setEmployees}
         />
       )}
     </div>
@@ -253,9 +295,89 @@ function HRPortal({ employees, setEmployees, documents, setDocuments }: {
   const [shareTarget, setShareTarget] = useState<string | null>(null);
   const [notification, setNotification] = useState("");
 
+  // Onboarding knowledge attachments — PDFs, article links, previous blog links
+  const [pdfFiles, setPdfFiles] = useState<File[]>([]);
+  const [articleInput, setArticleInput] = useState("");
+  const [articleLinks, setArticleLinks] = useState<string[]>([]);
+  const [blogInput, setBlogInput] = useState("");
+  const [blogLinks, setBlogLinks] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const showNotif = (msg: string) => { setNotification(msg); setTimeout(() => setNotification(""), 2500); };
 
-  const addEmployee = () => {
+  const resetForm = () => {
+    setFormData({ name: "", email: "", designation: "", managerId: "" });
+    setPdfFiles([]);
+    setArticleInput(""); setArticleLinks([]);
+    setBlogInput(""); setBlogLinks([]);
+    setFormError("");
+  };
+
+  const addPdfFiles = (files: FileList | null) => {
+    if (!files) return;
+    const incoming = Array.from(files).filter(f => f.name.toLowerCase().endsWith(".pdf"));
+    setPdfFiles(prev => [...prev, ...incoming]);
+  };
+
+  const addLink = (kind: "article" | "blog") => {
+    const value = (kind === "article" ? articleInput : blogInput).trim();
+    if (!value) return;
+    if (kind === "article") { setArticleLinks(prev => [...prev, value]); setArticleInput(""); }
+    else { setBlogLinks(prev => [...prev, value]); setBlogInput(""); }
+  };
+
+  // Pushes uploaded PDFs / article / blog links into the shared Document Library, tied to the new hire
+  const attachKnowledgeToEmployee = async (empId: string, empName: string) => {
+    const uploadedDocs: Document[] = [];
+
+    if (pdfFiles.length > 0) {
+      try {
+        const fd = new FormData();
+        pdfFiles.forEach(f => fd.append("files", f));
+        const res = await fetch(`${API_URL}/api/v1/upload`, { method: "POST", body: fd });
+        if (res.ok) {
+          const data = await res.json();
+          for (const r of data.results || []) {
+            if (r.document_id) uploadedDocs.push({ id: r.document_id, name: r.filename, sharedWith: [empId], type: "pdf" });
+          }
+        }
+      } catch {
+        // Backend unreachable — attachments are recorded locally so onboarding can still proceed.
+        pdfFiles.forEach(f => uploadedDocs.push({ id: `d${Date.now()}-${f.name}`, name: f.name, sharedWith: [empId], type: "pdf" }));
+      }
+    }
+
+    const addLinksOfType = async (links: string[], kind: "article" | "blog") => {
+      for (const url of links) {
+        try {
+          const res = await fetch(`${API_URL}/api/v1/upload-url`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            uploadedDocs.push({ id: data.document_id || `d${Date.now()}-${url}`, name: url, sharedWith: [empId], type: kind, url });
+          } else {
+            uploadedDocs.push({ id: `d${Date.now()}-${url}`, name: url, sharedWith: [empId], type: kind, url });
+          }
+        } catch {
+          uploadedDocs.push({ id: `d${Date.now()}-${url}`, name: url, sharedWith: [empId], type: kind, url });
+        }
+      }
+    };
+
+    await addLinksOfType(articleLinks, "article");
+    await addLinksOfType(blogLinks, "blog");
+
+    if (uploadedDocs.length > 0) {
+      setDocuments(prev => [...prev, ...uploadedDocs]);
+      setEmployees(prev => prev.map(e => e.id === empId ? { ...e, sharedDocs: [...e.sharedDocs, ...uploadedDocs.map(d => d.name)] } : e));
+      showNotif(`${uploadedDocs.length} resource(s) shared with ${empName}.`);
+    }
+  };
+
+  const addEmployee = async () => {
     setFormError("");
     if (!formData.name.trim() || !formData.email.trim() || !formData.designation || !formData.managerId) {
       setFormError("All fields are required."); return;
@@ -273,9 +395,16 @@ function HRPortal({ employees, setEmployees, documents, setDocuments }: {
       repoAccess: Object.fromEntries(REPOS.map(r => [r, "not_granted" as RepoStatus])),
     };
     setEmployees(prev => [...prev, newEmp]);
-    setFormData({ name: "", email: "", designation: "", managerId: "" });
-    setShowAddForm(false);
     showNotif(`${newEmp.name} added successfully.`);
+    setShowAddForm(false);
+
+    const hasAttachments = pdfFiles.length > 0 || articleLinks.length > 0 || blogLinks.length > 0;
+    if (hasAttachments) {
+      setIsSubmitting(true);
+      await attachKnowledgeToEmployee(newEmp.id, newEmp.name);
+      setIsSubmitting(false);
+    }
+    resetForm();
   };
 
   const shareDoc = (docId: string, empId: string) => {
@@ -358,9 +487,93 @@ function HRPortal({ employees, setEmployees, documents, setDocuments }: {
                   {MANAGERS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
               </div>
-              {formError && <p className="text-xs text-red-600 font-bold mb-3 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{formError}</p>}
-              <button onClick={addEmployee} className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors">
-                Create Employee
+
+              {/* Onboarding Knowledge Attachments */}
+              <div className="pt-3 mt-1 border-t border-zinc-100 space-y-3">
+                <h4 className="text-xs font-bold text-zinc-700 flex items-center gap-1.5"><Paperclip className="w-3.5 h-3.5 text-blue-600" />Onboarding Resources (optional)</h4>
+
+                <div className="grid sm:grid-cols-3 gap-3">
+                  {/* PDFs */}
+                  <div>
+                    <label className="flex flex-col items-center justify-center gap-1 px-3 py-3 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 text-zinc-500 hover:border-blue-400 hover:text-blue-600 cursor-pointer transition-colors text-center">
+                      <Upload className="w-4 h-4" />
+                      <span className="text-[11px] font-bold">PDF / Multiple PDFs</span>
+                      <input type="file" accept=".pdf" multiple className="hidden" onChange={e => addPdfFiles(e.target.files)} />
+                    </label>
+                    {pdfFiles.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {pdfFiles.map((f, i) => (
+                          <span key={`${f.name}-${i}`} className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700 flex items-center gap-1">
+                            <FileText className="w-2.5 h-2.5" />{f.name}
+                            <button type="button" onClick={() => setPdfFiles(prev => prev.filter((_, idx) => idx !== i))} className="hover:text-red-600"><X className="w-2.5 h-2.5" /></button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Article Links */}
+                  <div>
+                    <div className="flex items-center gap-1">
+                      <input
+                        placeholder="Article link"
+                        value={articleInput}
+                        onChange={e => setArticleInput(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addLink("article"); } }}
+                        className="flex-1 min-w-0 px-2.5 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 text-xs focus:outline-none focus:border-blue-400"
+                      />
+                      <button type="button" onClick={() => addLink("article")} className="p-2.5 rounded-xl bg-zinc-100 border border-zinc-200 text-zinc-600 hover:bg-blue-50 hover:text-blue-600 shrink-0">
+                        <Link2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    {articleLinks.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {articleLinks.map((link, i) => (
+                          <span key={`${link}-${i}`} className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center gap-1 max-w-full">
+                            <Link2 className="w-2.5 h-2.5 shrink-0" /><span className="truncate max-w-[110px]">{link}</span>
+                            <button type="button" onClick={() => setArticleLinks(prev => prev.filter((_, idx) => idx !== i))} className="hover:text-red-600"><X className="w-2.5 h-2.5" /></button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Previous Blogs */}
+                  <div>
+                    <div className="flex items-center gap-1">
+                      <input
+                        placeholder="Previous blog link"
+                        value={blogInput}
+                        onChange={e => setBlogInput(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addLink("blog"); } }}
+                        className="flex-1 min-w-0 px-2.5 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 text-xs focus:outline-none focus:border-blue-400"
+                      />
+                      <button type="button" onClick={() => addLink("blog")} className="p-2.5 rounded-xl bg-zinc-100 border border-zinc-200 text-zinc-600 hover:bg-blue-50 hover:text-blue-600 shrink-0">
+                        <Newspaper className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    {blogLinks.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {blogLinks.map((link, i) => (
+                          <span key={`${link}-${i}`} className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center gap-1 max-w-full">
+                            <Newspaper className="w-2.5 h-2.5 shrink-0" /><span className="truncate max-w-[110px]">{link}</span>
+                            <button type="button" onClick={() => setBlogLinks(prev => prev.filter((_, idx) => idx !== i))} className="hover:text-red-600"><X className="w-2.5 h-2.5" /></button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {formError && <p className="text-xs text-red-600 font-bold mt-3 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{formError}</p>}
+              <button
+                onClick={addEmployee}
+                disabled={isSubmitting}
+                className="mt-4 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors disabled:opacity-60 flex items-center gap-2"
+              >
+                {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {isSubmitting ? "Sharing resources…" : "Create Employee"}
               </button>
             </div>
           </motion.div>
@@ -380,7 +593,14 @@ function HRPortal({ employees, setEmployees, documents, setDocuments }: {
                       {emp.name[0]}
                     </div>
                     <div className="min-w-0">
-                      <div className="text-sm font-bold text-zinc-900 truncate">{emp.name}</div>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-sm font-bold text-zinc-900 truncate">{emp.name}</span>
+                        {emp.source && (
+                          <span title={emp.source} className="inline-flex items-center gap-1 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 shrink-0">
+                            <Sparkles className="w-2.5 h-2.5" /> New Hire
+                          </span>
+                        )}
+                      </div>
                       <div className="text-[11px] text-zinc-500">{emp.designation}</div>
                     </div>
                   </div>
@@ -416,12 +636,20 @@ function HRPortal({ employees, setEmployees, documents, setDocuments }: {
         <div className="lg:col-span-2 space-y-4">
           <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2"><FolderOpen className="w-4 h-4 text-blue-600" />Document Library</h3>
           <div className="space-y-2">
-            {documents.map(doc => (
+            {documents.map(doc => {
+              const docIcon = doc.type === "article" ? <Link2 className="w-4 h-4 text-indigo-600 shrink-0" />
+                : doc.type === "blog" ? <Newspaper className="w-4 h-4 text-emerald-600 shrink-0" />
+                : <FileText className="w-4 h-4 text-blue-600 shrink-0" />;
+              return (
               <div key={doc.id} className="p-4 rounded-xl bg-white border border-zinc-200">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-blue-600 shrink-0" />
-                    <span className="text-sm font-bold text-zinc-900">{doc.name}</span>
+                <div className="flex items-center justify-between mb-2 gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {docIcon}
+                    {doc.url ? (
+                      <a href={doc.url} target="_blank" rel="noreferrer" className="text-sm font-bold text-zinc-900 hover:text-blue-600 truncate">{doc.name}</a>
+                    ) : (
+                      <span className="text-sm font-bold text-zinc-900 truncate">{doc.name}</span>
+                    )}
                   </div>
                   <button
                     onClick={() => setShareTarget(shareTarget === doc.id ? null : doc.id)}
@@ -467,7 +695,8 @@ function HRPortal({ employees, setEmployees, documents, setDocuments }: {
                   )}
                 </AnimatePresence>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
@@ -489,14 +718,16 @@ function ManagerPortal({ employees, setEmployees, managerId }: {
   const [notification, setNotification] = useState("");
   const showNotif = (msg: string) => { setNotification(msg); setTimeout(() => setNotification(""), 2500); };
 
-  const grantAccess = (empId: string, repo: string) => {
+  // Managers only ever approve a pending request — the request itself is raised by the employee,
+  // keeping both portals reading/writing the same `employees` state in sync.
+  const approveAccess = (empId: string, repo: string) => {
     const emp = employees.find(e => e.id === empId);
-    if (emp?.repoAccess[repo] === "granted") { showNotif("Access already granted."); return; }
+    if (!emp || emp.repoAccess[repo] !== "pending") return;
     setEmployees(prev => prev.map(e => e.id === empId
-      ? { ...e, repoAccess: { ...e.repoAccess, [repo]: e.repoAccess[repo] === "not_granted" ? "pending" : "granted" } }
+      ? { ...e, repoAccess: { ...e.repoAccess, [repo]: "granted" } }
       : e
     ));
-    showNotif(emp?.repoAccess[repo] === "pending" ? `${repo} access granted to ${emp.name}.` : `${repo} access set to pending.`);
+    showNotif(`${repo} access granted to ${emp.name}.`);
   };
 
   const statusPill = (status: RepoStatus) => {
@@ -556,12 +787,12 @@ function ManagerPortal({ employees, setEmployees, managerId }: {
                       </div>
                       <div className="flex items-center gap-2">
                         {statusPill(emp.repoAccess[repo])}
-                        {emp.repoAccess[repo] !== "granted" && (
+                        {emp.repoAccess[repo] === "pending" && (
                           <button
-                            onClick={() => grantAccess(emp.id, repo)}
+                            onClick={() => approveAccess(emp.id, repo)}
                             className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
                           >
-                            {emp.repoAccess[repo] === "not_granted" ? "Request" : "Approve"}
+                            Approve
                           </button>
                         )}
                       </div>
@@ -581,8 +812,25 @@ function ManagerPortal({ employees, setEmployees, managerId }: {
    EMPLOYEE PORTAL
    ═══════════════════════════════════════════════════════════ */
 
-function EmployeePortal({ employee, documents }: { employee: Employee; documents: Document[] }) {
+function EmployeePortal({ employee, documents, setEmployees }: {
+  employee: Employee;
+  documents: Document[];
+  setEmployees: (fn: (prev: Employee[]) => Employee[]) => void;
+}) {
   const sharedDocs = documents.filter(d => d.sharedWith.includes(employee.id));
+  const [notification, setNotification] = useState("");
+  const showNotif = (msg: string) => { setNotification(msg); setTimeout(() => setNotification(""), 2500); };
+
+  // Employee raises the request; the manager portal (reading the same `employees` state) approves it.
+  const requestAccess = (repo: string) => {
+    if (employee.repoAccess[repo] !== "not_granted") return;
+    setEmployees(prev => prev.map(e => e.id === employee.id
+      ? { ...e, repoAccess: { ...e.repoAccess, [repo]: "pending" } }
+      : e
+    ));
+    showNotif(`Access request for ${repo} sent to your manager.`);
+  };
+
   const totalSteps = 4;
   const completedSteps = [
     sharedDocs.length > 0,
@@ -604,6 +852,16 @@ function EmployeePortal({ employee, documents }: { employee: Employee; documents
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
+      <AnimatePresence>
+        {notification && (
+          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+            className="fixed top-16 right-4 sm:right-8 z-40 px-4 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold shadow-lg"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5 inline mr-1.5" />{notification}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Profile */}
       <div className="p-6 rounded-2xl bg-white border border-zinc-200 mb-6">
         <div className="flex items-center gap-4 mb-4 flex-wrap">
@@ -656,7 +914,17 @@ function EmployeePortal({ employee, documents }: { employee: Employee; documents
                   <GitBranch className="w-3.5 h-3.5 text-zinc-500" />
                   <span className="text-sm font-medium text-zinc-900">{repo}</span>
                 </div>
-                {statusPill(employee.repoAccess[repo])}
+                <div className="flex items-center gap-2">
+                  {statusPill(employee.repoAccess[repo])}
+                  {employee.repoAccess[repo] === "not_granted" && (
+                    <button
+                      onClick={() => requestAccess(repo)}
+                      className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                    >
+                      Request Access
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

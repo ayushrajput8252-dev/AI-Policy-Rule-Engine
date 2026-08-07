@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import {
@@ -8,8 +8,12 @@ import {
   CheckCircle2, Clock, Search, X, ChevronRight, ChevronDown,
   Users, Star, Activity, FolderOpen, Code, Terminal, Eye,
   Zap, ArrowUpRight, Filter, MessageSquare, Book, User,
-  BarChart3, Globe, Layers, Shield, Database, Bot
+  BarChart3, Globe, Layers, Shield, Database, Bot, Sparkles,
+  Video, ScrollText, CalendarClock, ClipboardCheck, Mail, Award,
 } from "lucide-react";
+import {
+  getSyncedHiresSnapshot, getSyncedHiresServerSnapshot, subscribeSyncedHires, type SyncedHire,
+} from "@/lib/hiringSync";
 
 /* ═══════════════════════════════════════════════════════════
    HOOKS
@@ -159,6 +163,15 @@ export default function KnowledgePage() {
   const [expandedFolder, setExpandedFolder] = useState<string | null>(null);
   const [aiSummaryOpen, setAiSummaryOpen] = useState(false);
   const [activityFilter, setActivityFilter] = useState("all");
+  const [viewingHireId, setViewingHireId] = useState<string | null>(null);
+
+  // Picks up candidates handed off by the Agentic Hiring Pipeline demo (/hiring-automation)
+  // so they show up here as real new employees receiving knowledge transfer. sessionStorage
+  // doesn't exist during SSR, so this is read via useSyncExternalStore (server snapshot = [])
+  // rather than an effect, to avoid a hydration mismatch on first paint.
+  const syncedHires = useSyncExternalStore(subscribeSyncedHires, getSyncedHiresSnapshot, getSyncedHiresServerSnapshot);
+
+  const viewingHire = syncedHires.find((h) => h.id === viewingHireId) || null;
 
   const sections = [
     { id: "overview", label: "Overview" },
@@ -193,56 +206,156 @@ export default function KnowledgePage() {
         </div>
       </nav>
 
-      {/* SECTION TABS */}
+      {/* SECTION TABS / NEW-HIRE SWITCHER */}
       <div className="sticky top-14 z-20 bg-white/90 backdrop-blur-sm border-b border-zinc-200/60">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex gap-1 overflow-x-auto scrollbar-hide py-2">
-            {sections.map(s => (
+          {viewingHire ? (
+            <div className="flex items-center gap-2 py-2.5 overflow-x-auto scrollbar-hide">
               <button
-                key={s.id}
-                onClick={() => setActiveSection(s.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
-                  activeSection === s.id
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
-                }`}
+                onClick={() => setViewingHireId(null)}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-zinc-600 hover:text-blue-600 transition-colors whitespace-nowrap"
               >
-                {s.label}
+                <ArrowLeft className="w-3.5 h-3.5" /> Back to Workspace
               </button>
-            ))}
-          </div>
+              <span className="text-zinc-300">/</span>
+              <span className="text-xs font-bold text-zinc-900 whitespace-nowrap flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" /> {viewingHire.name} · New Hire
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide py-2">
+              {sections.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => setActiveSection(s.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                    activeSection === s.id
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+              {syncedHires.length > 0 && (
+                <div className="flex items-center gap-1 ml-1 pl-2 border-l border-zinc-200 shrink-0">
+                  {syncedHires.map(h => (
+                    <button
+                      key={h.id}
+                      onClick={() => setViewingHireId(h.id)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors whitespace-nowrap"
+                    >
+                      <Sparkles className="w-3 h-3" /> {h.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-        {/* OVERVIEW */}
-        {activeSection === "overview" && <OverviewSection />}
-        {activeSection === "projects" && (
-          <ProjectsSection expandedProject={expandedProject} setExpandedProject={setExpandedProject} />
-        )}
-        {activeSection === "prs" && (
-          <PRSection
-            prs={filteredPRs}
-            filter={prFilter}
-            setFilter={setPrFilter}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-          />
-        )}
-        {activeSection === "timeline" && (
-          <TimelineSection expandedIdx={expandedTimeline} setExpandedIdx={setExpandedTimeline} />
-        )}
-        {activeSection === "graph" && (
-          <KnowledgeGraphSection hover={knowledgeHover} setHover={setKnowledgeHover} aiOpen={aiSummaryOpen} setAiOpen={setAiSummaryOpen} />
-        )}
-        {activeSection === "files" && (
-          <FilesSection expandedFolder={expandedFolder} setExpandedFolder={setExpandedFolder} />
-        )}
-        {activeSection === "activity" && (
-          <ActivitySection filter={activityFilter} setFilter={setActivityFilter} />
+        {viewingHire ? (
+          <NewHireKnowledgeView hire={viewingHire} />
+        ) : (
+          <>
+            {/* OVERVIEW */}
+            {activeSection === "overview" && <OverviewSection />}
+            {activeSection === "projects" && (
+              <ProjectsSection expandedProject={expandedProject} setExpandedProject={setExpandedProject} />
+            )}
+            {activeSection === "prs" && (
+              <PRSection
+                prs={filteredPRs}
+                filter={prFilter}
+                setFilter={setPrFilter}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+              />
+            )}
+            {activeSection === "timeline" && (
+              <TimelineSection expandedIdx={expandedTimeline} setExpandedIdx={setExpandedTimeline} />
+            )}
+            {activeSection === "graph" && (
+              <KnowledgeGraphSection hover={knowledgeHover} setHover={setKnowledgeHover} aiOpen={aiSummaryOpen} setAiOpen={setAiSummaryOpen} />
+            )}
+            {activeSection === "files" && (
+              <FilesSection expandedFolder={expandedFolder} setExpandedFolder={setExpandedFolder} />
+            )}
+            {activeSection === "activity" && (
+              <ActivitySection filter={activityFilter} setFilter={setActivityFilter} />
+            )}
+          </>
         )}
       </div>
     </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   NEW HIRE — KNOWLEDGE TRANSFER IN PROGRESS
+   (Candidates handed off from the Agentic Hiring Pipeline demo — a fresh
+   employee has no PR history yet, so this is a lighter view than the
+   veteran workspace above: profile + transfer checklist, not a full graph.)
+   ═══════════════════════════════════════════════════════════ */
+
+const NEW_HIRE_KT_STEPS = [
+  { label: "Assign Documents", icon: FileText, detail: "Architecture.md, API Reference, Team Handbook" },
+  { label: "Assign Videos", icon: Video, detail: "Codebase walkthrough & deployment training" },
+  { label: "Assign Policies", icon: ScrollText, detail: "Security, compliance & code review policy" },
+  { label: "Schedule Sessions", icon: CalendarClock, detail: "1:1 pairing sessions with the team lead" },
+  { label: "Track Completion", icon: ClipboardCheck, detail: "Monitoring reading & training progress" },
+];
+
+function NewHireKnowledgeView({ hire }: { hire: SyncedHire }) {
+  return (
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+      <div className="p-6 rounded-2xl bg-white border border-zinc-200 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 text-2xl font-bold shrink-0">
+            {hire.name[0]}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-xl font-extrabold text-zinc-900">{hire.name}</h2>
+              <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700">
+                <Sparkles className="w-2.5 h-2.5" /> New Hire
+              </span>
+            </div>
+            <p className="text-xs text-zinc-500">{hire.designation} · Joined via Agentic Hiring Pipeline</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-[11px] text-zinc-400">
+              <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{hire.email}</span>
+              <span className="flex items-center gap-1"><Award className="w-3 h-3" />ATS {hire.ats}%</span>
+              <span>{hire.experience} experience</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5 mt-4">
+          {hire.skills.map(s => (
+            <span key={s} className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700">{s}</span>
+          ))}
+        </div>
+      </div>
+
+      <h3 className="text-sm font-bold text-zinc-900 mb-3 flex items-center gap-2"><Brain className="w-4 h-4 text-blue-600" />Knowledge Transfer Checklist</h3>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {NEW_HIRE_KT_STEPS.map((s) => {
+          const Icon = s.icon;
+          return (
+            <div key={s.label} className="p-4 rounded-2xl bg-emerald-50/50 border border-emerald-200 flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white border border-emerald-200 flex items-center justify-center text-emerald-600 shrink-0">
+                <Icon className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-zinc-900 flex items-center gap-1.5">{s.label} <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /></div>
+                <div className="text-[11px] text-zinc-500 mt-0.5">{s.detail}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </motion.div>
   );
 }
 
