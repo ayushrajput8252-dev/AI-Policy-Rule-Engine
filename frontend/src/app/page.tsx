@@ -77,14 +77,14 @@ function FloatingHeroDoodles() {
   ];
 
   return (
-    <div className="hidden md:block absolute inset-0 -z-0">
+    <div className="hidden md:block absolute inset-0 pointer-events-none">
       {doodles.map((d) => (
         <button
           key={d.label}
           type="button"
           onClick={() => askAssistant(d.query)}
           title={`Ask the AI assistant about ${d.label.toLowerCase()}`}
-          className={`absolute animate-doodle-float hover:[animation-play-state:paused] group ${d.className}`}
+          className={`absolute pointer-events-auto animate-doodle-float hover:[animation-play-state:paused] group ${d.className}`}
           style={{ animationDelay: d.delay }}
         >
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-sm border border-zinc-200 shadow-sm text-zinc-500 transition-all group-hover:-translate-y-0.5 group-hover:shadow-md group-hover:border-blue-300 group-hover:bg-white group-hover:text-blue-700 cursor-pointer">
