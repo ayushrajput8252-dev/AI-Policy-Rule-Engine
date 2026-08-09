@@ -1,8 +1,47 @@
 import requests
 from bs4 import BeautifulSoup
+from ..config import settings
 
 USER_AGENT = "Mozilla/5.0 (compatible; AgenticFlowBot/1.0; +policy-engine)"
 MIN_BLOCK_CHARS = 400
+TAVILY_SEARCH_URL = "https://api.tavily.com/search"
+
+
+def tavily_search(query: str, max_results: int = 5) -> list[dict]:
+    """
+    Live web search via Tavily, used as the assistant's last-resort fallback when
+    neither the extracted policy rules nor the indexed document chunks answer the
+    question — e.g. general knowledge or anything outside the uploaded documents.
+    Returns a list of {title, url, content} results, or [] if no key is configured
+    or the request fails (callers treat that the same as "no results").
+    """
+    if not settings.TAVILY_API_KEY:
+        return []
+    try:
+        resp = requests.post(
+            TAVILY_SEARCH_URL,
+            json={
+                "api_key": settings.TAVILY_API_KEY,
+                "query": query,
+                "search_depth": "basic",
+                "max_results": max_results,
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return [
+            {
+                "title": r.get("title", ""),
+                "url": r.get("url", ""),
+                "content": r.get("content", ""),
+            }
+            for r in data.get("results", [])
+            if r.get("content")
+        ]
+    except Exception as e:
+        print(f"[Tavily Search Warning]: {e}")
+        return []
 
 
 def fetch_url_text(url: str) -> dict:

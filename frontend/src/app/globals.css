@@ -252,6 +252,42 @@
 }
 .animate-marquee-reverse-light { animation: marquee-reverse-light 30s linear infinite; }
 
+/* ── Cosmos Ball — the AI assistant's identity mark: a slowly evolving
+   sphere in the site's own blue palette (not a static bot glyph, and not
+   an off-brand rainbow orb) with a small satellite orbiting it, echoing
+   the Agent Orchestrator section's "agents orbiting a core" language in
+   miniature. The swirl rotates continuously, stars twinkle on staggered
+   delays, and a soft breathing glow stands in for the old hard-edged
+   ping ring. ── */
+@keyframes cosmos-rotate {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.cosmos-swirl {
+  background: conic-gradient(from 0deg, #1d4ed8, #3b82f6, #6366f1, #0ea5e9, #1d4ed8);
+  animation: cosmos-rotate 9s linear infinite;
+}
+
+@keyframes cosmos-twinkle {
+  0%, 100% { opacity: 0.15; }
+  50%      { opacity: 1; }
+}
+.cosmos-twinkle {
+  animation: cosmos-twinkle 2.6s ease-in-out infinite;
+}
+
+@keyframes cosmos-breathe {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50%      { opacity: 0.7; transform: scale(1.1); }
+}
+.cosmos-glow {
+  animation: cosmos-breathe 3.6s ease-in-out infinite;
+}
+
+.cosmos-orbit {
+  animation: cosmos-rotate 4s linear infinite;
+}
+
 /* ── Typing Cursor ── */
 @keyframes cursor-blink {
   0%, 100% { opacity: 1; }

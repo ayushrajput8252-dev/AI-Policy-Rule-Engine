@@ -1,6 +1,12 @@
 import re
-from langdetect import detect, DetectorFactory
+from langdetect import detect_langs, DetectorFactory
 from .llm_service import generate_json
+
+# langdetect is unreliable on short, common-phrasing text — it will happily call
+# "What company documents are available?" Catalan. Below this confidence, trust
+# English over the model's best guess rather than translating a fine English
+# answer into the wrong language.
+MIN_LANG_CONFIDENCE = 0.85
 
 # Seed DetectorFactory for deterministic language identification
 DetectorFactory.seed = 0
@@ -41,14 +47,22 @@ LANGUAGE_MAP = {
 def detect_language(text: str) -> str:
     """
     Detects the ISO 639-1 language code of the input text using langdetect.
-    Returns 'en' if text is too short, numeric, or if detection fails.
+    Returns 'en' if text is too short, numeric, detection fails, or the model
+    isn't confident enough to justify translating the answer away from English.
     """
     cleaned = text.strip()
     if not cleaned or len(cleaned) < 3 or cleaned.isnumeric():
         return "en"
-    
+
     try:
-        lang_code = detect(cleaned).lower()
+        candidates = detect_langs(cleaned)
+        if not candidates:
+            return "en"
+        top = candidates[0]
+        lang_code = top.lang.lower()
+        if lang_code != "en" and top.prob < MIN_LANG_CONFIDENCE:
+            print(f"[Multilingual Service] Low-confidence '{lang_code}' ({top.prob:.2f}) for {cleaned!r} — treating as English")
+            return "en"
         return lang_code
     except Exception as e:
         print(f"[Multilingual Service] Language detection fallback to 'en': {e}")

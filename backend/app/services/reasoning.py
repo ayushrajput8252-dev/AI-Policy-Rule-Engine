@@ -1,5 +1,6 @@
 import json
 from .llm_service import generate_json
+from .web_service import tavily_search
 from ..database import SessionLocal
 from ..models import Chunk
 
@@ -168,7 +169,52 @@ def generate_answer_with_fallback(query: str, retrieved_rules: list[dict], retri
                     "retrieval_mode": "chunks"
                 }
 
-    # ── Tier 3: Final Fallback - Required info missing ──
+    # ── Tier 3: Live Web Search (Tavily) — for questions outside the indexed
+    # documents entirely (general knowledge, current info), rather than giving up.
+    web_results = tavily_search(query)
+    if web_results:
+        web_context = "\n\n".join(
+            f"- [{r['title']}]({r['url']}): {r['content'][:600]}" for r in web_results
+        )
+        prompt_web = f"""
+        You are an AI assistant answering from live web search results because the
+        organization's own documents did not cover this question.
+
+        User Question: "{query}"
+
+        Web Search Results:
+        {web_context}
+
+        Instructions:
+        1. Answer using only the web results above. If they don't answer the question, set "has_info": false.
+        2. Make clear this came from the web, not internal policy documents.
+
+        Return ONLY a JSON object:
+        {{
+          "has_info": true,
+          "answer": "Your answer based on the web results"
+        }}
+        """
+        try:
+            res_web = generate_json(prompt_web)
+            if isinstance(res_web, dict):
+                has_info = _is_truthy(res_web.get("has_info"))
+                answer = res_web.get("answer", "").strip()
+                if has_info and answer:
+                    return {
+                        "answer": answer,
+                        "sources": [{"title": r["title"], "url": r["url"]} for r in web_results],
+                        "retrieval_mode": "web"
+                    }
+        except Exception as e:
+            print(f"[Reasoning Tier 3 (Web) Error]: {e}")
+            return {
+                "answer": f"From the web: {web_results[0]['content'][:400]}",
+                "sources": [{"title": r["title"], "url": r["url"]} for r in web_results],
+                "retrieval_mode": "web"
+            }
+
+    # ── Tier 4: Final Fallback - Required info missing ──
     return {
         "answer": "Required info missing from document context.",
         "sources": [],

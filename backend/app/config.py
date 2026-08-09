@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     PINECONE_ENVIRONMENT: str = ""
     PINECONE_INDEX_NAME: str = Field(default="policy-rules", validation_alias=AliasChoices("PINECONE_INDEX_NAME", "PINECONE_INDEX"))
 
+    TAVILY_API_KEY: str = ""
+
     DATABASE_URL: str = "sqlite:///./policy_engine.db"
     
     REDIS_URL: str = "redis://localhost:6379/0"

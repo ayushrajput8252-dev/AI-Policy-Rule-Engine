@@ -372,11 +372,16 @@ export default function LandingPage() {
               <div className="h-px flex-1 bg-gradient-to-l from-transparent to-zinc-200" />
             </div>
 
-            {/* Card: Telephonic Agent */}
-            <TelephonicAgentCard />
+            {/* Card: Telephonic Agent — self-start so this row's height is driven by
+                each card's own content instead of CSS Grid stretching the shorter
+                Screening Agent card to match, which left dead empty space at its
+                bottom. */}
+            <div className="md:self-start">
+              <TelephonicAgentCard />
+            </div>
 
             {/* Card: Screening Agent */}
-            <div className="md:col-span-2">
+            <div className="md:col-span-2 md:self-start">
               <ScreeningAgentCard />
             </div>
 
@@ -493,6 +498,7 @@ const AGENT_LAYERS = [
     label: "Foundation Engines",
     radius: 230,
     gradient: "from-zinc-400 to-zinc-600",
+    labelClass: "bg-zinc-100 border-zinc-300 text-zinc-700",
     agents: [
       { name: "RAG Engine", tag: "Dual-Tier Retrieval", icon: Database },
       { name: "Vector Index", tag: "Pinecone + SQL", icon: Layers },
@@ -504,6 +510,7 @@ const AGENT_LAYERS = [
     label: "Orchestration Kernel",
     radius: 310,
     gradient: "from-sky-400 to-blue-600",
+    labelClass: "bg-blue-50 border-blue-200 text-blue-700",
     agents: [
       { name: "Orchestrator", tag: "Intent Parsing", icon: Bot },
       { name: "MCP Router", tag: "Tool Selection", icon: Plug },
@@ -515,6 +522,7 @@ const AGENT_LAYERS = [
     label: "Intelligence Agents",
     radius: 390,
     gradient: "from-violet-400 to-purple-600",
+    labelClass: "bg-violet-50 border-violet-200 text-violet-700",
     agents: [
       { name: "Matching", tag: "Requirement Fit", icon: Target },
       { name: "Evaluation", tag: "Candidate Scoring", icon: Award },
@@ -527,6 +535,7 @@ const AGENT_LAYERS = [
     label: "Engagement Agents",
     radius: 470,
     gradient: "from-amber-400 to-orange-500",
+    labelClass: "bg-amber-50 border-amber-200 text-amber-700",
     agents: [
       { name: "Resume Parse", tag: "Structured Extraction", icon: FileText },
       { name: "ATS Extract", tag: "Email + ATS Sync", icon: Mail },
@@ -540,6 +549,7 @@ const AGENT_LAYERS = [
     label: "Outcome Agents",
     radius: 550,
     gradient: "from-emerald-400 to-emerald-600",
+    labelClass: "bg-emerald-50 border-emerald-200 text-emerald-700",
     agents: [
       { name: "Onboarding", tag: "One-Click Provisioning", icon: UserPlus },
       { name: "Knowledge", tag: "Transfer Graph", icon: Brain },
@@ -596,13 +606,6 @@ function layerAngles(count: number, radius: number): number[] {
   return angles;
 }
 
-// Every badge drifts slowly back and forth along its own arc, ±BADGE_DRIFT_PX of
-// physical clearance either side of its resting angle — small enough to never
-// approach a neighboring badge or the layer label, since adjacent badges share
-// the same delta and move in lockstep (their spacing to each other never changes).
-const BADGE_DRIFT_PX = 12;
-const BADGE_DRIFT_TRANSITION = { duration: 8, repeat: Infinity, repeatType: "mirror" as const, ease: "easeInOut" as const };
-
 function AgentConstellation() {
   return (
     <div>
@@ -618,7 +621,7 @@ function AgentConstellation() {
               <path
                 key={layer.key}
                 d={d}
-                stroke="#e4e4e7"
+                stroke="#a1a1aa"
                 strokeWidth="1.5"
                 strokeDasharray="2 6"
                 strokeLinecap="round"
@@ -630,31 +633,22 @@ function AgentConstellation() {
         {AGENT_LAYERS.map((layer) => {
           const labelPos = arcPercent(layer.radius, 90);
           const angles = layerAngles(layer.agents.length, layer.radius);
-          const driftDeg = pxToDeg(BADGE_DRIFT_PX, layer.radius);
           return (
             <div key={layer.key}>
               <div
-                className="absolute -translate-x-1/2 -translate-y-1/2 text-[16px] xl:text-[18px] font-extrabold text-zinc-800 whitespace-nowrap bg-white/95 px-2.5 tracking-tight z-10"
+                className={`absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap px-3 py-1.5 rounded-full border text-[12px] xl:text-[13px] font-mono font-bold uppercase tracking-wide shadow-sm z-10 ${layer.labelClass}`}
                 style={labelPos}
               >
                 {layer.label}
               </div>
               {layer.agents.map((agent, i) => {
-                // Every badge on the platform drifts slowly along its own arc, all
-                // sharing the identical duration/easing (BADGE_DRIFT_TRANSITION)
-                // with no per-badge delay, so the whole roster reads as one
-                // synchronized, continuously-orchestrated system rather than a
-                // static chart.
-                const posFrom = arcPercent(layer.radius, angles[i] - driftDeg);
-                const posTo = arcPercent(layer.radius, angles[i] + driftDeg);
+                const pos = arcPercent(layer.radius, angles[i]);
                 const Icon = agent.icon;
                 return (
-                  <motion.div
+                  <div
                     key={agent.name}
                     className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1 group cursor-default"
-                    initial={{ left: posFrom.left, top: posFrom.top }}
-                    animate={{ left: [posFrom.left, posTo.left], top: [posFrom.top, posTo.top] }}
-                    transition={BADGE_DRIFT_TRANSITION}
+                    style={pos}
                   >
                     <div className="flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full bg-white border border-zinc-200 shadow-sm group-hover:shadow-md group-hover:border-blue-300 group-hover:-translate-y-0.5 transition-all whitespace-nowrap">
                       <span className={`w-5 h-5 rounded-full bg-gradient-to-br ${layer.gradient} ring-2 ring-white shadow flex items-center justify-center shrink-0`}>
@@ -664,7 +658,7 @@ function AgentConstellation() {
                     </div>
                     <div className="w-px h-2 bg-zinc-300 group-hover:bg-blue-300" />
                     <span className="text-[8.5px] text-zinc-400 font-medium whitespace-nowrap group-hover:text-blue-500 transition-colors">{agent.tag}</span>
-                  </motion.div>
+                  </div>
                 );
               })}
             </div>
@@ -1111,17 +1105,17 @@ function RAGCardInteractive() {
   const [selectedIdx, setSelectedIdx] = useState(0);
 
   return (
-    <div className="cpu-burn-card p-6 h-full flex flex-col md:flex-row gap-6 bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+    <div className="cpu-burn-card p-7 h-full flex flex-col md:flex-row gap-7 bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
       <div className="flex-1 min-w-0">
-        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
+        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-5 text-blue-600">
           <Database className="w-5 h-5" />
         </div>
         <h3 className="text-[16px] font-bold text-zinc-900 mb-2">Advanced Enterprise RAG</h3>
-        <p className="text-[13px] text-zinc-600 leading-relaxed mb-4">
+        <p className="text-[13px] text-zinc-600 leading-relaxed mb-5">
           Index millions of PDFs, emails, SharePoint files, and policies with semantic search, hybrid reranking, and citation tracing.
         </p>
 
-        <div className="space-y-1.5 mb-4">
+        <div className="space-y-2 mb-5">
           <div className="text-[11px] font-mono text-zinc-500">Test Vector Queries:</div>
           <div className="flex flex-wrap gap-1.5">
             {sampleQueries.map((q, i) => (
@@ -1131,13 +1125,13 @@ function RAGCardInteractive() {
                   e.preventDefault();
                   setSelectedIdx(i);
                 }}
-                className={`text-[11px] font-mono px-2.5 py-1 rounded-lg border transition-all ${
+                className={`inline-flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1 rounded-lg border transition-all ${
                   selectedIdx === i
                     ? "bg-blue-600 text-white border-blue-600 shadow-sm font-bold"
                     : "bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100"
                 }`}
               >
-                🔍 {q.query}
+                <Search className="w-3 h-3 shrink-0" /> {q.query}
               </button>
             ))}
           </div>
@@ -1151,7 +1145,7 @@ function RAGCardInteractive() {
         </Link>
       </div>
 
-      <div className="w-full md:w-56 shrink-0 space-y-3 p-3.5 bg-zinc-50 rounded-xl border border-zinc-200 font-mono text-xs">
+      <div className="w-full md:w-56 shrink-0 space-y-3 p-4 bg-zinc-50 rounded-xl border border-zinc-200 font-mono text-xs">
         <div className="flex items-center justify-between border-b border-zinc-200 pb-2">
           <span className="text-[10px] font-bold text-blue-600">RAG AGENT ACTIVE</span>
           <span className="text-[10px] text-emerald-600 font-bold">98.4% ACC</span>
@@ -1178,26 +1172,11 @@ function RAGCardInteractive() {
 
 function OnboardingCardInteractive() {
   const steps = ["Outlook Account", "Teams Channel", "GitHub Access", "Jira License", "Software Provision"];
-  const [active, setActive] = useState(2);
-  const [isRunning, setIsRunning] = useState(false);
-
-  const runTrigger = () => {
-    setIsRunning(true);
-    setActive(0);
-    let current = 0;
-    const iv = setInterval(() => {
-      current++;
-      setActive(current);
-      if (current >= steps.length) {
-        clearInterval(iv);
-        setIsRunning(false);
-      }
-    }, 800);
-  };
+  const [active] = useState(2);
 
   return (
-    <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
-      <div className="flex items-center justify-between mb-4">
+    <div className="cpu-burn-card p-7 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+      <div className="flex items-center justify-between mb-5">
         <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
           <UserPlus className="w-5 h-5" />
         </div>
@@ -1210,18 +1189,18 @@ function OnboardingCardInteractive() {
         </Link>
       </div>
 
-      <h3 className="text-[15px] font-bold text-zinc-900 mb-1.5">One-click Employee Onboarding</h3>
-      <p className="text-[12px] text-zinc-600 leading-relaxed mb-4">
+      <h3 className="text-[16px] font-bold text-zinc-900 mb-1.5">One-click Employee Onboarding</h3>
+      <p className="text-[12px] text-zinc-600 leading-relaxed mb-5">
         Automatically provision accounts, access permissions, and software in seconds.
       </p>
 
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         {steps.map((s, i) => {
           const done = i < active;
           const current = i === active;
           return (
-            <div key={s} className="flex items-center justify-between px-2.5 py-1.5 rounded bg-zinc-50 border border-zinc-200/80">
-              <span className={`text-[11px] font-mono ${done ? "text-zinc-700 font-medium" : current ? "text-blue-700 font-bold" : "text-zinc-400"}`}>
+            <div key={s} className="flex items-center justify-between px-3 py-2 rounded-lg bg-zinc-50 border border-zinc-200/80">
+              <span className={`text-[11.5px] ${done ? "text-zinc-700 font-medium" : current ? "text-blue-700 font-bold" : "text-zinc-400"}`}>
                 {s}
               </span>
               <span className={`text-[10px] font-mono ${done ? "text-emerald-600 font-bold" : current ? "text-blue-600 font-bold animate-pulse" : "text-zinc-400"}`}>
@@ -1255,8 +1234,8 @@ function KnowledgeCardInteractive() {
   const activeNode = nodes[activeIdx];
 
   return (
-    <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
-      <div className="flex items-center justify-between mb-4">
+    <div className="cpu-burn-card p-7 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+      <div className="flex items-center justify-between mb-5">
         <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
           <Brain className="w-5 h-5" />
         </div>
@@ -1268,17 +1247,17 @@ function KnowledgeCardInteractive() {
           <span>Try Engine</span>
         </Link>
       </div>
-      <h3 className="text-[15px] font-bold text-zinc-900 mb-1.5">Knowledge Transfer Engine</h3>
-      <p className="text-[12px] text-zinc-600 leading-relaxed mb-3">
+      <h3 className="text-[16px] font-bold text-zinc-900 mb-1.5">Knowledge Transfer Engine</h3>
+      <p className="text-[12px] text-zinc-600 leading-relaxed mb-4">
         Capture senior employee knowledge, meeting notes, and codebases into an active graph.
       </p>
 
-      <div className="flex flex-wrap gap-1 mb-3">
+      <div className="flex flex-wrap gap-1.5 mb-4">
         {nodes.map((n, idx) => (
           <button
             key={n.label}
             onClick={() => setActiveIdx(idx)}
-            className={`text-[10px] font-mono px-2 py-0.5 rounded border transition-all ${
+            className={`text-[10.5px] px-2.5 py-1 rounded-md border transition-all ${
               activeIdx === idx
                 ? "bg-blue-600 text-white border-blue-600 font-bold shadow-xs"
                 : "bg-zinc-100 text-zinc-700 border-zinc-200 hover:bg-zinc-200"
@@ -1289,7 +1268,7 @@ function KnowledgeCardInteractive() {
         ))}
       </div>
 
-      <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] font-mono text-blue-900">
+      <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-[11.5px] text-blue-900">
         <span className="font-bold">{activeNode.label}:</span> {activeNode.desc}
       </div>
     </div>
@@ -1314,62 +1293,33 @@ function AutomationCardInteractive() {
   }, [stages.length]);
 
   return (
-    <div className="cpu-burn-card p-6 h-full bg-gradient-to-br from-amber-50/80 via-yellow-50/40 to-amber-50/60 border border-amber-200/90 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
-      
-      {/* ── Background Premium Doodles & Subtle Rays ── */}
-      {/* Sparkle Doodle Overlay */}
-      <svg
-        className="absolute -top-3 -right-3 w-28 h-28 text-amber-500/20 pointer-events-none group-hover:scale-105 transition-transform duration-700"
-        viewBox="0 0 100 100"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeDasharray="4 4"
-      >
-        <path d="M 50 10 Q 65 35 90 50 Q 65 65 50 90 Q 35 65 10 50 Q 35 35 50 10 Z" />
-        <circle cx="50" cy="50" r="10" fill="currentColor" fillOpacity="0.08" />
-      </svg>
+    <div className="cpu-burn-card p-7 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm relative overflow-hidden">
+      {/* Subtle corner wash — a restrained accent instead of decorative doodles */}
+      <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-bl from-amber-100/50 to-transparent pointer-events-none" />
 
-      {/* Hand-drawn Star Doodle */}
-      <svg
-        className="absolute bottom-2 right-1/3 w-16 h-16 text-yellow-600/12 pointer-events-none"
-        viewBox="0 0 80 80"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      >
-        <path d="M 40 10 L 44 28 L 62 28 L 47 38 L 53 56 L 40 45 L 27 56 L 33 38 L 18 28 L 36 28 Z" />
-        <path d="M 12 15 L 18 25 M 68 15 L 62 25" strokeDasharray="2 2" />
-      </svg>
-
-      {/* Subtle Glow Rays */}
-      <div className="absolute top-0 right-0 w-36 h-36 bg-amber-200/20 rounded-bl-full pointer-events-none blur-lg" />
-
-      {/* ── Card Content ── */}
-      <div className="flex flex-col md:flex-row gap-6 relative z-10">
+      <div className="flex flex-col md:flex-row gap-7 relative z-10">
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-3 mb-4">
-            <div className="w-10 h-10 rounded-xl bg-amber-100/90 border border-amber-200/90 flex items-center justify-center text-amber-700 shadow-xs">
+          <div className="flex items-start justify-between gap-3 mb-5">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700">
               <Bot className="w-5 h-5" />
             </div>
             <Link
               href="/hiring-automation"
-              className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-mono font-bold bg-zinc-900 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-all shadow-sm"
+              className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-bold bg-zinc-900 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-all shadow-sm"
             >
               <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
               <span>Test Power</span>
             </Link>
           </div>
           <h3 className="text-[16px] font-bold text-zinc-900 mb-2">Enterprise Orchestration Layer</h3>
-          <p className="text-[13px] text-zinc-600 leading-relaxed mb-4">
+          <p className="text-[13px] text-zinc-600 leading-relaxed mb-5">
             Autonomous multi-step reasoning, MCP tool selection, human-in-the-loop approvals, and deterministic execution — see it run a full agentic hiring pipeline.
           </p>
 
-          <div className="p-3 bg-white/90 backdrop-blur-sm border border-amber-200/80 rounded-xl text-xs font-mono text-zinc-800 shadow-xs">
-            <div className="font-bold text-amber-800 mb-1 flex items-center justify-between">
+          <div className="p-3.5 bg-amber-50/60 border border-amber-200 rounded-xl text-xs text-zinc-800">
+            <div className="font-bold text-amber-800 mb-1 flex items-center justify-between font-mono">
               <span>{stages[activeTab].title}</span>
-              <span className="text-[10px] text-amber-700/80 font-normal">STEP {activeTab + 1}/4</span>
+              <span className="text-[10px] text-amber-700/80 font-normal">STEP {activeTab + 1}/{stages.length}</span>
             </div>
             <div className="text-[11px] text-zinc-600">{stages[activeTab].detail}</div>
           </div>
@@ -1380,10 +1330,10 @@ function AutomationCardInteractive() {
             <button
               key={s.title}
               onClick={() => setActiveTab(i)}
-              className={`p-2 rounded-lg border text-left text-[11px] font-mono transition-all ${
+              className={`p-2.5 rounded-lg border text-left text-[11px] font-medium transition-all ${
                 activeTab === i
                   ? "bg-amber-500 text-zinc-950 font-bold border-amber-500 shadow-xs"
-                  : "bg-white/80 text-zinc-700 border-zinc-200/80 hover:bg-amber-100/40"
+                  : "bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-amber-50 hover:border-amber-200"
               }`}
             >
               {s.title}
@@ -1405,30 +1355,30 @@ function PIPAgentCard() {
   ];
 
   return (
-    <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm flex flex-col">
-      <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 mb-4">
+    <div className="cpu-burn-card p-7 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm flex flex-col">
+      <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 mb-5">
         <ClipboardX className="w-5 h-5" />
       </div>
-      <h3 className="text-[16px] font-bold text-zinc-900 mb-1">PIP Agent</h3>
-      <p className="text-[13px] text-zinc-600 leading-relaxed mb-4">
+      <h3 className="text-[16px] font-bold text-zinc-900 mb-1.5">PIP Agent</h3>
+      <p className="text-[13px] text-zinc-600 leading-relaxed mb-5">
         Auto-drafts a Performance Improvement Plan the moment a manager flags an underperforming employee — clear goals, a fixed window to fix them, and a paper trail from day one.
       </p>
 
-      <div className="p-3.5 bg-zinc-50 border border-zinc-200 rounded-xl mb-4">
-        <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500 mb-1.5">
+      <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl mb-5">
+        <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500 mb-2">
           <span>Target</span>
           <span className="flex items-center gap-1 text-blue-700 font-bold"><CalendarClock className="w-3 h-3" /> 30–90 days</span>
         </div>
         <div className="text-[12px] text-zinc-800 font-semibold">&ldquo;Ship 3 sprint commitments on time&rdquo;</div>
-        <div className="h-1.5 bg-zinc-200 rounded-full mt-2.5 overflow-hidden">
+        <div className="h-1.5 bg-zinc-200 rounded-full mt-3 overflow-hidden">
           <div className="h-full w-2/5 bg-blue-600 rounded-full" />
         </div>
       </div>
 
-      <div className="space-y-1.5 mt-auto">
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 mt-auto pt-1 border-t border-zinc-100">
         {features.map((f) => (
-          <div key={f} className="flex items-center gap-2 text-[12px] text-zinc-700">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+          <div key={f} className="flex items-start gap-1.5 text-[12px] text-zinc-700 leading-snug pt-3">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-px" />
             {f}
           </div>
         ))}
@@ -1451,8 +1401,8 @@ function FraudDetectionCard() {
   const activeLabel = allChecks[activeIdx];
 
   return (
-    <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm flex flex-col">
-      <div className="flex items-center justify-between mb-4">
+    <div className="cpu-burn-card p-7 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm flex flex-col">
+      <div className="flex items-center justify-between mb-5">
         <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
           <ShieldAlert className="w-5 h-5" />
         </div>
@@ -1461,17 +1411,17 @@ function FraudDetectionCard() {
         </span>
       </div>
 
-      <h3 className="text-[16px] font-bold text-zinc-900 mb-1">Fraud Detection</h3>
-      <p className="text-[13px] text-zinc-600 leading-relaxed mb-4">
+      <h3 className="text-[16px] font-bold text-zinc-900 mb-1.5">Fraud Detection</h3>
+      <p className="text-[13px] text-zinc-600 leading-relaxed mb-5">
         A centralized memory and detection layer that screens every candidate and employee at each stage — before and after they join — catching duplicate identities, fabricated credentials, and policy violations before they get costly.
       </p>
 
-      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 text-white font-mono text-[11px] mb-4 overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-zinc-900 text-white font-mono text-[11px] mb-5 overflow-hidden">
         <Radar className="w-3.5 h-3.5 text-blue-400 shrink-0 animate-spin [animation-duration:3s]" />
         <span className="truncate">Scanning: {activeLabel}…</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2.5">
         <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl">
           <div className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider mb-1.5">Before Joining</div>
           {preJoin.map((f) => {
@@ -1520,8 +1470,8 @@ function TelephonicAgentCard() {
   ];
 
   return (
-    <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm flex flex-col">
-      <div className="flex items-center justify-between mb-4">
+    <div className="cpu-burn-card p-7 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm flex flex-col">
+      <div className="flex items-center justify-between mb-5">
         <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
           <Phone className="w-5 h-5" />
         </div>
@@ -1529,10 +1479,10 @@ function TelephonicAgentCard() {
           PAY PER CONNECT
         </span>
       </div>
-      <h3 className="text-[16px] font-bold text-zinc-900 mb-1">Telephonic Agent</h3>
-      <p className="text-[13px] text-zinc-500 mb-4">AI Voice Call · Screening</p>
+      <h3 className="text-[16px] font-bold text-zinc-900 mb-1.5">Telephonic Agent</h3>
+      <p className="text-[13px] text-zinc-500 mb-5">AI Voice Call · Screening</p>
 
-      <div className="p-3.5 bg-zinc-50 border border-zinc-200 rounded-xl mb-4">
+      <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl mb-5">
         <div className="text-[11px] font-mono text-zinc-500 mb-2">8–10 min · WhatsApp verified · 10+ languages</div>
         <div className="flex items-baseline gap-1.5">
           <span className="text-[26px] font-extrabold text-zinc-900 font-mono leading-none">₹60</span>
@@ -1540,10 +1490,10 @@ function TelephonicAgentCard() {
         </div>
       </div>
 
-      <div className="space-y-1.5 mb-4">
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 mb-6 pt-1 border-t border-zinc-100">
         {features.map((f) => (
-          <div key={f} className="flex items-center gap-2 text-[12px] text-zinc-700">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+          <div key={f} className="flex items-start gap-1.5 text-[12px] text-zinc-700 leading-snug pt-3">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-px" />
             {f}
           </div>
         ))}
@@ -1574,10 +1524,10 @@ function ScreeningAgentCard() {
   ];
 
   return (
-    <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
-      <div className="flex flex-col md:flex-row gap-6">
+    <div className="cpu-burn-card p-7 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+      <div className="flex flex-col md:flex-row gap-7">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-5">
             <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
               <Video className="w-5 h-5" />
             </div>
@@ -1585,12 +1535,12 @@ function ScreeningAgentCard() {
               PAY PER INTERVIEW
             </span>
           </div>
-          <h3 className="text-[16px] font-bold text-zinc-900 mb-1">Screening Agent</h3>
-          <p className="text-[13px] text-zinc-500 mb-4">3D avatar interviews, on autopilot</p>
+          <h3 className="text-[16px] font-bold text-zinc-900 mb-1.5">Screening Agent</h3>
+          <p className="text-[13px] text-zinc-500 mb-5">3D avatar interviews, on autopilot</p>
 
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-2">
             {features.map((f) => (
-              <span key={f.label} className="text-[11px] font-mono px-2.5 py-1.5 rounded-lg bg-zinc-50 text-zinc-700 border border-zinc-200 flex items-center gap-1.5">
+              <span key={f.label} className="text-[11px] font-medium px-2.5 py-1.5 rounded-lg bg-zinc-50 text-zinc-700 border border-zinc-200 flex items-center gap-1.5">
                 {f.icon}
                 {f.label}
               </span>
@@ -1598,14 +1548,14 @@ function ScreeningAgentCard() {
           </div>
         </div>
 
-        <div className="w-full md:w-64 shrink-0 space-y-2">
+        <div className="w-full md:w-64 shrink-0 space-y-2.5">
           {tiers.map((t) => (
-            <div key={t.name} className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl">
+            <div key={t.name} className="p-3.5 bg-zinc-50 border border-zinc-200 rounded-xl">
               <div className="flex items-start justify-between gap-2">
                 <span className="text-[12px] font-bold text-zinc-900 leading-tight">{t.name}</span>
                 <span className="text-[13px] font-extrabold text-blue-700 shrink-0 font-mono">{t.price}</span>
               </div>
-              <div className="flex items-end justify-between gap-2 mt-1">
+              <div className="flex items-end justify-between gap-2 mt-1.5">
                 <span className="text-[10px] text-zinc-500 leading-tight">{t.detail}</span>
                 <span className="text-[9px] text-zinc-400 shrink-0 whitespace-nowrap">{t.unit}</span>
               </div>
@@ -1626,8 +1576,8 @@ function ReportsCardWhite({ onOpenReport }: { onOpenReport: () => void }) {
   ];
 
   return (
-    <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
-      <div className="flex items-center justify-between mb-4">
+    <div className="cpu-burn-card p-7 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+      <div className="flex items-center justify-between mb-5">
         <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
           <BarChart3 className="w-5 h-5" />
         </div>
@@ -1639,11 +1589,11 @@ function ReportsCardWhite({ onOpenReport }: { onOpenReport: () => void }) {
           <span>Try</span>
         </button>
       </div>
-      <h3 className="text-[15px] font-bold text-zinc-900 mb-3">Track Insights</h3>
-      <div className="grid grid-cols-2 gap-2 mb-3">
+      <h3 className="text-[16px] font-bold text-zinc-900 mb-4">Track Insights</h3>
+      <div className="grid grid-cols-2 gap-2.5 mb-4">
         {metrics.map((m) => (
-          <div key={m.label} className="bg-zinc-50 border border-zinc-200 rounded-lg p-2.5">
-            <div className="text-[14px] font-bold text-zinc-900 font-mono">
+          <div key={m.label} className="bg-zinc-50 border border-zinc-200 rounded-lg p-3">
+            <div className="text-[15px] font-bold text-zinc-900 font-mono">
               <StatSpan end={m.value} suffix={m.suffix} />
             </div>
             <div className="text-[10px] text-zinc-500 font-medium">{m.label}</div>
@@ -1679,8 +1629,8 @@ const SECURITY_CATEGORY_LABELS = [
 
 function SecurityCardWhite() {
   return (
-    <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
-      <div className="flex items-center justify-between mb-4">
+    <div className="cpu-burn-card p-7 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+      <div className="flex items-center justify-between mb-5">
         <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
           <Shield className="w-5 h-5" />
         </div>
@@ -1692,10 +1642,10 @@ function SecurityCardWhite() {
           <span>View</span>
         </Link>
       </div>
-      <h3 className="text-[15px] font-bold text-zinc-900 mb-3">Enterprise Ready Security</h3>
-      <div className="space-y-1.5">
+      <h3 className="text-[16px] font-bold text-zinc-900 mb-4">Enterprise Ready Security</h3>
+      <div className="divide-y divide-zinc-100">
         {SECURITY_CATEGORY_LABELS.map((item) => (
-          <div key={item} className="flex items-center gap-1.5 text-[11px] font-mono text-zinc-700 bg-zinc-50 px-2.5 py-1.5 rounded-lg border border-zinc-200">
+          <div key={item} className="flex items-center gap-2 text-[12.5px] text-zinc-700 py-2 first:pt-0 last:pb-0">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
             <span>{item}</span>
           </div>
@@ -1719,22 +1669,22 @@ function IntegrationsCardInteractive() {
   ];
 
   return (
-    <div className="cpu-burn-card p-6 h-full flex flex-col justify-between bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+    <div className="cpu-burn-card p-7 h-full flex flex-col justify-between bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
       <div>
-        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-blue-600">
+        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-5 text-blue-600">
           <Globe className="w-5 h-5" />
         </div>
-        <h3 className="text-[15px] font-bold text-zinc-900 mb-1.5">18+ Native Integrations</h3>
-        <p className="text-[12px] text-zinc-600 leading-relaxed mb-4">
+        <h3 className="text-[16px] font-bold text-zinc-900 mb-1.5">18+ Native Integrations</h3>
+        <p className="text-[12px] text-zinc-600 leading-relaxed mb-5">
           Teams, Slack, Jira, GitHub, Salesforce, SAP, SharePoint, and custom MCP connectors.
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-2">
         {integrations.map((item) => (
           <span
             key={item.name}
-            className="text-[11px] font-mono px-2.5 py-1.5 rounded-lg bg-zinc-50 text-zinc-800 border border-zinc-200 flex items-center gap-1.5 shadow-2xs hover:bg-blue-50 hover:border-blue-200 transition-colors"
+            className="text-[11px] px-2.5 py-1.5 rounded-lg bg-zinc-50 text-zinc-800 border border-zinc-200 flex items-center gap-1.5 shadow-2xs hover:bg-blue-50 hover:border-blue-200 transition-colors"
           >
             {item.icon}
             <span className="font-semibold">{item.name}</span>

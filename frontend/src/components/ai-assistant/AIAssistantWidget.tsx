@@ -15,7 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bot, X, Send, Mic, Square, Volume2, VolumeX, Loader2 } from "lucide-react";
+import { X, Send, Mic, Square, Volume2, VolumeX, Loader2 } from "lucide-react";
 
 /** Fired by anything on the page (e.g. the hero's floating topic doodles) to open
  *  the assistant pre-loaded with a question — window-level so callers don't need
@@ -31,28 +31,45 @@ export interface AIAssistantConfig {
   greeting: string;
   intro: string;
   closingPrompt: string;
-  capabilities: string[];
   speakCta: string;
 }
 
 export const ASSISTANT_CONFIG: AIAssistantConfig = {
   name: "AgenticFlow AI",
-  subtitle: "Enterprise HR Expert",
+  subtitle: "Enterprise AI Assistant",
   greeting: "Hi 👋",
-  intro: "I'm your AI HR Assistant.",
+  intro: "I'm your AgenticFlow AI assistant — ask me about HR policy or the platform itself.",
   closingPrompt: "How can I help you today?",
-  capabilities: [
-    "HR Policies",
-    "Employee Benefits",
-    "Leave Management",
-    "Payroll",
-    "Recruitment",
-    "Compliance",
-    "Performance Reviews",
-    "Company Documents",
-  ],
   speakCta: "Speak with AI",
 };
+
+/** The assistant's identity mark — a slowly evolving sphere in the site's own
+ *  blue palette (not a static bot glyph, and not an off-brand rainbow orb), with
+ *  a small satellite orbiting it — the same "agents orbiting a core" language
+ *  as the Agent Orchestrator section, in miniature, so this reads as part of
+ *  the same system rather than a bolted-on widget. Fills whatever sized,
+ *  `relative`-positioned circle wraps it. */
+function CosmosBall({ orbit = true }: { orbit?: boolean }) {
+  return (
+    <>
+      <span className="absolute inset-0 rounded-full overflow-hidden bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-800">
+        <span className="absolute -inset-[45%] cosmos-swirl opacity-80" />
+        <span
+          className="absolute inset-0 rounded-full"
+          style={{ background: "radial-gradient(circle at 32% 26%, rgba(255,255,255,0.75), transparent 45%)", mixBlendMode: "screen" }}
+        />
+        <span className="absolute w-1 h-1 rounded-full bg-white cosmos-twinkle" style={{ top: "22%", left: "64%" }} />
+        <span className="absolute w-[3px] h-[3px] rounded-full bg-white/90 cosmos-twinkle" style={{ top: "60%", left: "26%", animationDelay: "1s" }} />
+        <span className="absolute w-1 h-1 rounded-full bg-white/80 cosmos-twinkle" style={{ top: "40%", left: "80%", animationDelay: "1.8s" }} />
+      </span>
+      {orbit && (
+        <span className="absolute -inset-[3px] rounded-full cosmos-orbit pointer-events-none">
+          <span className="absolute top-0 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-blue-300 shadow-[0_0_6px_2px_rgba(96,165,250,0.9)]" />
+        </span>
+      )}
+    </>
+  );
+}
 
 interface ChatMessage {
   id: string;
@@ -269,11 +286,12 @@ export default function AIAssistantWidget({ config = ASSISTANT_CONFIG }: { confi
             whileTap={{ scale: 0.96 }}
             onClick={() => setIsOpen(true)}
             aria-label={`Open ${config.name} assistant`}
-            className="fixed bottom-5 right-5 sm:bottom-7 sm:right-7 z-[60] w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br from-blue-600 via-blue-600 to-indigo-600 text-white shadow-xl shadow-blue-600/30 flex items-center justify-center"
+            className="fixed bottom-5 right-5 sm:bottom-7 sm:right-7 z-[60] w-14 h-14 sm:w-16 sm:h-16 rounded-full shadow-xl shadow-indigo-900/40 flex items-center justify-center"
           >
-            <span className="absolute inset-0 rounded-full bg-blue-500/50 animate-ping" style={{ animationDuration: "2.4s" }} />
-            <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-white" />
-            <Bot className="w-6 h-6 sm:w-7 sm:h-7 relative z-10" />
+            {/* Soft breathing glow — replaces the old hard-edged ping ring */}
+            <span className="absolute -inset-2 rounded-full bg-gradient-to-br from-blue-500/35 via-indigo-500/25 to-transparent blur-md cosmos-glow" />
+            <CosmosBall />
+            <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-white z-10" />
           </motion.button>
         )}
       </AnimatePresence>
@@ -292,8 +310,8 @@ export default function AIAssistantWidget({ config = ASSISTANT_CONFIG }: { confi
             {/* Header */}
             <div className="shrink-0 px-4 sm:px-5 py-3.5 flex items-center justify-between bg-white border-b border-zinc-200">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-9 h-9 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shrink-0">
-                  <Bot className="w-4.5 h-4.5" />
+                <div className="relative w-9 h-9 rounded-full shrink-0 shadow-sm">
+                  <CosmosBall orbit={false} />
                 </div>
                 <div className="min-w-0">
                   <div className="text-sm font-bold leading-tight text-zinc-900 truncate">{config.name}</div>
@@ -323,8 +341,8 @@ export default function AIAssistantWidget({ config = ASSISTANT_CONFIG }: { confi
               {!hasMessages ? (
                 <div className="px-5 sm:px-6 pt-8 pb-6 flex flex-col items-center text-center">
                   {/* Hero avatar */}
-                  <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4">
-                    <Bot className="w-8 h-8 text-blue-600" />
+                  <div className="relative w-16 h-16 rounded-full mb-4 shadow-md">
+                    <CosmosBall />
                   </div>
 
                   <button
@@ -341,18 +359,6 @@ export default function AIAssistantWidget({ config = ASSISTANT_CONFIG }: { confi
                   <div className="mt-7 text-left w-full">
                     <p className="text-base font-bold text-zinc-900">{config.greeting}</p>
                     <p className="text-sm text-zinc-600 mt-0.5">{config.intro}</p>
-                    <p className="text-xs font-semibold text-zinc-500 mt-3 mb-2">I can help with:</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {config.capabilities.map((cap) => (
-                        <button
-                          key={cap}
-                          onClick={() => submitQuery(`Tell me about ${cap.toLowerCase()}`)}
-                          className="px-2.5 py-1.5 rounded-full bg-zinc-50 border border-zinc-200 text-[11.5px] font-semibold text-zinc-600 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50 transition-colors"
-                        >
-                          {cap}
-                        </button>
-                      ))}
-                    </div>
                     <p className="text-sm text-zinc-700 font-medium mt-4">{config.closingPrompt}</p>
                   </div>
                 </div>
@@ -411,7 +417,7 @@ export default function AIAssistantWidget({ config = ASSISTANT_CONFIG }: { confi
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") submitQuery(input); }}
-                  placeholder="Ask about HR policies, payroll, leave…"
+                  placeholder="Ask about HR policy or the AgenticFlow platform…"
                   className="flex-1 min-w-0 bg-transparent text-[13px] text-zinc-900 placeholder:text-zinc-400 focus:outline-none py-1.5"
                 />
                 <button
