@@ -12,6 +12,7 @@ import {
   MessageSquare, Layers, Server, Cloud, Plug, Share2, CheckSquare,
   Wallet, CalendarCheck, FileCheck,
   FolderOpen,
+  Phone, Video, Minus, Plus, ShieldCheck, BadgeCheck, Lock, Calculator,
 } from "lucide-react";
 
 /* ── Inline GitHub Icon ── */
@@ -320,6 +321,21 @@ export default function LandingPage() {
               <AutomationCardInteractive />
             </div>
 
+            {/* Divider: usage-based pricing */}
+            <div className="md:col-span-3 flex items-center gap-3 pt-2 pb-1">
+              <div className="h-px flex-1 bg-zinc-200" />
+              <span className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider">Usage-Based Add-Ons</span>
+              <div className="h-px flex-1 bg-zinc-200" />
+            </div>
+
+            {/* Card: Telephonic Agent */}
+            <TelephonicAgentCard />
+
+            {/* Card: Screening Agent */}
+            <div className="md:col-span-2">
+              <ScreeningAgentCard />
+            </div>
+
             {/* Card 5: Reports */}
             <ReportsCardWhite onOpenReport={() => setWeeklyReportOpen(true)} />
 
@@ -362,29 +378,25 @@ export default function LandingPage() {
       {/* ─── WEEKLY EXECUTIVE REPORT MODAL ─── */}
       <WeeklyReportModal isOpen={weeklyReportOpen} onClose={() => setWeeklyReportOpen(false)} />
 
-      {/* ─── CTA & FOOTER ─── */}
+      {/* ─── THE MATH: COST COMPARISON ─── */}
       <section id="pricing" className="py-28 border-t border-zinc-200/80 bg-gradient-to-b from-white to-blue-50/40 relative">
-        <div className="max-w-3xl mx-auto px-6 text-center relative z-10">
-          <h2 className="text-[clamp(2rem,4vw,3rem)] font-extrabold text-zinc-900 tracking-tight mb-4">
-            Automate Your Organization <br />
-            <span className="text-blue-600">with AgenticFlow AI</span>
-          </h2>
-          <p className="text-zinc-600 text-[16px] leading-relaxed mb-8 max-w-lg mx-auto">
-            Deploy enterprise-grade AI automation, RAG document search, onboarding workflows, and tool orchestration in hours.
-          </p>
-          <div className="flex flex-wrap justify-center gap-4">
-            <Link
-              href="/rag"
-              className="px-8 py-3.5 rounded-xl text-[14px] font-semibold bg-blue-600 text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all"
-            >
-              Open /rag Workspace
-            </Link>
-            <button
-              onClick={() => setArchModalOpen(true)}
-              className="px-8 py-3.5 rounded-xl text-[14px] font-semibold border border-zinc-300 text-zinc-800 bg-white hover:bg-zinc-50 transition-all"
-            >
-              View Architecture
-            </button>
+        <div className="max-w-4xl mx-auto px-6 relative z-10">
+          <SectionHeader
+            badge="The Math"
+            title="What 100 first-round screenings actually cost"
+            subtitle="Compare the full manual process: sourcing, screening, coordination, and interviews against AgenticFlow AI."
+          />
+
+          <MathComparisonCard />
+
+          <div className="mt-20">
+            <CostCalculator />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mt-10 text-[12px] text-zinc-500">
+            <span className="flex items-center gap-1.5"><BadgeCheck className="w-3.5 h-3.5 text-emerald-600" /> GST invoice on every purchase</span>
+            <span className="flex items-center gap-1.5"><Lock className="w-3.5 h-3.5 text-emerald-600" /> No setup fees</span>
+            <span className="flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Cancel anytime</span>
           </div>
         </div>
       </section>
@@ -1051,7 +1063,7 @@ function AutomationCardInteractive() {
               <span>Test Power</span>
             </Link>
           </div>
-          <h3 className="text-[16px] font-bold text-zinc-900 mb-2">Enterprise Automation Agent</h3>
+          <h3 className="text-[16px] font-bold text-zinc-900 mb-2">Enterprise Orchestration Layer</h3>
           <p className="text-[13px] text-zinc-600 leading-relaxed mb-4">
             Autonomous multi-step reasoning, MCP tool selection, human-in-the-loop approvals, and deterministic execution — see it run a full agentic hiring pipeline.
           </p>
@@ -1085,6 +1097,106 @@ function AutomationCardInteractive() {
   );
 }
 
+/* ── Telephonic Agent — pay-per-connect voice screening ── */
+function TelephonicAgentCard() {
+  const features = [
+    "Pay only for connects",
+    "Up to 500 calls/day",
+    "Auto hand-off to interviews",
+    "Excel + resume upload",
+  ];
+
+  return (
+    <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm flex flex-col">
+      <div className="flex items-center justify-between mb-4">
+        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+          <Phone className="w-5 h-5" />
+        </div>
+        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">
+          PAY PER CONNECT
+        </span>
+      </div>
+      <h3 className="text-[16px] font-bold text-zinc-900 mb-1">Telephonic Agent</h3>
+      <p className="text-[13px] text-zinc-500 mb-4">AI Voice Call · Screening</p>
+
+      <div className="p-3.5 bg-zinc-50 border border-zinc-200 rounded-xl mb-4">
+        <div className="text-[11px] font-mono text-zinc-500 mb-2">8–10 min · WhatsApp verified · 10+ languages</div>
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-[26px] font-extrabold text-zinc-900 font-mono leading-none">₹60</span>
+          <span className="text-[11px] text-zinc-500 font-medium">per call</span>
+        </div>
+      </div>
+
+      <div className="space-y-1.5 mt-auto">
+        {features.map((f) => (
+          <div key={f} className="flex items-center gap-2 text-[12px] text-zinc-700">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            {f}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Screening Agent — 3D avatar interviews, tiered per-interview pricing ── */
+function ScreeningAgentCard() {
+  const tiers = [
+    { name: "AI Standard Interview", detail: "15–20 min · adaptive avatar · resume aware", price: "₹250", unit: "per interview" },
+    { name: "AI Deep Interview", detail: "25–30 min · probing follow-ups", price: "₹450", unit: "per interview" },
+    { name: "Structured Interview", detail: "You write the questions · AI conducts", price: "₹90", unit: "per interview" },
+  ];
+  const features = [
+    { label: "BrewShield proctoring", icon: <ShieldCheck className="w-3 h-3 text-blue-600" /> },
+    { label: "PDF report per candidate", icon: <CheckCircle2 className="w-3 h-3 text-emerald-600" /> },
+    { label: "Bulk invite", icon: <CheckCircle2 className="w-3 h-3 text-emerald-600" /> },
+    { label: "JD + resume aware", icon: <CheckCircle2 className="w-3 h-3 text-emerald-600" /> },
+  ];
+
+  return (
+    <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+      <div className="flex flex-col md:flex-row gap-6">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+              <Video className="w-5 h-5" />
+            </div>
+            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">
+              PAY PER INTERVIEW
+            </span>
+          </div>
+          <h3 className="text-[16px] font-bold text-zinc-900 mb-1">Screening Agent</h3>
+          <p className="text-[13px] text-zinc-500 mb-4">3D avatar interviews, on autopilot</p>
+
+          <div className="flex flex-wrap gap-1.5">
+            {features.map((f) => (
+              <span key={f.label} className="text-[11px] font-mono px-2.5 py-1.5 rounded-lg bg-zinc-50 text-zinc-700 border border-zinc-200 flex items-center gap-1.5">
+                {f.icon}
+                {f.label}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="w-full md:w-64 shrink-0 space-y-2">
+          {tiers.map((t) => (
+            <div key={t.name} className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl">
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-[12px] font-bold text-zinc-900 leading-tight">{t.name}</span>
+                <span className="text-[13px] font-extrabold text-blue-700 shrink-0 font-mono">{t.price}</span>
+              </div>
+              <div className="flex items-end justify-between gap-2 mt-1">
+                <span className="text-[10px] text-zinc-500 leading-tight">{t.detail}</span>
+                <span className="text-[9px] text-zinc-400 shrink-0 whitespace-nowrap">{t.unit}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ReportsCardWhite({ onOpenReport }: { onOpenReport: () => void }) {
   const metrics = [
     { label: "Automations", value: 1245, suffix: "" },
@@ -1107,7 +1219,7 @@ function ReportsCardWhite({ onOpenReport }: { onOpenReport: () => void }) {
           <span>Try</span>
         </button>
       </div>
-      <h3 className="text-[15px] font-bold text-zinc-900 mb-3">Weekly Executive Insights</h3>
+      <h3 className="text-[15px] font-bold text-zinc-900 mb-3">Track Insights</h3>
       <div className="grid grid-cols-2 gap-2 mb-3">
         {metrics.map((m) => (
           <div key={m.label} className="bg-zinc-50 border border-zinc-200 rounded-lg p-2.5">
@@ -1311,6 +1423,205 @@ function StatCardWhite({ value, suffix, label }: { value: number; suffix: string
         {suffix}
       </div>
       <p className="text-[13px] font-semibold text-zinc-700">{label}</p>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   THE MATH — cost comparison + interactive usage calculator
+
+   Every number below is derived from the same per-unit prices the
+   calculator uses (CALC_PRICES) and from the Telephonic Agent / Screening
+   Agent capability cards above, rather than being hardcoded independently —
+   so "the math" and "the calculator" can never drift apart.
+   ═══════════════════════════════════════════════════════════ */
+
+const CALC_PRICES = { standard: 250, deep: 450, structured: 90, voice: 60 };
+const CALC_BONUS_THRESHOLD = 15000;
+const CALC_BONUS_RATE = 0.05;
+
+const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
+
+// A first-round screen here = one Telephonic Agent voice call (replaces the
+// recruiter's initial phone screen) + one Screening Agent AI Standard
+// Interview (replaces the hiring manager's first-round interview).
+const MATH_CANDIDATES = 100;
+const MATH_RECRUITER_RATE = 500; // ₹/hr — sourcing, phone screens, scheduling & coordination
+const MATH_ENGINEER_RATE = 1200; // ₹/hr — conducting + scoring first-round interviews
+const MATH_RECRUITER_HOURS = 140; // 84 min/candidate: sourcing + phone screen + coordination, for 100 candidates
+const MATH_ENGINEER_HOURS = 110; // 66 min/candidate: first-round interview + scorecard, for 100 candidates
+const MATH_MANUAL_COST = MATH_RECRUITER_HOURS * MATH_RECRUITER_RATE + MATH_ENGINEER_HOURS * MATH_ENGINEER_RATE;
+const MATH_AI_COST_PER_CANDIDATE = CALC_PRICES.voice + CALC_PRICES.standard;
+const MATH_AI_COST = MATH_CANDIDATES * MATH_AI_COST_PER_CANDIDATE;
+const MATH_SAVINGS = MATH_MANUAL_COST - MATH_AI_COST;
+const MATH_SAVINGS_PCT = Math.round((MATH_SAVINGS / MATH_MANUAL_COST) * 100);
+
+function MathComparisonCard() {
+  return (
+    <div className="relative mt-8 rounded-[2rem] overflow-hidden p-8 sm:p-12 text-center bg-gradient-to-br from-blue-600 via-blue-600 to-sky-500 shadow-2xl shadow-blue-600/25">
+      <div className="absolute -top-24 -right-24 w-72 h-72 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+
+      <div className="relative">
+        <div className="text-[11px] font-mono font-bold uppercase tracking-widest text-blue-100 mb-3">
+          Manual vs. AgenticFlow AI · {MATH_CANDIDATES} candidates
+        </div>
+        <p className="text-[19px] sm:text-[26px] font-bold text-white mb-8 leading-snug">
+          You spend <span className="line-through decoration-2 decoration-orange-200/80 text-orange-100">{inr(MATH_MANUAL_COST)}</span> doing this by hand.
+        </p>
+
+        <div className="grid sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
+          <div className="p-5">
+            <div className="text-2xl sm:text-3xl font-extrabold text-white font-mono">{inr(MATH_MANUAL_COST)}</div>
+            <div className="text-[13px] font-bold text-blue-50 mt-1.5">Manual cost</div>
+            <div className="text-[11px] text-blue-100/80 mt-0.5">{MATH_RECRUITER_HOURS} recruiter hrs + {MATH_ENGINEER_HOURS} engineer hrs</div>
+          </div>
+          <div className="p-5 rounded-2xl bg-white/10 border border-white/20">
+            <div className="text-2xl sm:text-3xl font-extrabold text-emerald-300 font-mono">{inr(MATH_AI_COST)}</div>
+            <div className="text-[13px] font-bold text-white mt-1.5">AgenticFlow AI cost</div>
+            <div className="text-[11px] text-blue-100/80 mt-0.5">Telephonic Agent + Screening Agent, end to end</div>
+          </div>
+          <div className="p-5">
+            <div className="text-2xl sm:text-3xl font-extrabold text-white font-mono">{inr(MATH_SAVINGS)}</div>
+            <div className="text-[13px] font-bold text-blue-50 mt-1.5">You save</div>
+            <div className="text-[11px] text-blue-100/80 mt-0.5">~{MATH_SAVINGS_PCT}% reduction + time back</div>
+          </div>
+        </div>
+
+        <p className="text-[11px] text-blue-100/70 mt-8 max-w-md mx-auto leading-relaxed">
+          {MATH_CANDIDATES} × ({inr(CALC_PRICES.voice)} AI Voice Call + {inr(CALC_PRICES.standard)} AI Standard Interview) = {inr(MATH_AI_COST)}.
+          Recruiter time at {inr(MATH_RECRUITER_RATE)}/hr, engineer time at {inr(MATH_ENGINEER_RATE)}/hr. Your numbers may vary — use the calculator below.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function CostCalculator() {
+  const [standard, setStandard] = useState(20);
+  const [deep, setDeep] = useState(2);
+  const [structured, setStructured] = useState(0);
+  const [voice, setVoice] = useState(200);
+
+  const lineItems = [
+    { key: "standard", label: "AI Standard Interview", qty: standard, set: setStandard, price: CALC_PRICES.standard, detail: `${inr(CALC_PRICES.standard)} each` },
+    { key: "deep", label: "AI Deep Interview", qty: deep, set: setDeep, price: CALC_PRICES.deep, detail: `${inr(CALC_PRICES.deep)} each` },
+    { key: "structured", label: "Structured Interview", qty: structured, set: setStructured, price: CALC_PRICES.structured, detail: `${inr(CALC_PRICES.structured)} each` },
+    { key: "voice", label: "AI Voice Call", qty: voice, set: setVoice, price: CALC_PRICES.voice, detail: `${inr(CALC_PRICES.voice)} each` },
+  ];
+
+  const subtotal = lineItems.reduce((sum, i) => sum + i.qty * i.price, 0);
+  const totalUnits = lineItems.reduce((sum, i) => sum + i.qty, 0);
+  const bonusEligible = subtotal >= CALC_BONUS_THRESHOLD;
+  const bonusAmount = bonusEligible ? subtotal * CALC_BONUS_RATE : 0;
+  const activeItems = lineItems.filter((i) => i.qty > 0);
+
+  return (
+    <div>
+      <div className="text-center max-w-xl mx-auto mb-10">
+        <span className="text-xs font-mono uppercase tracking-widest text-blue-600 font-semibold px-2.5 py-1 rounded bg-blue-50 border border-blue-200 inline-flex items-center gap-1.5">
+          <Calculator className="w-3.5 h-3.5" /> Estimate Your Usage
+        </span>
+        <h2 className="text-[clamp(1.6rem,3vw,2.2rem)] font-extrabold text-zinc-900 tracking-tight mt-4">
+          What will your next hire cycle cost <span className="text-blue-600">in total?</span>
+        </h2>
+        <p className="text-zinc-600 text-[15px] mt-2 leading-relaxed">
+          Enter your numbers below to estimate your monthly spend.
+        </p>
+        <p className="text-emerald-600 text-[13px] font-bold mt-1.5">
+          Bonus credit of 5% applies above {inr(CALC_BONUS_THRESHOLD)}.
+        </p>
+      </div>
+
+      <div className="grid md:grid-cols-2 rounded-3xl overflow-hidden border border-zinc-200 shadow-xl bg-white">
+        {/* LEFT: quantity steppers */}
+        <div className="p-6 sm:p-8">
+          <div className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider mb-1">Screening Agent</div>
+          <StepperRow label="AI Standard Interview" detail={lineItems[0].detail} value={standard} onChange={setStandard} />
+          <StepperRow label="AI Deep Interview" detail={lineItems[1].detail} value={deep} onChange={setDeep} />
+          <StepperRow label="Structured Interview" detail={lineItems[2].detail} value={structured} onChange={setStructured} />
+
+          <div className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider mb-1 mt-6">Telephonic Agent</div>
+          <StepperRow label="AI Voice Call" detail={lineItems[3].detail} value={voice} onChange={setVoice} isLast />
+        </div>
+
+        {/* RIGHT: live summary */}
+        <div className="p-6 sm:p-8 bg-gradient-to-br from-blue-600 to-blue-700 text-white flex flex-col">
+          <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-blue-100">Your Estimated Total</div>
+          <div className="text-4xl sm:text-5xl font-extrabold font-mono mt-2 mb-1">{inr(subtotal)}</div>
+          <div className="text-[12px] text-blue-100">{totalUnits} screening{totalUnits === 1 ? "" : "s"}</div>
+
+          <AnimatePresence>
+            {bonusEligible && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="mt-4 px-3 py-2 rounded-lg bg-emerald-500/15 border border-emerald-300/30 text-emerald-100 text-[11px] font-bold flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 shrink-0" /> +5% bonus: {inr(bonusAmount)} of free screening added
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="mt-5 rounded-xl bg-white/10 border border-white/15 divide-y divide-white/10 text-[12px]">
+            {activeItems.length === 0 ? (
+              <div className="px-3.5 py-3 text-blue-100/70 text-center">Add quantities to see a breakdown</div>
+            ) : (
+              activeItems.map((i) => (
+                <div key={i.key} className="flex items-center justify-between px-3.5 py-2.5 gap-2">
+                  <span className="truncate">{i.qty} × {i.label}</span>
+                  <span className="font-mono font-bold shrink-0">{inr(i.qty * i.price)}</span>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/15 font-bold text-[13px]">
+            <span>Total · {totalUnits} screenings</span>
+            <span className="font-mono">{inr(subtotal)}</span>
+          </div>
+
+          <Link
+            href="/rag"
+            className="mt-6 inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-white text-blue-700 font-bold text-sm hover:bg-blue-50 transition-colors shadow-sm"
+          >
+            Get Started <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StepperRow({
+  label, detail, value, onChange, isLast,
+}: { label: string; detail: string; value: number; onChange: (v: number) => void; isLast?: boolean }) {
+  return (
+    <div className={`flex items-center justify-between gap-3 py-3 ${isLast ? "" : "border-b border-zinc-100"}`}>
+      <div className="min-w-0">
+        <div className="text-[13px] font-bold text-zinc-900 truncate">{label}</div>
+        <div className="text-[11px] text-zinc-500">{detail}</div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <button
+          type="button"
+          onClick={() => onChange(Math.max(0, value - 1))}
+          className="w-7 h-7 rounded-lg border border-zinc-200 flex items-center justify-center text-zinc-500 hover:bg-zinc-50 hover:border-zinc-300 transition-colors"
+        >
+          <Minus className="w-3.5 h-3.5" />
+        </button>
+        <span className="w-9 text-center text-[13px] font-bold text-zinc-900 font-mono">{value}</span>
+        <button
+          type="button"
+          onClick={() => onChange(value + 1)}
+          className="w-7 h-7 rounded-lg border border-zinc-200 flex items-center justify-center text-zinc-500 hover:bg-zinc-50 hover:border-zinc-300 transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+      </div>
     </div>
   );
 }
