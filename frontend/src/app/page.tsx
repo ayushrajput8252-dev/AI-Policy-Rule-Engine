@@ -13,6 +13,8 @@ import {
   Wallet, CalendarCheck, FileCheck,
   FolderOpen,
   Phone, Video, Minus, Plus, ShieldCheck, BadgeCheck, Lock, Calculator,
+  Scale, UserCheck, ClipboardX, ShieldAlert, MousePointer2, CalendarClock,
+  Award, Mail, ClipboardList, Target, Radar,
 } from "lucide-react";
 
 /* ── Inline GitHub Icon ── */
@@ -59,20 +61,23 @@ function FloatingHeroDoodles() {
       icon: <Wallet className="w-3.5 h-3.5" />,
       className: "top-2 right-6 sm:right-10",
       delay: "0s",
+      cursorDelay: 0,
       query: "Tell me about our payroll process and salary cycles.",
     },
     {
       label: "Attendance",
       icon: <CalendarCheck className="w-3.5 h-3.5" />,
-      className: "-bottom-10 left-4 sm:left-10",
+      className: "-bottom-16 left-4 sm:left-10",
       delay: "1.2s",
+      cursorDelay: 0.5,
       query: "How does attendance and leave tracking work?",
     },
     {
       label: "Policy",
       icon: <FileCheck className="w-3.5 h-3.5" />,
-      className: "-bottom-2 right-16 sm:right-28",
+      className: "-bottom-10 right-16 sm:right-28",
       delay: "2.1s",
+      cursorDelay: 1.1,
       query: "What HR policies should I know about?",
     },
   ];
@@ -88,9 +93,17 @@ function FloatingHeroDoodles() {
           className={`absolute pointer-events-auto animate-doodle-float hover:[animation-play-state:paused] group ${d.className}`}
           style={{ animationDelay: d.delay }}
         >
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-sm border border-zinc-200 shadow-sm text-zinc-500 transition-all group-hover:-translate-y-0.5 group-hover:shadow-md group-hover:border-blue-300 group-hover:bg-white group-hover:text-blue-700 cursor-pointer">
+          <div className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-sm border border-zinc-200 shadow-sm text-zinc-500 transition-all group-hover:-translate-y-0.5 group-hover:shadow-md group-hover:border-blue-300 group-hover:bg-white group-hover:text-blue-700 cursor-pointer">
             <span className="text-blue-500 group-hover:text-blue-600">{d.icon}</span>
             <span className="text-[11px] font-mono font-semibold tracking-wide">{d.label}</span>
+            {/* tiny idle cursor — sells "this is live and clickable" */}
+            <motion.span
+              className="absolute -bottom-1 -right-1 text-blue-400/80 pointer-events-none"
+              animate={{ x: [0, 3, 1, -2, 0], y: [0, 2, -1, 2, 0] }}
+              transition={{ duration: 3.4, repeat: Infinity, ease: "easeInOut", delay: d.cursorDelay }}
+            >
+              <MousePointer2 className="w-2.5 h-2.5 fill-white" />
+            </motion.span>
           </div>
         </button>
       ))}
@@ -131,6 +144,22 @@ export default function LandingPage() {
     { label: "Pricing", href: "#pricing" },
   ];
 
+  // The mobile menu panel occupies real layout height while open, so it pushes every
+  // section below it further down the page. A plain <a href="#..."> jump fires the
+  // instant the link is tapped — before the menu has finished collapsing — so the
+  // browser scrolls to where the target *was* under the still-open menu, then the
+  // collapse shifts everything back up and the scroll effectively cancels itself
+  // (the URL hash updates but the viewport never actually moves). Closing the menu
+  // first and scrolling only once it's collapsed avoids that race.
+  const handleMobileNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    e.preventDefault();
+    setMobileMenu(false);
+    const id = href.slice(1);
+    window.setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 350);
+  };
+
   return (
     <div className="min-h-screen bg-white text-zinc-900 overflow-x-hidden bg-white-grid relative selection:bg-blue-500/20">
       {/* ─── NAVIGATION ─── */}
@@ -143,6 +172,9 @@ export default function LandingPage() {
             </div>
             <span className="font-bold text-[16px] tracking-tight text-zinc-900">
               AgenticFlow <span className="text-blue-600 font-mono text-xs uppercase ml-1 px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200">AI</span>
+            </span>
+            <span className="hidden xl:inline-flex items-center whitespace-nowrap text-blue-700 font-mono text-[11px] font-bold uppercase tracking-wide ml-1.5 px-2.5 py-1 rounded-full border border-blue-200 bg-blue-50">
+              Multi-Tenant, Multi-Agent System
             </span>
           </Link>
 
@@ -210,7 +242,7 @@ export default function LandingPage() {
                 <a
                   key={l.label}
                   href={l.href}
-                  onClick={() => setMobileMenu(false)}
+                  onClick={(e) => handleMobileNavClick(e, l.href)}
                   className="block py-2 text-sm text-zinc-700 hover:text-blue-600 font-medium"
                 >
                   {l.label}
@@ -253,10 +285,10 @@ export default function LandingPage() {
                 <span className="text-[12px] font-medium text-zinc-600">The #1 Enterprise Agentic AI Engine</span>
               </div>
 
-              <h1 className="text-[clamp(2.3rem,5vw,3.6rem)] font-extrabold leading-[1.08] tracking-tight text-zinc-900 mb-6">
-                AgenticFlow AI —{" "}
+              <h1 className="text-[clamp(2.1rem,4.6vw,3.6rem)] font-extrabold leading-[1.08] tracking-tight text-zinc-900 mb-6">
+                AgenticFlow AI — Enterprise AI{" "}
                 <span className="relative inline-block text-blue-600">
-                  Talent Intelligence
+                  Agent Orchestration
                   <DoodleUnderline className="absolute left-0 -bottom-2.5 w-full text-blue-600" />
                 </span>
                 <br />
@@ -321,11 +353,23 @@ export default function LandingPage() {
               <AutomationCardInteractive />
             </div>
 
+            {/* Card: PIP Agent */}
+            <PIPAgentCard />
+
+            {/* Card: Fraud Detection */}
+            <div className="md:col-span-2">
+              <FraudDetectionCard />
+            </div>
+
             {/* Divider: usage-based pricing */}
-            <div className="md:col-span-3 flex items-center gap-3 pt-2 pb-1">
-              <div className="h-px flex-1 bg-zinc-200" />
-              <span className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider">Usage-Based Add-Ons</span>
-              <div className="h-px flex-1 bg-zinc-200" />
+            <div className="md:col-span-3 flex items-center justify-center gap-4 pt-6 pb-2">
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent to-zinc-200" />
+              <div className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-full bg-blue-600 shadow-md shadow-blue-600/20">
+                <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+                <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-white">Usage-Based Add-Ons</span>
+                <span className="hidden sm:inline text-[10px] text-blue-100 font-medium normal-case">· pay only for what you use</span>
+              </div>
+              <div className="h-px flex-1 bg-gradient-to-l from-transparent to-zinc-200" />
             </div>
 
             {/* Card: Telephonic Agent */}
@@ -348,26 +392,41 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ─── WORKFLOW ARCHITECTURE TIMELINE ─── */}
-      <section id="architecture" className="py-28 border-t border-zinc-200/80 bg-zinc-50/50">
+      {/* ─── AGENT ORCHESTRATOR ─── */}
+      <section id="architecture" className="py-24 border-t border-zinc-200/80 bg-white overflow-hidden">
         <div className="max-w-6xl mx-auto px-6">
           <SectionHeader
-            badge="Realtime AI Pipeline"
-            title="From Knowledge Import to Automated Action"
-            subtitle="Continuous floating data orchestration pipeline from start to finish."
+            badge="Agent Orchestrator"
+            title="Every Agent, Mapped to What It Actually Does"
+            subtitle="From foundational retrieval engines to outcome-facing automation — the full roster powering AgenticFlow AI."
           />
-          <WorkflowTimelineFloatingPipeline onOpenModal={() => setArchModalOpen(true)} />
+        </div>
+        <div className="max-w-[1360px] mx-auto px-6 mt-16">
+          <AgentConstellation />
         </div>
       </section>
 
-      {/* ─── STATS ─── */}
-      <section className="py-20 border-t border-zinc-200/80 bg-white">
+      {/* ─── OUR MISSION ─── */}
+      <section className="py-24 border-t border-zinc-200/80 bg-white">
         <div className="max-w-5xl mx-auto px-6">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-            <StatCardWhite value={95} suffix="%" label="Retrieval Accuracy" />
-            <StatCardWhite value={80} suffix="%" label="Faster Onboarding" />
-            <StatCardWhite value={70} suffix="%" label="Manual Work Reduced" />
-            <StatCardWhite value={10} suffix="M+" label="Documents Indexed" />
+          <SectionHeader
+            badge="Our Mission"
+            title="Built to be fair, human-led, and secure by default"
+            subtitle="The principles behind every automated decision this platform makes."
+          />
+          <div className="mt-14 grid sm:grid-cols-2 rounded-3xl border border-dotted border-zinc-300 divide-y divide-x-0 sm:divide-x divide-dotted divide-zinc-300 overflow-hidden">
+            {MISSION_PILLARS.map((m) => {
+              const Icon = m.icon;
+              return (
+                <div key={m.title} className="p-8 sm:p-10">
+                  <div className="w-11 h-11 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 mb-4">
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-[16px] font-bold text-zinc-900 mb-2">{m.title}</h3>
+                  <p className="text-[13.5px] text-zinc-600 leading-relaxed">{m.body}</p>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -422,8 +481,247 @@ export default function LandingPage() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   SUB-COMPONENTS & ULTRA-PREMIUM ARCHITECTURE MODAL
+   AGENT ORCHESTRATOR — every agent on the platform, fanned across
+   concentric arcs from the layer it operates at (foundation engines →
+   orchestration kernel → reasoning agents → candidate-facing agents →
+   outcome agents), each tagged with what it actually does.
    ═══════════════════════════════════════════════════════════════ */
+
+const AGENT_LAYERS = [
+  {
+    key: "foundation",
+    label: "Foundation Engines",
+    radius: 230,
+    gradient: "from-zinc-400 to-zinc-600",
+    agents: [
+      { name: "RAG Engine", tag: "Dual-Tier Retrieval", icon: Database },
+      { name: "Vector Index", tag: "Pinecone + SQL", icon: Layers },
+      { name: "Validator", tag: "85%+ Confidence Gate", icon: CheckCircle2 },
+    ],
+  },
+  {
+    key: "orchestration",
+    label: "Orchestration Kernel",
+    radius: 310,
+    gradient: "from-sky-400 to-blue-600",
+    agents: [
+      { name: "Orchestrator", tag: "Intent Parsing", icon: Bot },
+      { name: "MCP Router", tag: "Tool Selection", icon: Plug },
+      { name: "Approval Gate", tag: "Human-in-the-Loop", icon: ShieldCheck },
+    ],
+  },
+  {
+    key: "intelligence",
+    label: "Intelligence Agents",
+    radius: 390,
+    gradient: "from-violet-400 to-purple-600",
+    agents: [
+      { name: "Matching", tag: "Requirement Fit", icon: Target },
+      { name: "Evaluation", tag: "Candidate Scoring", icon: Award },
+      { name: "Fraud Detect", tag: "Pre/Post-Join Scan", icon: ShieldAlert },
+      { name: "PIP Agent", tag: "Performance Plans", icon: ClipboardX },
+    ],
+  },
+  {
+    key: "engagement",
+    label: "Engagement Agents",
+    radius: 470,
+    gradient: "from-amber-400 to-orange-500",
+    agents: [
+      { name: "Resume Parse", tag: "Structured Extraction", icon: FileText },
+      { name: "ATS Extract", tag: "Email + ATS Sync", icon: Mail },
+      { name: "Telephonic", tag: "Voice Screening", icon: Phone },
+      { name: "Screening", tag: "3D Avatar Interviews", icon: Video },
+      { name: "Assignment", tag: "AI-Drafted Tasks", icon: ClipboardList },
+    ],
+  },
+  {
+    key: "outcome",
+    label: "Outcome Agents",
+    radius: 550,
+    gradient: "from-emerald-400 to-emerald-600",
+    agents: [
+      { name: "Onboarding", tag: "One-Click Provisioning", icon: UserPlus },
+      { name: "Knowledge", tag: "Transfer Graph", icon: Brain },
+      { name: "Insights", tag: "Executive Digests", icon: BarChart3 },
+      { name: "Security", tag: "RBAC + Audit Logs", icon: Shield },
+    ],
+  },
+];
+
+const ARC_CX = 650;
+const ARC_CY = 590;
+const ARC_VB_W = 1300;
+const ARC_VB_H = 620;
+
+function arcXY(radius: number, angleDeg: number) {
+  const rad = (angleDeg * Math.PI) / 180;
+  return { x: ARC_CX + radius * Math.cos(rad), y: ARC_CY - radius * Math.sin(rad) };
+}
+
+function arcPercent(radius: number, angleDeg: number) {
+  const { x, y } = arcXY(radius, angleDeg);
+  // Fixed precision matters here: Math.cos/Math.sin aren't guaranteed bit-identical
+  // across JS engines (server V8 vs browser V8), so an unrounded float can render a
+  // different string during SSR than on client hydration and trigger a mismatch.
+  return { left: `${((x / ARC_VB_W) * 100).toFixed(3)}%`, top: `${((y / ARC_VB_H) * 100).toFixed(3)}%` };
+}
+
+// Converts a target pixel clearance/drift into degrees FOR A GIVEN RADIUS, so the
+// same physical distance holds regardless of how tight or wide a given arc is.
+function pxToDeg(px: number, radius: number): number {
+  return (px / radius) * (180 / Math.PI);
+}
+
+// Distributes badges outward from the label at 90° on both sides, with the
+// angular gap computed FROM the radius so physical (pixel) clearance stays
+// constant however tight or wide a given arc is — a fixed-degree gap would
+// be roomy on the outer arcs but collide on the tight inner ones. Gaps are
+// sized generously so the whole roster fans out wide, rainbow-style, rather
+// than clustering tight around the top of each arc.
+function layerAngles(count: number, radius: number): number[] {
+  if (count <= 1) return [55];
+  const labelGapDeg = pxToDeg(178, radius); // clearance between the layer label and its nearest badge
+  const badgeGapDeg = pxToDeg(148, radius); // clearance between two adjacent badges
+
+  const leftCount = Math.ceil(count / 2);
+  const rightCount = count - leftCount;
+  const angles: number[] = [];
+  for (let i = 0; i < leftCount; i++) {
+    angles.push(90 + labelGapDeg + i * badgeGapDeg);
+  }
+  for (let i = 0; i < rightCount; i++) {
+    angles.push(90 - labelGapDeg - i * badgeGapDeg);
+  }
+  return angles;
+}
+
+// Every badge drifts slowly back and forth along its own arc, ±BADGE_DRIFT_PX of
+// physical clearance either side of its resting angle — small enough to never
+// approach a neighboring badge or the layer label, since adjacent badges share
+// the same delta and move in lockstep (their spacing to each other never changes).
+const BADGE_DRIFT_PX = 12;
+const BADGE_DRIFT_TRANSITION = { duration: 8, repeat: Infinity, repeatType: "mirror" as const, ease: "easeInOut" as const };
+
+function AgentConstellation() {
+  return (
+    <div>
+      {/* Desktop: radial arc fan */}
+      <div className="hidden lg:block relative mx-auto" style={{ maxWidth: ARC_VB_W, aspectRatio: `${ARC_VB_W} / ${ARC_VB_H}` }}>
+        <svg viewBox={`0 0 ${ARC_VB_W} ${ARC_VB_H}`} className="absolute inset-0 w-full h-full" fill="none">
+          {AGENT_LAYERS.map((layer) => {
+            const p1 = arcXY(layer.radius, 173);
+            const p2 = arcXY(layer.radius, 7);
+            const fmt = (n: number) => n.toFixed(2);
+            const d = `M ${fmt(p1.x)} ${fmt(p1.y)} A ${layer.radius} ${layer.radius} 0 0 1 ${fmt(p2.x)} ${fmt(p2.y)}`;
+            return (
+              <path
+                key={layer.key}
+                d={d}
+                stroke="#e4e4e7"
+                strokeWidth="1.5"
+                strokeDasharray="2 6"
+                strokeLinecap="round"
+              />
+            );
+          })}
+        </svg>
+
+        {AGENT_LAYERS.map((layer) => {
+          const labelPos = arcPercent(layer.radius, 90);
+          const angles = layerAngles(layer.agents.length, layer.radius);
+          const driftDeg = pxToDeg(BADGE_DRIFT_PX, layer.radius);
+          return (
+            <div key={layer.key}>
+              <div
+                className="absolute -translate-x-1/2 -translate-y-1/2 text-[16px] xl:text-[18px] font-extrabold text-zinc-800 whitespace-nowrap bg-white/95 px-2.5 tracking-tight z-10"
+                style={labelPos}
+              >
+                {layer.label}
+              </div>
+              {layer.agents.map((agent, i) => {
+                // Every badge on the platform drifts slowly along its own arc, all
+                // sharing the identical duration/easing (BADGE_DRIFT_TRANSITION)
+                // with no per-badge delay, so the whole roster reads as one
+                // synchronized, continuously-orchestrated system rather than a
+                // static chart.
+                const posFrom = arcPercent(layer.radius, angles[i] - driftDeg);
+                const posTo = arcPercent(layer.radius, angles[i] + driftDeg);
+                const Icon = agent.icon;
+                return (
+                  <motion.div
+                    key={agent.name}
+                    className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1 group cursor-default"
+                    initial={{ left: posFrom.left, top: posFrom.top }}
+                    animate={{ left: [posFrom.left, posTo.left], top: [posFrom.top, posTo.top] }}
+                    transition={BADGE_DRIFT_TRANSITION}
+                  >
+                    <div className="flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full bg-white border border-zinc-200 shadow-sm group-hover:shadow-md group-hover:border-blue-300 group-hover:-translate-y-0.5 transition-all whitespace-nowrap">
+                      <span className={`w-5 h-5 rounded-full bg-gradient-to-br ${layer.gradient} ring-2 ring-white shadow flex items-center justify-center shrink-0`}>
+                        <Icon className="w-2.5 h-2.5 text-white" />
+                      </span>
+                      <span className="text-[9px] font-mono font-bold uppercase tracking-wide text-zinc-700">{agent.name}</span>
+                    </div>
+                    <div className="w-px h-2 bg-zinc-300 group-hover:bg-blue-300" />
+                    <span className="text-[8.5px] text-zinc-400 font-medium whitespace-nowrap group-hover:text-blue-500 transition-colors">{agent.tag}</span>
+                  </motion.div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Mobile / tablet: stacked layer list */}
+      <div className="lg:hidden space-y-7">
+        {AGENT_LAYERS.map((layer) => (
+          <div key={layer.key}>
+            <div className="text-[13.5px] font-extrabold text-zinc-800 mb-2.5">{layer.label}</div>
+            <div className="flex flex-wrap gap-2">
+              {layer.agents.map((agent) => {
+                const Icon = agent.icon;
+                return (
+                  <span key={agent.name} className="flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full bg-white border border-zinc-200 shadow-sm">
+                    <span className={`w-6 h-6 rounded-full bg-gradient-to-br ${layer.gradient} ring-2 ring-white shadow flex items-center justify-center shrink-0`}>
+                      <Icon className="w-3 h-3 text-white" />
+                    </span>
+                    <span className="flex flex-col leading-tight">
+                      <span className="text-[10px] font-mono font-bold uppercase tracking-wide text-zinc-700">{agent.name}</span>
+                      <span className="text-[9px] text-zinc-400 font-medium">{agent.tag}</span>
+                    </span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const MISSION_PILLARS = [
+  {
+    title: "Avoiding Bias",
+    icon: Scale,
+    body: "AI should evaluate ability, not identity. Our layered approach combines AI, psychology, and statistical validation to continuously detect and reduce bias — helping make hiring fairer, more consistent, and job-relevant.",
+  },
+  {
+    title: "Human-in-the-Loop",
+    icon: UserCheck,
+    body: "AI recommends. Humans decide. Our technology provides evidence-based insights while keeping final hiring decisions with people — ensuring accountability, context, and human judgment remain at the center.",
+  },
+  {
+    title: "Adaptive, Inclusive & Explainable",
+    icon: Layers,
+    body: "Our AI adapts to roles, skills, and candidates rather than using a one-size-fits-all approach. Every assessment is designed to be relevant, consistent, and explainable.",
+  },
+  {
+    title: "Privacy & Security",
+    icon: Lock,
+    body: "Candidate data is protected by design. We apply strict controls across collection, processing, storage, and access, while minimizing PII exposure and supporting applicable privacy and security requirements.",
+  },
+];
 
 const KERNEL_SUB_AGENTS = [
   { label: "Reasoning Agent", icon: <Bot className="w-3 h-3" />, color: "bg-blue-500" },
@@ -1097,6 +1395,121 @@ function AutomationCardInteractive() {
   );
 }
 
+/* ── PIP Agent — auto-drafted Performance Improvement Plans ── */
+function PIPAgentCard() {
+  const features = [
+    "Clear, measurable targets",
+    "30–90 day resolution window",
+    "Auto-generated, HR-reviewed document",
+    "Progress check-ins logged automatically",
+  ];
+
+  return (
+    <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm flex flex-col">
+      <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 mb-4">
+        <ClipboardX className="w-5 h-5" />
+      </div>
+      <h3 className="text-[16px] font-bold text-zinc-900 mb-1">PIP Agent</h3>
+      <p className="text-[13px] text-zinc-600 leading-relaxed mb-4">
+        Auto-drafts a Performance Improvement Plan the moment a manager flags an underperforming employee — clear goals, a fixed window to fix them, and a paper trail from day one.
+      </p>
+
+      <div className="p-3.5 bg-zinc-50 border border-zinc-200 rounded-xl mb-4">
+        <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500 mb-1.5">
+          <span>Target</span>
+          <span className="flex items-center gap-1 text-blue-700 font-bold"><CalendarClock className="w-3 h-3" /> 30–90 days</span>
+        </div>
+        <div className="text-[12px] text-zinc-800 font-semibold">&ldquo;Ship 3 sprint commitments on time&rdquo;</div>
+        <div className="h-1.5 bg-zinc-200 rounded-full mt-2.5 overflow-hidden">
+          <div className="h-full w-2/5 bg-blue-600 rounded-full" />
+        </div>
+      </div>
+
+      <div className="space-y-1.5 mt-auto">
+        {features.map((f) => (
+          <div key={f} className="flex items-center gap-2 text-[12px] text-zinc-700">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            {f}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Fraud Detection — a live agent, continuously scanning the pre/post-join lifecycle ── */
+function FraudDetectionCard() {
+  const preJoin = ["Resume authenticity check", "Duplicate identity scan", "Reference cross-check"];
+  const postJoin = ["Credential re-verification", "Expense anomaly detection", "Access pattern monitoring"];
+  const allChecks = [...preJoin, ...postJoin];
+
+  const [activeIdx, setActiveIdx] = useState(0);
+  useEffect(() => {
+    const iv = setInterval(() => setActiveIdx((p) => (p + 1) % allChecks.length), 2200);
+    return () => clearInterval(iv);
+  }, [allChecks.length]);
+  const activeLabel = allChecks[activeIdx];
+
+  return (
+    <div className="cpu-burn-card p-6 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm flex flex-col">
+      <div className="flex items-center justify-between mb-4">
+        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+          <ShieldAlert className="w-5 h-5" />
+        </div>
+        <span className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> LIVE AGENT
+        </span>
+      </div>
+
+      <h3 className="text-[16px] font-bold text-zinc-900 mb-1">Fraud Detection</h3>
+      <p className="text-[13px] text-zinc-600 leading-relaxed mb-4">
+        A centralized memory and detection layer that screens every candidate and employee at each stage — before and after they join — catching duplicate identities, fabricated credentials, and policy violations before they get costly.
+      </p>
+
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 text-white font-mono text-[11px] mb-4 overflow-hidden">
+        <Radar className="w-3.5 h-3.5 text-blue-400 shrink-0 animate-spin [animation-duration:3s]" />
+        <span className="truncate">Scanning: {activeLabel}…</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl">
+          <div className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider mb-1.5">Before Joining</div>
+          {preJoin.map((f) => {
+            const active = f === activeLabel;
+            return (
+              <div key={f} className={`flex items-center gap-1.5 text-[11.5px] py-0.5 transition-colors ${active ? "text-blue-700 font-bold" : "text-zinc-700"}`}>
+                <CheckCircle2 className={`w-3 h-3 shrink-0 ${active ? "text-blue-600" : "text-emerald-600"}`} />{f}
+              </div>
+            );
+          })}
+        </div>
+        <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-xl">
+          <div className="text-[10px] font-mono font-bold text-blue-500 uppercase tracking-wider mb-1.5">After Joining</div>
+          {postJoin.map((f) => {
+            const active = f === activeLabel;
+            return (
+              <div key={f} className={`flex items-center gap-1.5 text-[11.5px] py-0.5 transition-colors ${active ? "text-blue-900 font-extrabold" : "text-blue-800"}`}>
+                <CheckCircle2 className={`w-3 h-3 shrink-0 ${active ? "text-blue-700" : "text-blue-600"}`} />{f}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mt-auto pt-5">
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-zinc-900 text-white">
+          <div className="w-8 h-8 rounded-lg bg-white/10 border border-white/15 flex items-center justify-center shrink-0">
+            <Brain className="w-4 h-4 text-blue-400" />
+          </div>
+          <p className="text-[12px] text-zinc-200 leading-snug">
+            <span className="font-bold text-white">One shared fraud memory</span> across every hire and every stage — no duplicate checks, no blind spots between systems.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Telephonic Agent — pay-per-connect voice screening ── */
 function TelephonicAgentCard() {
   const features = [
@@ -1127,7 +1540,7 @@ function TelephonicAgentCard() {
         </div>
       </div>
 
-      <div className="space-y-1.5 mt-auto">
+      <div className="space-y-1.5 mb-4">
         {features.map((f) => (
           <div key={f} className="flex items-center gap-2 text-[12px] text-zinc-700">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
@@ -1135,6 +1548,13 @@ function TelephonicAgentCard() {
           </div>
         ))}
       </div>
+
+      <Link
+        href="/telephonic-agent"
+        className="mt-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-[13px] font-bold hover:bg-blue-700 transition-colors shadow-sm"
+      >
+        <Phone className="w-3.5 h-3.5" /> Call Now
+      </Link>
     </div>
   );
 }
@@ -1325,108 +1745,6 @@ function IntegrationsCardInteractive() {
   );
 }
 
-function WorkflowTimelineFloatingPipeline({ onOpenModal }: { onOpenModal: () => void }) {
-  const steps = [
-    { num: 1, title: "Connect Apps", detail: "Initializes enterprise webhook listeners and active OAuth2 handshakes." },
-    { num: 2, title: "Import Knowledge", detail: "Streams unstructured PDF documents into semantic OCR chunking parser." },
-    { num: 3, title: "Index Vectors", detail: "Generates high-dimensional vector embeddings with HNSW cosine similarity." },
-    { num: 4, title: "Deploy AI Agents", detail: "Spawns autonomous agent reasoning kernel with state memory buffer." },
-    { num: 5, title: "Automate Workflows", detail: "Executes tool selection matrix across GitHub, Jira, SAP, and Slack." },
-    { num: 6, title: "Human Approval", detail: "Enforces Level 4 manager authorization gate before system mutation." },
-    { num: 7, title: "Execute Actions", detail: "Dispatches signed idempotent API transactions with full audit logging." },
-    { num: 8, title: "Analytics Dashboard", detail: "Aggregates latency throughput, token metrics, and cost savings." },
-  ];
-
-  const [activeStep, setActiveStep] = useState(1);
-
-  useEffect(() => {
-    const iv = setInterval(() => {
-      setActiveStep((prev) => (prev % steps.length) + 1);
-    }, 2500);
-    return () => clearInterval(iv);
-  }, [steps.length]);
-
-  const current = steps[activeStep - 1];
-
-  return (
-    <div className="mt-12 space-y-6">
-      <div className="relative p-2 bg-white border border-zinc-200 rounded-2xl shadow-sm overflow-hidden">
-        <div className="h-1 bg-zinc-100 rounded-full relative overflow-hidden mb-4 mx-2">
-          <div
-            className="h-full bg-blue-600 transition-all duration-500 rounded-full"
-            style={{ width: `${(activeStep / steps.length) * 100}%` }}
-          />
-          <div className="absolute top-0 bottom-0 w-8 bg-gradient-to-r from-transparent via-blue-400 to-transparent animate-track-packet" />
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
-          {steps.map((s) => {
-            const isActive = activeStep === s.num;
-            const isPassed = s.num < activeStep;
-
-            return (
-              <div
-                key={s.title}
-                onClick={() => setActiveStep(s.num)}
-                className={`p-3 rounded-xl border text-left transition-all cursor-pointer font-mono text-xs flex flex-col justify-between h-20 relative overflow-hidden ${
-                  isActive
-                    ? "bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-400/30"
-                    : isPassed
-                    ? "bg-blue-50/50 text-blue-900 border-blue-200"
-                    : "bg-white text-zinc-800 border-zinc-200 hover:border-blue-300"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className={`w-5 h-5 rounded-md text-[10px] font-bold flex items-center justify-center ${isActive ? "bg-white text-blue-600" : isPassed ? "bg-blue-200 text-blue-800" : "bg-blue-50 text-blue-600"}`}>
-                    {s.num}
-                  </span>
-                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />}
-                </div>
-                <span className="font-bold text-[11px] truncate">{s.title}</span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 font-mono text-xs">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-bold uppercase text-[10px]">
-              FLOATING DATA PACKET :: STAGE {current.num} OF 8
-            </span>
-            <span className="text-emerald-600 font-bold flex items-center gap-1 text-[10px]">
-              <Radio className="w-3 h-3 animate-pulse text-emerald-500" /> ACTIVE DATA STREAM
-            </span>
-          </div>
-          <div className="text-sm font-bold text-zinc-900">{current.title}</div>
-          <div className="text-zinc-600 leading-relaxed text-[11px] max-w-xl">{current.detail}</div>
-        </div>
-
-        <button
-          onClick={onOpenModal}
-          className="shrink-0 px-4 py-2.5 rounded-xl bg-zinc-900 text-white font-bold hover:bg-blue-600 transition-colors shadow-sm text-xs"
-        >
-          Inspect Architecture Modal ↗
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function StatCardWhite({ value, suffix, label }: { value: number; suffix: string; label: string }) {
-  const { count, ref } = useCountUp(value);
-  return (
-    <div className="cpu-burn-card rounded-2xl bg-white border border-zinc-200 p-6 text-center shadow-sm">
-      <div className="text-[clamp(2.2rem,4vw,3rem)] font-extrabold text-blue-600 tracking-tight mb-1 font-mono">
-        <span ref={ref}>{count}</span>
-        {suffix}
-      </div>
-      <p className="text-[13px] font-semibold text-zinc-700">{label}</p>
-    </div>
-  );
-}
-
 /* ═══════════════════════════════════════════════════════════
    THE MATH — cost comparison + interactive usage calculator
 
@@ -1609,7 +1927,7 @@ function StepperRow({
         <button
           type="button"
           onClick={() => onChange(Math.max(0, value - 1))}
-          className="w-7 h-7 rounded-lg border border-zinc-200 flex items-center justify-center text-zinc-500 hover:bg-zinc-50 hover:border-zinc-300 transition-colors"
+          className="w-9 h-9 sm:w-7 sm:h-7 rounded-lg border border-zinc-200 flex items-center justify-center text-zinc-500 hover:bg-zinc-50 hover:border-zinc-300 active:bg-zinc-100 transition-colors"
         >
           <Minus className="w-3.5 h-3.5" />
         </button>
@@ -1617,7 +1935,7 @@ function StepperRow({
         <button
           type="button"
           onClick={() => onChange(value + 1)}
-          className="w-7 h-7 rounded-lg border border-zinc-200 flex items-center justify-center text-zinc-500 hover:bg-zinc-50 hover:border-zinc-300 transition-colors"
+          className="w-9 h-9 sm:w-7 sm:h-7 rounded-lg border border-zinc-200 flex items-center justify-center text-zinc-500 hover:bg-zinc-50 hover:border-zinc-300 active:bg-zinc-100 transition-colors"
         >
           <Plus className="w-3.5 h-3.5" />
         </button>
