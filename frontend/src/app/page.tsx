@@ -173,9 +173,6 @@ export default function LandingPage() {
             <span className="font-bold text-[16px] tracking-tight text-zinc-900">
               AgenticFlow <span className="text-blue-600 font-mono text-xs uppercase ml-1 px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200">AI</span>
             </span>
-            <span className="hidden xl:inline-flex items-center whitespace-nowrap text-blue-700 font-mono text-[11px] font-bold uppercase tracking-wide ml-1.5 px-2.5 py-1 rounded-full border border-blue-200 bg-blue-50">
-              Multi-Tenant, Multi-Agent System
-            </span>
           </Link>
 
           <div className="hidden lg:flex items-center gap-1">
