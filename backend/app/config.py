@@ -16,6 +16,12 @@ class Settings(BaseSettings):
 
     TAVILY_API_KEY: str = ""
 
+    # Comma-separated list of allowed frontend origins in production (e.g. the
+    # Vercel URL). Empty means "allow any origin" — fine for local dev, but
+    # tightening this in render.yaml is what actually makes CORS_ORIGINS mean
+    # something instead of sitting there unused.
+    CORS_ORIGINS: str = ""
+
     DATABASE_URL: str = "sqlite:///./policy_engine.db"
     
     REDIS_URL: str = "redis://localhost:6379/0"

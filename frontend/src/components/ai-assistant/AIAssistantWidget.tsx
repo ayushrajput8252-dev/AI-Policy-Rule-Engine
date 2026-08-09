@@ -185,7 +185,7 @@ export default function AIAssistantWidget({ config = ASSISTANT_CONFIG }: { confi
           role: "assistant",
           isError: true,
           content:
-            "I couldn't reach the knowledge engine just now. Make sure the backend service is running, then try again.",
+            "I'm having trouble reaching the knowledge engine right now. Please try again in a moment.",
         },
       ]);
     } finally {

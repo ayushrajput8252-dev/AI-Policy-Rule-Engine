@@ -5,7 +5,11 @@ services:
     buildCommand: "cd backend && pip install -r requirements.txt"
     startCommand: "cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
     envVars:
+      - key: GROQ_API_KEY
+        sync: false
       - key: GEMINI_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
         sync: false
       - key: PINECONE_API_KEY
         sync: false
