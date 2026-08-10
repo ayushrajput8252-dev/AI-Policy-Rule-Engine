@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import AIAssistantWidget from "@/components/ai-assistant/AIAssistantWidget";
+import CookieConsent from "@/components/CookieConsent";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -25,6 +26,7 @@ export default function RootLayout({
       <body className="min-h-screen bg-white text-zinc-900 selection:bg-blue-500/20 font-[var(--font-inter)]">
         {children}
         <AIAssistantWidget />
+        <CookieConsent />
       </body>
     </html>
   );

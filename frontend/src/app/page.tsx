@@ -5,6 +5,7 @@ import Link from "next/link";
 import { motion, useInView, AnimatePresence } from "framer-motion";
 import WeeklyReportModal from "@/components/weekly-report/WeeklyReportModal";
 import { askAssistant } from "@/components/ai-assistant/AIAssistantWidget";
+import { reopenCookieConsent } from "@/components/CookieConsent";
 import {
   Database, UserPlus, Brain, Bot, BarChart3, Shield,
   ArrowRight, Menu, X, Zap, Users, Globe, CheckCircle2,
@@ -462,23 +463,92 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="border-t border-zinc-200 bg-white py-14">
-        <div className="max-w-6xl mx-auto px-6 text-center space-y-3">
-          <div className="flex justify-center items-center gap-4 text-xs font-semibold text-zinc-600">
-            <a href="https://github.com/ayushrajput8252-dev/AI-Policy-Rule-Engine" target="_blank" rel="noreferrer" className="hover:text-zinc-900 flex items-center gap-1">
-              <GithubIcon className="w-4 h-4" /> GitHub Repository
-            </a>
-            <span>•</span>
-            <a href="https://www.linkedin.com/in/ayush-singh-aiml/" target="_blank" rel="noreferrer" className="hover:text-blue-600 flex items-center gap-1">
-              <LinkedinIcon className="w-4 h-4 text-blue-600" /> Ayush Singh (LinkedIn)
-            </a>
+      <SiteFooter />
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SITE FOOTER — company-wide sitemap footer. Column items are static
+   labels, not routes: most of the pages they name (Blogs, Careers,
+   Glossary, Terms, Privacy, …) don't exist in this POC, so they're
+   deliberately non-interactive rather than linking to nowhere.
+   ═══════════════════════════════════════════════════════════════ */
+
+const FOOTER_COLUMNS = [
+  { title: "Features", items: ["RAG Workspace", "Rule Extraction", "Knowledge Graph", "Fraud Detection"] },
+  { title: "For Organization", items: ["AI Interviews", "Telephonic Agent", "Hiring Automation", "Employee Onboarding"] },
+  { title: "Company", items: ["About Us", "Blogs", "Pricing", "Careers", "Glossary", "Contact Us", "Schedule Demo"] },
+  { title: "Industry Usecase", items: ["Technical Hiring", "Campus Hiring", "GCC Hiring", "Staff Hiring"] },
+  { title: "Policies", items: ["Terms and Conditions", "Privacy Policy"] },
+] as const;
+
+function SiteFooter() {
+  return (
+    <footer className="border-t border-zinc-200 bg-zinc-950 text-zinc-400">
+      <div className="max-w-6xl mx-auto px-6 py-16">
+        <div className="grid lg:grid-cols-[280px_1fr] gap-12">
+          <div>
+            <Link href="/" className="flex items-center gap-2.5 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-white text-zinc-900 flex items-center justify-center shadow-sm">
+                <Zap className="w-4 h-4 text-blue-600 fill-blue-600" />
+              </div>
+              <span className="font-bold text-[16px] tracking-tight text-white">
+                AgenticFlow <span className="text-blue-400 font-mono text-xs uppercase ml-1 px-1.5 py-0.5 rounded bg-blue-500/10 border border-blue-500/30">AI</span>
+              </span>
+            </Link>
+            <p className="text-[13px] text-zinc-400 leading-relaxed max-w-xs mb-5">
+              We empower organizations with an AI-driven platform for grounded policy intelligence and scalable, agentic hiring workflows.
+            </p>
+            <div className="flex items-center gap-2">
+              <a
+                href="https://github.com/ayushrajput8252-dev/AI-Policy-Rule-Engine"
+                target="_blank"
+                rel="noreferrer"
+                title="GitHub Repository"
+                className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <GithubIcon className="w-4 h-4" />
+              </a>
+              <a
+                href="https://www.linkedin.com/in/ayush-singh-aiml/"
+                target="_blank"
+                rel="noreferrer"
+                title="Ayush Singh - LinkedIn"
+                className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <LinkedinIcon className="w-4 h-4" />
+              </a>
+            </div>
           </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-8">
+            {FOOTER_COLUMNS.map((col) => (
+              <div key={col.title}>
+                <div className="text-[11px] font-mono font-bold text-zinc-500 uppercase tracking-wider mb-3.5">{col.title}</div>
+                <ul className="space-y-2.5">
+                  {col.items.map((item) => (
+                    <li key={item} className="text-[13px] text-zinc-400">{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-14 pt-6 border-t border-white/10">
           <p className="text-[12px] text-zinc-500 font-mono">
             AgenticFlow AI · Autonomous Enterprise AI Platform · © {new Date().getFullYear()}
           </p>
+          <button
+            onClick={() => reopenCookieConsent()}
+            className="text-[12px] text-zinc-500 hover:text-zinc-300 transition-colors font-medium"
+          >
+            Cookie Preferences
+          </button>
         </div>
-      </footer>
-    </div>
+      </div>
+    </footer>
   );
 }
 
@@ -1452,6 +1522,13 @@ function FraudDetectionCard() {
             <span className="font-bold text-white">One shared fraud memory</span> across every hire and every stage — no duplicate checks, no blind spots between systems.
           </p>
         </div>
+
+        <Link
+          href="/fraud-detection"
+          className="mt-3 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-[13px] font-bold hover:bg-blue-700 transition-colors shadow-sm"
+        >
+          Launch Live Agent <ArrowRight className="w-3.5 h-3.5" />
+        </Link>
       </div>
     </div>
   );
