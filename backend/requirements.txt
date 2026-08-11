@@ -20,3 +20,5 @@ langdetect
 gTTS
 pydub
 faster-whisper
+Pillow
+pytesseract

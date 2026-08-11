@@ -25,6 +25,17 @@ class Chunk(Base):
 
     document = relationship("Document", back_populates="chunks")
 
+class FraudScan(Base):
+    __tablename__ = "fraud_scans"
+
+    id = Column(String, primary_key=True, index=True)
+    filename = Column(String)
+    file_path = Column(String)
+    content_type = Column(String)  # "pdf" | "image"
+    status = Column(String, default="uploaded")  # uploaded -> scanning -> complete -> error
+    result = Column("result", JSON, default={})
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
 class Rule(Base):
     __tablename__ = "rules"
 

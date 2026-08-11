@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"
 
+    # Fraud detection pipeline
+    FRAUD_ELA_THRESHOLD: float = 35.0
+    TESSERACT_CMD: str = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),
         env_file_encoding="utf-8",

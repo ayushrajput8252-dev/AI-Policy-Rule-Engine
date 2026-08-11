@@ -1,0 +1,754 @@
+"use client";
+
+import { useEffect, useRef, useState, type ComponentType } from "react";
+import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  ArrowLeft, ArrowRight, Upload, FileText, Image as ImageIcon, ShieldAlert, ScanSearch,
+  Calculator, Layers, Type, Brain, CheckCircle2, XCircle, AlertTriangle,
+  MinusCircle, Loader2, RotateCcw, X, Sparkles, ShieldCheck, Zap, Radio, FileScan,
+} from "lucide-react";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const ACCEPTED_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png"];
+
+/* ═══════════════════════════════════════════════════════════
+   TYPES & STEP METADATA — mirrors the backend pipeline order:
+   Metadata → OCR Quality → Arithmetic → ELA → Fonts → AI Reasoning
+   ═══════════════════════════════════════════════════════════ */
+
+type StepStatus = "pass" | "warn" | "fail" | "na" | "error";
+
+interface StepResult {
+  key: string;
+  title: string;
+  status: StepStatus;
+  score: number | null;
+  summary: string;
+  details?: Record<string, unknown>;
+}
+
+interface Overall {
+  risk_score: number | null;
+  verdict: "likely_genuine" | "needs_review" | "likely_fraudulent" | string;
+  explanation: string;
+  key_concerns: string[];
+  steps: StepResult[];
+}
+
+const STEP_META = [
+  {
+    key: "metadata",
+    title: "Metadata Fingerprint Check",
+    icon: ShieldAlert,
+    blurb: "Reads PDF/EXIF metadata for editing-software fingerprints (Photoshop, Canva, GIMP…) and creation-vs-modification date mismatches.",
+  },
+  {
+    key: "ocr",
+    title: "OCR Extraction Quality",
+    icon: ScanSearch,
+    blurb: "Confirms the document's text was reliably extracted — native PDF text layer first, real Tesseract OCR confidence as a fallback signal.",
+  },
+  {
+    key: "arithmetic",
+    title: "Field Arithmetic & Logic",
+    icon: Calculator,
+    blurb: "Cross-checks gross − deductions = net, and that joining / relieving dates are in the right order relative to today.",
+  },
+  {
+    key: "ela",
+    title: "Error Level Analysis",
+    icon: Layers,
+    blurb: "Recompresses the document and diffs it against the original — pasted or re-edited regions recompress differently and light up.",
+  },
+  {
+    key: "fonts",
+    title: "Font & Layout Consistency",
+    icon: Type,
+    blurb: "Flags an unusually high number of distinct fonts/sizes in the body text — a common side-effect of manual edits.",
+  },
+  {
+    key: "reasoning",
+    title: "AI Reasoning Synthesis",
+    icon: Brain,
+    blurb: "Groq's llama-3.3-70b-versatile reads the document text plus every signal above and renders a final risk verdict.",
+  },
+] as const;
+
+const STATUS_STYLES: Record<StepStatus, { icon: typeof CheckCircle2; text: string; bg: string; border: string; bar: string; label: string }> = {
+  pass: { icon: CheckCircle2, text: "text-emerald-700", bg: "bg-emerald-50", border: "border-emerald-200", bar: "bg-emerald-500", label: "Pass" },
+  warn: { icon: AlertTriangle, text: "text-amber-700", bg: "bg-amber-50", border: "border-amber-200", bar: "bg-amber-500", label: "Warn" },
+  fail: { icon: XCircle, text: "text-red-700", bg: "bg-red-50", border: "border-red-200", bar: "bg-red-500", label: "Fail" },
+  na: { icon: MinusCircle, text: "text-zinc-500", bg: "bg-zinc-50", border: "border-zinc-200", bar: "bg-zinc-300", label: "N/A" },
+  error: { icon: XCircle, text: "text-red-700", bg: "bg-red-50", border: "border-red-200", bar: "bg-red-500", label: "Error" },
+};
+
+const VERDICT_STYLES: Record<string, { text: string; chip: string; gradient: string; glow: string; label: string }> = {
+  likely_genuine: {
+    text: "text-emerald-700", chip: "bg-emerald-50 border-emerald-200",
+    gradient: "from-emerald-600 via-emerald-600 to-teal-500", glow: "shadow-emerald-600/20", label: "Likely Genuine",
+  },
+  needs_review: {
+    text: "text-amber-700", chip: "bg-amber-50 border-amber-200",
+    gradient: "from-amber-500 via-amber-500 to-orange-500", glow: "shadow-amber-600/20", label: "Needs Review",
+  },
+  likely_fraudulent: {
+    text: "text-red-700", chip: "bg-red-50 border-red-200",
+    gradient: "from-red-600 via-red-600 to-rose-500", glow: "shadow-red-600/20", label: "Likely Fraudulent",
+  },
+};
+
+const HERO_STATS = [
+  { value: String(STEP_META.length), label: "forensic checks per scan" },
+  { value: "Real", label: "backend — nothing simulated" },
+  { value: "Live", label: "step-by-step SSE streaming" },
+  { value: "PDF/JPG/PNG", label: "supported formats" },
+];
+
+type Stage = "landing" | "uploaded" | "scanning" | "done" | "error";
+
+/* ═══════════════════════════════════════════════════════════
+   MAIN PAGE
+   ═══════════════════════════════════════════════════════════ */
+
+export default function FraudDetectionPage() {
+  const [stage, setStage] = useState<Stage>("landing");
+  const [dragOver, setDragOver] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
+  const [scanId, setScanId] = useState("");
+  const [filename, setFilename] = useState("");
+  const [contentType, setContentType] = useState<"pdf" | "image">("pdf");
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+
+  const [stepsByKey, setStepsByKey] = useState<Record<string, StepResult>>({});
+  const [overall, setOverall] = useState<Overall | null>(null);
+  const [scanError, setScanError] = useState("");
+
+  const runId = useRef(0);
+  const esRef = useRef<EventSource | null>(null);
+
+  // Invalidates the in-flight SSE connection on unmount/reset so late-arriving
+  // events from a closed-out scan never call setState after the fact.
+  useEffect(() => () => { runId.current += 1; esRef.current?.close(); }, []);
+
+  const reset = () => {
+    runId.current += 1;
+    esRef.current?.close();
+    esRef.current = null;
+    setStage("landing");
+    setUploadError("");
+    setScanError("");
+    setStepsByKey({});
+    setOverall(null);
+    setScanId("");
+    setFilename("");
+    setPreviewImageUrl(null);
+  };
+
+  const handleFile = async (file: File | undefined | null) => {
+    if (!file) return;
+    const ext = "." + (file.name.split(".").pop() || "").toLowerCase();
+    if (!ACCEPTED_EXTENSIONS.includes(ext)) {
+      setUploadError(`Unsupported file type. Allowed: ${ACCEPTED_EXTENSIONS.join(", ")}`);
+      return;
+    }
+    setUploadError("");
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${API_URL}/api/v1/fraud/upload`, { method: "POST", body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Upload failed (${res.status})`);
+      }
+      const data = await res.json();
+      setScanId(data.scan_id);
+      setFilename(data.filename);
+      setContentType(data.content_type);
+      setPreviewImageUrl(data.preview_image_url ?? null);
+      setStage("uploaded");
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : "Upload failed. Is the backend running?");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const startScan = () => {
+    if (!scanId) return;
+    const myRun = ++runId.current;
+    setStepsByKey({});
+    setOverall(null);
+    setScanError("");
+    setStage("scanning");
+
+    const es = new EventSource(`${API_URL}/api/v1/fraud/scan/${scanId}/stream`);
+    esRef.current = es;
+
+    es.onmessage = (ev) => {
+      if (myRun !== runId.current) return;
+      let payload: { type: string; step?: StepResult; overall?: Overall; message?: string };
+      try {
+        payload = JSON.parse(ev.data);
+      } catch {
+        return;
+      }
+      if (payload.type === "step" && payload.step) {
+        setStepsByKey((prev) => ({ ...prev, [payload.step!.key]: payload.step! }));
+      } else if (payload.type === "complete" && payload.overall) {
+        setOverall(payload.overall);
+        es.close();
+        setStage("done");
+      } else if (payload.type === "error") {
+        setScanError(payload.message || "The scan failed.");
+        es.close();
+        setStage("error");
+      }
+    };
+
+    es.onerror = () => {
+      if (myRun !== runId.current) return;
+      es.close();
+      setStage((current) => {
+        if (current === "scanning") {
+          setScanError("Lost connection to the scan stream.");
+          return "error";
+        }
+        return current;
+      });
+    };
+  };
+
+  return (
+    <div className="min-h-screen bg-white text-zinc-900 bg-white-grid relative selection:bg-blue-500/20">
+      <nav className="sticky top-0 z-30 bg-white/85 backdrop-blur-md border-b border-zinc-200/80 shadow-2xs">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2 text-sm font-bold text-zinc-900 hover:text-blue-600 transition-colors">
+            <ArrowLeft className="w-4 h-4" />
+            <span className="hidden sm:inline">Back to Platform</span>
+          </Link>
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-blue-600" />
+            <span className="text-sm font-bold text-zinc-900">Fraud Detection Live Agent</span>
+          </div>
+          <button
+            onClick={reset}
+            className="text-xs font-mono font-bold px-3 py-1.5 rounded-lg bg-zinc-100 border border-zinc-200 text-zinc-700 hover:bg-zinc-200 transition-colors flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Restart</span>
+          </button>
+        </div>
+      </nav>
+
+      <HeroSection />
+
+      <section id="scanner" className="relative -mt-6 sm:-mt-10 pb-4 scroll-mt-20">
+        <div className="max-w-3xl mx-auto px-6">
+          <ScannerCard
+            stage={stage}
+            dragOver={dragOver}
+            uploading={uploading}
+            uploadError={uploadError}
+            onDragOver={setDragOver}
+            onFile={handleFile}
+            filename={filename}
+            contentType={contentType}
+            previewImageUrl={previewImageUrl}
+            onStartScan={startScan}
+            stepsByKey={stepsByKey}
+            scanError={scanError}
+            onReset={reset}
+          />
+        </div>
+      </section>
+
+      {stage === "done" && overall && (
+        <section className="pb-6">
+          <div className="max-w-4xl mx-auto px-6">
+            <ResultSummary overall={overall} onReset={reset} />
+          </div>
+        </section>
+      )}
+
+      <MethodologySection />
+      <ClosingCtaBanner />
+
+      <footer className="border-t border-zinc-200 bg-white py-10">
+        <div className="max-w-6xl mx-auto px-6 text-center text-[12px] text-zinc-500 font-mono">
+          AgenticFlow AI · Fraud Detection Live Agent — every score above is computed live from your uploaded document. Nothing here is simulated.
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   HERO
+   ═══════════════════════════════════════════════════════════ */
+
+function HeroSection() {
+  return (
+    <section className="relative pt-24 pb-16 md:pt-32 overflow-hidden">
+      <div className="max-w-3xl mx-auto px-6 text-center relative z-10">
+        <span className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-widest text-blue-600 font-semibold px-3 py-1.5 rounded-full bg-blue-50 border border-blue-200 mb-6">
+          <Radio className="w-3.5 h-3.5" /> Live Agent · Real Forensic Pipeline
+        </span>
+
+        <h1 className="text-[clamp(2rem,4.5vw,3.2rem)] font-extrabold tracking-tight leading-[1.1] mb-5">
+          Catch a <span className="text-blue-600">fabricated document</span> before it costs you.
+        </h1>
+
+        <p className="text-[16px] text-zinc-600 leading-relaxed max-w-xl mx-auto mb-8">
+          Upload a salary slip, offer letter, or relieving letter. Six real forensic checks run against your file live — PDF/EXIF metadata, OCR confidence, field arithmetic, error level analysis, font consistency, and a final AI-reasoned verdict. No canned demo numbers.
+        </p>
+
+        <div className="flex flex-wrap items-center justify-center gap-3 mb-5">
+          <a
+            href="#scanner"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-[14px] font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all"
+          >
+            Scan a Document <ArrowRight className="w-4 h-4" />
+          </a>
+          <a
+            href="#methodology"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-[14px] font-semibold border border-zinc-200 text-zinc-700 bg-white hover:bg-zinc-50 hover:border-zinc-300 transition-all"
+          >
+            How it works
+          </a>
+        </div>
+
+        <p className="text-[12px] text-zinc-500 flex items-center justify-center gap-1.5">
+          <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" /> Real backend. <span className="font-semibold text-zinc-700">Your file never leaves this scan.</span>
+        </p>
+      </div>
+
+      <div className="max-w-4xl mx-auto px-6 mt-16 pt-10 border-t border-zinc-200 relative z-10">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+          {HERO_STATS.map((s) => (
+            <div key={s.label}>
+              <div className="text-xl sm:text-2xl font-extrabold text-blue-600 font-mono">{s.value}</div>
+              <div className="text-[12px] text-zinc-500 mt-1">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SCANNER CARD — the real, working product (not a mock-up)
+   ═══════════════════════════════════════════════════════════ */
+
+function ScannerCard({
+  stage, dragOver, uploading, uploadError, onDragOver, onFile,
+  filename, contentType, previewImageUrl, onStartScan, stepsByKey, scanError, onReset,
+}: {
+  stage: Stage; dragOver: boolean; uploading: boolean; uploadError: string;
+  onDragOver: (v: boolean) => void; onFile: (f: File | undefined | null) => void;
+  filename: string; contentType: "pdf" | "image"; previewImageUrl: string | null;
+  onStartScan: () => void; stepsByKey: Record<string, StepResult>; scanError: string; onReset: () => void;
+}) {
+  const doneCount = Object.keys(stepsByKey).length;
+  const statusCopy =
+    stage === "landing" ? "Idle · awaiting a document"
+    : stage === "uploaded" ? "Ready · document loaded"
+    : stage === "scanning" ? `Scanning · ${doneCount}/${STEP_META.length} steps complete`
+    : stage === "done" ? "Scan complete"
+    : "Scan failed";
+
+  return (
+    <div className="rounded-3xl border border-zinc-200 bg-white shadow-xl overflow-hidden">
+      <div className="p-4 sm:p-5 flex items-center justify-between border-b border-zinc-100">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="relative w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center shrink-0">
+            <ShieldAlert className="w-4 h-4" />
+            <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${stage === "scanning" ? "bg-blue-500 animate-pulse" : stage === "error" ? "bg-red-500" : "bg-emerald-500"}`} />
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-bold text-zinc-900 truncate">Fraud Detection Agent</div>
+            <div className="text-[11px] text-zinc-500 font-mono flex items-center gap-1.5 truncate">
+              {stage === "scanning" && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />}
+              {statusCopy}
+            </div>
+          </div>
+        </div>
+        {filename && (
+          <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 flex items-center gap-1 shrink-0 max-w-[160px]">
+            {contentType === "image" ? <ImageIcon className="w-3 h-3 shrink-0" /> : <FileText className="w-3 h-3 shrink-0" />}
+            <span className="truncate">{filename}</span>
+          </span>
+        )}
+      </div>
+
+      <div className="p-5 sm:p-6">
+        <AnimatePresence mode="wait">
+          {stage === "landing" && (
+            <motion.div key="landing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <UploadDropzone dragOver={dragOver} uploading={uploading} error={uploadError} onDragOver={onDragOver} onFile={onFile} />
+            </motion.div>
+          )}
+
+          {stage === "uploaded" && (
+            <motion.div key="uploaded" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="grid sm:grid-cols-[200px_1fr] gap-5">
+              <DocPreview filename={filename} contentType={contentType} previewImageUrl={previewImageUrl} scanning={false} />
+              <div className="flex flex-col items-center justify-center text-center py-6 gap-4">
+                <div className="w-11 h-11 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600">
+                  <FileScan className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-zinc-900 mb-1">Document loaded — ready to scan</div>
+                  <div className="text-xs text-zinc-500">The agent will run all {STEP_META.length} checks live, streamed step by step.</div>
+                </div>
+                <button
+                  onClick={onStartScan}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-600 text-white text-[13px] font-bold hover:bg-blue-700 transition-colors shadow-md shadow-blue-600/20"
+                >
+                  <Sparkles className="w-3.5 h-3.5" /> Start Scan
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {(stage === "scanning" || stage === "done") && (
+            <motion.div key="scan" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="grid sm:grid-cols-[200px_1fr] gap-5">
+              <DocPreview filename={filename} contentType={contentType} previewImageUrl={previewImageUrl} scanning={stage === "scanning"} />
+              <StepChecklist stepsByKey={stepsByKey} scanning={stage === "scanning"} />
+            </motion.div>
+          )}
+
+          {stage === "error" && (
+            <motion.div key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center justify-center text-center py-10 gap-3">
+              <XCircle className="w-8 h-8 text-red-500" />
+              <div className="text-sm font-bold text-zinc-900">Scan failed</div>
+              <div className="text-xs text-zinc-500 max-w-sm">{scanError}</div>
+              <button
+                onClick={onReset}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-100 border border-zinc-200 text-zinc-700 text-xs font-bold hover:bg-zinc-200 transition-colors"
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> Try another document
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   UPLOAD DROPZONE
+   ═══════════════════════════════════════════════════════════ */
+
+function UploadDropzone({
+  dragOver, uploading, error, onDragOver, onFile,
+}: {
+  dragOver: boolean; uploading: boolean; error: string;
+  onDragOver: (v: boolean) => void; onFile: (f: File | undefined | null) => void;
+}) {
+  return (
+    <div>
+      <label
+        onDragOver={(e) => { e.preventDefault(); if (!uploading) onDragOver(true); }}
+        onDragLeave={() => onDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          onDragOver(false);
+          if (!uploading) onFile(e.dataTransfer.files?.[0]);
+        }}
+        className={`flex flex-col items-center justify-center gap-2 px-6 py-14 rounded-2xl border-2 border-dashed text-center transition-colors ${
+          uploading
+            ? "border-zinc-200 bg-zinc-50 text-zinc-400 cursor-wait"
+            : dragOver
+            ? "border-blue-400 bg-blue-50/60 text-blue-700 cursor-pointer"
+            : "border-zinc-300 bg-zinc-50/60 text-zinc-500 hover:border-blue-300 hover:bg-blue-50/30 cursor-pointer"
+        }`}
+      >
+        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${uploading ? "bg-zinc-100" : "bg-blue-50 border border-blue-200"}`}>
+          {uploading ? <Loader2 className="w-5 h-5 text-zinc-400 animate-spin" /> : <Upload className="w-5 h-5 text-blue-600" />}
+        </div>
+        <div className="text-sm font-bold text-zinc-800 mt-1">{uploading ? "Uploading…" : "Drag & drop a document here"}</div>
+        <div className="text-xs text-zinc-500">or click to browse · PDF, JPG, PNG</div>
+        <input
+          type="file"
+          accept={ACCEPTED_EXTENSIONS.join(",")}
+          disabled={uploading}
+          className="hidden"
+          onChange={(e) => onFile(e.target.files?.[0])}
+        />
+      </label>
+      {error && (
+        <div className="mt-3 flex items-center gap-2 text-xs text-red-600 font-medium">
+          <XCircle className="w-3.5 h-3.5 shrink-0" /> {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DOCUMENT PREVIEW + SCAN-LINE OVERLAY
+   ═══════════════════════════════════════════════════════════ */
+
+function DocPreview({
+  filename, contentType, previewImageUrl, scanning,
+}: {
+  filename: string; contentType: "pdf" | "image"; previewImageUrl: string | null; scanning: boolean;
+}) {
+  return (
+    <div className="flex flex-col">
+      <div className="relative rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 flex-1 min-h-[220px] flex items-center justify-center">
+        {previewImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={`${API_URL}${previewImageUrl}`} alt={filename} className="w-full h-full object-contain" />
+        ) : (
+          <div className="flex flex-col items-center gap-2 text-zinc-400 py-14">
+            <FileText className="w-11 h-11 text-blue-300" />
+            <span className="text-[10.5px] font-mono">Preview unavailable</span>
+          </div>
+        )}
+
+        {scanning && (
+          <motion.div
+            className="absolute inset-x-0 h-10 bg-gradient-to-b from-transparent via-blue-400/40 to-transparent pointer-events-none"
+            initial={{ top: "-15%" }}
+            animate={{ top: "110%" }}
+            transition={{ duration: 1.6, repeat: Infinity, ease: "linear" }}
+          />
+        )}
+        {scanning && <div className="absolute inset-0 border-2 border-blue-400/60 rounded-xl pointer-events-none animate-pulse" />}
+      </div>
+      <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-zinc-500">
+        {contentType === "image" ? <ImageIcon className="w-3 h-3 text-zinc-400 shrink-0" /> : <FileText className="w-3 h-3 text-zinc-400 shrink-0" />}
+        <span className="truncate font-mono">{filename}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LIVE STEP CHECKLIST
+   ═══════════════════════════════════════════════════════════ */
+
+function StepChecklist({ stepsByKey, scanning }: { stepsByKey: Record<string, StepResult>; scanning: boolean }) {
+  const nextIdx = STEP_META.findIndex((m) => !stepsByKey[m.key]);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[11px] font-bold text-zinc-900 uppercase tracking-wide">What the agent is checking</span>
+        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-zinc-100 border border-zinc-200 text-zinc-600">
+          {Object.keys(stepsByKey).length}/{STEP_META.length}
+        </span>
+      </div>
+
+      {STEP_META.map((m, i) => {
+        const result = stepsByKey[m.key];
+        const isActive = scanning && i === nextIdx;
+        const Icon = m.icon;
+        const style = result ? STATUS_STYLES[result.status] : null;
+        const StatusIcon = style?.icon;
+
+        return (
+          <motion.div
+            key={m.key}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`rounded-xl border p-2.5 flex items-start gap-2.5 transition-colors ${
+              isActive ? "border-blue-300 bg-blue-50/60" : result ? `${style!.border} ${style!.bg}` : "border-zinc-200 bg-zinc-50/50"
+            }`}
+          >
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${isActive ? "bg-blue-100 text-blue-600" : result ? "bg-white" : "bg-zinc-100 text-zinc-400"}`}>
+              {isActive ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Icon className="w-3.5 h-3.5" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[12.5px] font-bold text-zinc-900">{m.title}</span>
+                {result && StatusIcon && (
+                  <span className={`flex items-center gap-1 text-[10px] font-mono font-bold shrink-0 ${style!.text}`}>
+                    <StatusIcon className="w-3 h-3" />
+                    {style!.label}
+                    {result.score !== null && ` · ${result.score}`}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-zinc-500 leading-snug mt-0.5">
+                {result ? result.summary : isActive ? "Running…" : "Pending"}
+              </p>
+            </div>
+          </motion.div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RESULTS — verdict banner + per-step marks
+   ═══════════════════════════════════════════════════════════ */
+
+function ResultSummary({ overall, onReset }: { overall: Overall; onReset: () => void }) {
+  const verdictStyle = VERDICT_STYLES[overall.verdict] || VERDICT_STYLES.needs_review;
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+      <div className={`relative rounded-3xl overflow-hidden p-6 sm:p-8 bg-gradient-to-br ${verdictStyle.gradient} shadow-2xl ${verdictStyle.glow}`}>
+        <div className="absolute -top-16 -right-16 w-56 h-56 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-16 -left-16 w-56 h-56 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative">
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+            <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/15 border border-white/25 text-white text-[13px] font-extrabold">
+              <ShieldCheck className="w-4 h-4" /> {verdictStyle.label}
+            </span>
+            {overall.risk_score !== null && (
+              <span className="text-xs font-mono font-bold px-3 py-1.5 rounded-full bg-white/95 text-zinc-800">
+                Risk Score {overall.risk_score}/100
+              </span>
+            )}
+          </div>
+          <p className="text-white/95 text-[14px] leading-relaxed mb-4 max-w-2xl">{overall.explanation}</p>
+          {overall.key_concerns.length > 0 && (
+            <ul className="space-y-1.5">
+              {overall.key_concerns.map((c, i) => (
+                <li key={i} className="text-[12.5px] text-white/90 flex items-start gap-1.5">
+                  <span className="mt-1.5 w-1 h-1 rounded-full bg-white/70 shrink-0" /> {c}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <div className="text-xs font-bold text-zinc-900 uppercase tracking-wide mb-3">Marks per step</div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {overall.steps.map((s) => {
+            const style = STATUS_STYLES[s.status];
+            const StatusIcon = style.icon;
+            return (
+              <div key={s.key} className="rounded-2xl bg-white border border-zinc-200 p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[13px] font-bold text-zinc-900">{s.title}</span>
+                  <StatusIcon className={`w-4 h-4 shrink-0 ${style.text}`} />
+                </div>
+                {s.score !== null ? (
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <span className={`text-[15px] font-extrabold font-mono shrink-0 ${style.text}`}>{s.score}</span>
+                    <div className="flex-1 h-1.5 bg-zinc-100 rounded-full overflow-hidden">
+                      <motion.div
+                        className={`h-full rounded-full ${style.bar}`}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${s.score}%` }}
+                        transition={{ duration: 0.9, ease: "easeOut" }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-[13px] font-mono text-zinc-400 mb-3">Not applicable</div>
+                )}
+                <p className="text-[12px] text-zinc-500 leading-relaxed">{s.summary}</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex justify-center">
+        <button
+          onClick={onReset}
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-zinc-900 text-white text-[13px] font-bold hover:bg-zinc-800 transition-colors shadow-sm"
+        >
+          <X className="w-3.5 h-3.5" /> Scan another document
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   METHODOLOGY
+   ═══════════════════════════════════════════════════════════ */
+
+function MethodologySection() {
+  return (
+    <section id="methodology" className="py-20 sm:py-24 border-t border-zinc-200/80 bg-zinc-50/50 scroll-mt-14">
+      <div className="max-w-5xl mx-auto px-6">
+        <div className="text-center max-w-xl mx-auto mb-14">
+          <span className="text-xs font-mono uppercase tracking-widest text-blue-600 font-semibold px-2.5 py-1 rounded bg-blue-50 border border-blue-200">
+            How It Works
+          </span>
+          <h2 className="text-[clamp(1.6rem,3vw,2.2rem)] font-extrabold text-zinc-900 tracking-tight mt-4">
+            Six real checks, <span className="text-blue-600">one honest verdict</span>
+          </h2>
+          <p className="text-zinc-600 text-[15px] mt-2 leading-relaxed">
+            Every check below runs against your actual file — highest-signal, lowest-effort forgeries first, AI reasoning last to synthesize everything.
+          </p>
+        </div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {STEP_META.map((m, i) => (
+            <StepFeatureCard key={m.key} index={i + 1} title={m.title} desc={m.blurb} icon={m.icon} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function StepFeatureCard({
+  index, title, desc, icon: Icon,
+}: { index: number; title: string; desc: string; icon: ComponentType<{ className?: string }> }) {
+  return (
+    <div className="rounded-2xl bg-white border border-zinc-200 p-5">
+      <div className="flex items-center justify-between mb-3">
+        <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+          <Icon className="w-4 h-4" />
+        </div>
+        <span className="text-[11px] font-mono font-bold text-zinc-300">0{index}</span>
+      </div>
+      <h3 className="text-[14px] font-bold text-zinc-900 mb-1">{title}</h3>
+      <p className="text-[12.5px] text-zinc-500 leading-relaxed">{desc}</p>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CLOSING CTA
+   ═══════════════════════════════════════════════════════════ */
+
+function ClosingCtaBanner() {
+  return (
+    <section className="py-20 border-t border-zinc-200/80 bg-white">
+      <div className="max-w-5xl mx-auto px-6">
+        <div className="relative rounded-[2rem] overflow-hidden p-10 sm:p-14 text-center bg-gradient-to-br from-blue-600 via-blue-600 to-sky-500 shadow-2xl shadow-blue-600/25">
+          <div className="absolute -top-20 -right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative">
+            <div className="w-12 h-12 rounded-2xl bg-white/15 border border-white/20 flex items-center justify-center text-white mx-auto mb-5">
+              <Zap className="w-6 h-6" />
+            </div>
+            <h2 className="text-[clamp(1.5rem,3.5vw,2.1rem)] font-extrabold text-white tracking-tight mb-3">
+              Don&apos;t guess whether a document is real
+            </h2>
+            <p className="text-blue-100 text-[15px] max-w-lg mx-auto mb-8">
+              Upload it and let the agent run six real checks in the time it takes to read this sentence.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <a
+                href="#scanner"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-[14px] font-semibold bg-white text-blue-700 hover:bg-blue-50 transition-colors shadow-sm"
+              >
+                Scan a Document <ArrowRight className="w-4 h-4" />
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
