@@ -27,6 +27,17 @@ class Settings(BaseSettings):
     # something instead of sitting there unused.
     CORS_ORIGINS: str = ""
 
+    # Telephonic Agent — real outbound calling via Twilio.
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_PHONE_NUMBER: str = ""
+    # Public HTTPS origin (no trailing slash) Twilio can reach to fetch TwiML
+    # and post call-status/speech-gather webhooks — e.g. an ngrok URL in dev,
+    # or this backend's deployed URL in production. Outbound calling is
+    # disabled (with a clear error) while this is unset, since Twilio cannot
+    # call back into localhost.
+    PUBLIC_BASE_URL: str = ""
+
     DATABASE_URL: str = "sqlite:///./policy_engine.db"
     
     REDIS_URL: str = "redis://localhost:6379/0"

@@ -47,6 +47,21 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_login_at = Column(DateTime(timezone=True), server_default=func.now())
 
+class CallRecord(Base):
+    __tablename__ = "call_records"
+
+    id = Column(String, primary_key=True, index=True)
+    call_sid = Column(String, unique=True, index=True, nullable=True)
+    to_number = Column(String)
+    candidate_name = Column(String)
+    role_title = Column(String)
+    status = Column(String, default="queued")  # queued -> ringing/in-progress -> completed/no-answer/busy/failed
+    transcript = Column(JSON, default=list)  # [{"role": "agent"|"candidate", "text": str}, ...]
+    duration_sec = Column(Integer, nullable=True)
+    error_message = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
 class Rule(Base):
     __tablename__ = "rules"
 

@@ -22,3 +22,4 @@ pydub
 faster-whisper
 Pillow
 pytesseract
+twilio

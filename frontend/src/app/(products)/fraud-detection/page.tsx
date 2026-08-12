@@ -224,7 +224,7 @@ export default function FraudDetectionPage() {
 
   return (
     <div className="min-h-screen bg-white text-zinc-900 bg-white-grid relative selection:bg-blue-500/20">
-      <nav className="sticky top-0 z-30 bg-white/85 backdrop-blur-md border-b border-zinc-200/80 shadow-2xs">
+      <nav className="sticky top-0 z-30 bg-white/85 backdrop-blur-md border-b border-zinc-200/80">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 text-sm font-bold text-zinc-900 hover:text-blue-600 transition-colors">
             <ArrowLeft className="w-4 h-4" />
@@ -416,7 +416,13 @@ function ScannerCard({
 
           {(stage === "scanning" || stage === "done") && (
             <motion.div key="scan" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="grid sm:grid-cols-[200px_1fr] gap-5">
-              <DocPreview filename={filename} contentType={contentType} previewImageUrl={previewImageUrl} scanning={stage === "scanning"} />
+              <DocPreview
+                filename={filename}
+                contentType={contentType}
+                previewImageUrl={previewImageUrl}
+                scanning={stage === "scanning"}
+                activeStepTitle={STEP_META[STEP_META.findIndex((m) => !stepsByKey[m.key])]?.title}
+              />
               <StepChecklist stepsByKey={stepsByKey} scanning={stage === "scanning"} />
             </motion.div>
           )}
@@ -495,9 +501,10 @@ function UploadDropzone({
    ═══════════════════════════════════════════════════════════ */
 
 function DocPreview({
-  filename, contentType, previewImageUrl, scanning,
+  filename, contentType, previewImageUrl, scanning, activeStepTitle,
 }: {
   filename: string; contentType: "pdf" | "image"; previewImageUrl: string | null; scanning: boolean;
+  activeStepTitle?: string;
 }) {
   return (
     <div className="flex flex-col">
@@ -513,16 +520,43 @@ function DocPreview({
         )}
 
         {scanning && (
-          <motion.div
-            className="absolute inset-x-0 h-10 bg-gradient-to-b from-transparent via-blue-400/40 to-transparent pointer-events-none"
-            initial={{ top: "-15%" }}
-            animate={{ top: "110%" }}
-            transition={{ duration: 1.6, repeat: Infinity, ease: "linear" }}
-          />
+          <>
+            {/* Vision-agent scan sweep, not a generic loading shimmer */}
+            <motion.div
+              className="absolute inset-x-0 h-12 bg-gradient-to-b from-transparent via-blue-400/50 to-transparent pointer-events-none"
+              initial={{ top: "-18%" }}
+              animate={{ top: "110%" }}
+              transition={{ duration: 1.8, repeat: Infinity, ease: "linear" }}
+            />
+            <motion.div
+              className="absolute inset-x-0 h-px bg-blue-400/90 shadow-[0_0_8px_2px_rgba(96,165,250,0.7)] pointer-events-none"
+              initial={{ top: "-2%" }}
+              animate={{ top: "108%" }}
+              transition={{ duration: 1.8, repeat: Infinity, ease: "linear" }}
+            />
+
+            {/* Targeting reticle corners — reads as machine vision, not a spinner */}
+            {[
+              "top-2 left-2 border-t-2 border-l-2",
+              "top-2 right-2 border-t-2 border-r-2",
+              "bottom-2 left-2 border-b-2 border-l-2",
+              "bottom-2 right-2 border-b-2 border-r-2",
+            ].map((pos) => (
+              <div key={pos} className={`absolute w-4 h-4 border-blue-500/70 pointer-events-none ${pos}`} />
+            ))}
+
+            {activeStepTitle && (
+              <div className="absolute left-2 bottom-2 translate-y-[calc(100%+6px)] pointer-events-none">
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-mono font-bold px-2 py-1 rounded-md bg-zinc-900/90 text-blue-300 whitespace-nowrap">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse shrink-0" />
+                  {activeStepTitle}
+                </span>
+              </div>
+            )}
+          </>
         )}
-        {scanning && <div className="absolute inset-0 border-2 border-blue-400/60 rounded-xl pointer-events-none animate-pulse" />}
       </div>
-      <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-zinc-500">
+      <div className={`flex items-center gap-1.5 text-[11px] text-zinc-500 ${scanning && activeStepTitle ? "mt-7" : "mt-2.5"}`}>
         {contentType === "image" ? <ImageIcon className="w-3 h-3 text-zinc-400 shrink-0" /> : <FileText className="w-3 h-3 text-zinc-400 shrink-0" />}
         <span className="truncate font-mono">{filename}</span>
       </div>
@@ -579,10 +613,59 @@ function StepChecklist({ stepsByKey, scanning }: { stepsByKey: Record<string, St
               <p className="text-[11px] text-zinc-500 leading-snug mt-0.5">
                 {result ? result.summary : isActive ? "Running…" : "Pending"}
               </p>
+              {result && <StepDetailChips stepKey={m.key} details={result.details} />}
             </div>
           </motion.div>
         );
       })}
+    </div>
+  );
+}
+
+/** Surfaces the real values the agent actually extracted for this step —
+ * not just a pass/fail badge — so the scan reads as genuine forensic output
+ * instead of a generic progress animation. */
+function StepDetailChips({ stepKey, details }: { stepKey: string; details?: Record<string, unknown> }) {
+  if (!details) return null;
+
+  const chips: string[] = [];
+  if (stepKey === "metadata") {
+    const producer = (details.producer ?? details.software) as string | null | undefined;
+    if (producer) chips.push(`Producer: ${producer}`);
+    if (details.creation_date) chips.push(`Created: ${details.creation_date}`);
+    if (details.mod_date) chips.push(`Modified: ${details.mod_date}`);
+  } else if (stepKey === "ocr") {
+    if (details.method) chips.push(`Method: ${details.method === "ocr" ? "Tesseract OCR" : "native text layer"}`);
+    const pages = details.pages ?? details.pages_ocred;
+    if (typeof pages === "number") chips.push(`${pages} page${pages === 1 ? "" : "s"}`);
+  } else if (stepKey === "arithmetic") {
+    const fields = details.extracted_fields as Record<string, unknown> | undefined;
+    if (fields) {
+      for (const [k, v] of Object.entries(fields).slice(0, 3)) {
+        chips.push(`${k}: ${v}`);
+      }
+    }
+  } else if (stepKey === "ela") {
+    if (typeof details.max_diff === "number") chips.push(`Max diff: ${details.max_diff}`);
+    if (typeof details.threshold === "number") chips.push(`Threshold: ${details.threshold}`);
+  } else if (stepKey === "fonts") {
+    if (typeof details.distinct_families === "number") chips.push(`${details.distinct_families} font families`);
+    const families = details.families as string[] | undefined;
+    if (families?.length) chips.push(families.slice(0, 3).join(", "));
+  } else if (stepKey === "reasoning") {
+    const concerns = details.key_concerns as string[] | undefined;
+    if (concerns?.length) chips.push(...concerns.slice(0, 2));
+  }
+
+  if (chips.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-1 mt-1.5">
+      {chips.map((c, i) => (
+        <span key={i} className="text-[9.5px] font-mono text-zinc-500 bg-white border border-zinc-200 rounded px-1.5 py-0.5">
+          {c}
+        </span>
+      ))}
     </div>
   );
 }

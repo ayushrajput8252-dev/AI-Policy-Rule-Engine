@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 from .config import settings
-from .api import upload, query, rules, audio, fraud, interview, auth
+from .api import upload, query, rules, audio, fraud, interview, auth, telephonic
 from .database import engine
 from . import models
 
@@ -33,6 +33,7 @@ app.include_router(audio.router, prefix="/api/v1")
 app.include_router(fraud.router, prefix="/api/v1")
 app.include_router(interview.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(telephonic.router, prefix="/api/v1")
 
 # Mount uploads directory for static file serving
 os.makedirs("uploads", exist_ok=True)

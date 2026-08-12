@@ -112,7 +112,7 @@ export default function OnboardingPage() {
   return (
     <div className="min-h-screen bg-white text-zinc-900 bg-white-grid relative selection:bg-blue-500/20">
       {/* NAV */}
-      <nav className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-zinc-200/80 shadow-2xs">
+      <nav className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-zinc-200/80">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 text-sm font-bold text-zinc-900 hover:text-blue-600 transition-colors">
             <ArrowLeft className="w-4 h-4" />

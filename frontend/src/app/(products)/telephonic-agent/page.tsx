@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ComponentType, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { askAssistant } from "@/components/ai-assistant/AIAssistantWidget";
@@ -8,13 +8,16 @@ import {
   ArrowLeft, Phone, Sparkles, ArrowRight, Globe, Clock, MessageSquare, RefreshCw,
   BarChart3, CheckCircle2, Upload, FileText, Code2, MessageCircle,
   User, MapPin, Briefcase, Languages, ShieldCheck, Target, PhoneMissed,
-  Loader2, Bot,
+  Loader2, Bot, PhoneCall, AlertTriangle, PhoneOff,
 } from "lucide-react";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 /* ═══════════════════════════════════════════════════════════
    DATA
-   POC: fully client-side, no calls are placed and no backend is
-   involved — every "call", score, and candidate here is simulated.
+   Below the real call panel, the rest of this page (waveform demo,
+   agent profile, scorecards, three-step flow) is illustrative marketing
+   content — every "call", score, and candidate there is simulated.
    Agent persona is named after this project's builder, matching the
    self-referential branding used across the rest of the demo.
    ═══════════════════════════════════════════════════════════ */
@@ -102,7 +105,7 @@ const TRANSCRIPT_PREVIEW = [
 export default function TelephonicAgentPage() {
   return (
     <div className="min-h-screen bg-white text-zinc-900 bg-white-grid relative selection:bg-blue-500/20">
-      <nav className="sticky top-0 z-30 bg-white/85 backdrop-blur-md border-b border-zinc-200/80 shadow-2xs">
+      <nav className="sticky top-0 z-30 bg-white/85 backdrop-blur-md border-b border-zinc-200/80">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 text-sm font-bold text-zinc-900 hover:text-blue-600 transition-colors">
             <ArrowLeft className="w-4 h-4" />
@@ -122,6 +125,7 @@ export default function TelephonicAgentPage() {
       </nav>
 
       <HeroSection />
+      <RealCallSection />
       <MeetAgentSection />
       <ScoresSection />
       <ThreeStepSection />
@@ -130,7 +134,8 @@ export default function TelephonicAgentPage() {
 
       <footer className="border-t border-zinc-200 bg-white py-10">
         <div className="max-w-6xl mx-auto px-6 text-center text-[12px] text-zinc-500 font-mono">
-          AgenticFlow AI · Telephonic Agent is a simulated product demo — no real calls are placed.
+          AgenticFlow AI · Telephonic Agent — the &ldquo;Place a Real Call&rdquo; panel above places a real
+          Twilio phone call. Everything below it is an illustrative product demo.
         </div>
       </footer>
     </div>
@@ -276,6 +281,242 @@ function LiveCallDemoCard() {
         </motion.div>
       </div>
     </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   REAL CALL PANEL — actually places a Twilio phone call via the backend
+   (/api/v1/telephonic/call), polls the call record for live status +
+   transcript. Everything else on this page is illustrative; this isn't.
+   ═══════════════════════════════════════════════════════════ */
+
+interface CallTranscriptTurn {
+  role: "agent" | "candidate";
+  text: string;
+}
+
+interface CallRecordState {
+  id: string;
+  call_sid: string | null;
+  to_number: string;
+  candidate_name: string;
+  role_title: string;
+  status: string;
+  transcript: CallTranscriptTurn[];
+  duration_sec: number | null;
+  error_message: string | null;
+  created_at: string | null;
+}
+
+const ACTIVE_CALL_STATUSES = new Set(["queued", "initiated", "ringing", "in-progress", "answered"]);
+
+function RealCallSection() {
+  const [toNumber, setToNumber] = useState("");
+  const [candidateName, setCandidateName] = useState("");
+  const [roleTitle, setRoleTitle] = useState("Backend Engineer");
+  const [call, setCall] = useState<CallRecordState | null>(null);
+  const [placing, setPlacing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  const pollCall = (id: string) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    const tick = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/v1/telephonic/calls/${id}`);
+        if (!res.ok) return;
+        const data: CallRecordState = await res.json();
+        setCall(data);
+        if (!ACTIVE_CALL_STATUSES.has(data.status) && pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+      } catch {
+        // transient — the next tick will retry
+      }
+    };
+    tick();
+    pollRef.current = setInterval(tick, 2500);
+  };
+
+  const placeCall = async () => {
+    setError(null);
+    if (!toNumber.trim()) {
+      setError("Enter a phone number in E.164 format, e.g. +14155551234.");
+      return;
+    }
+    setPlacing(true);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/telephonic/call`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: toNumber.trim(),
+          candidate_name: candidateName.trim() || "there",
+          role_title: roleTitle.trim() || "the open role",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail || `Call failed (${res.status})`);
+      setCall(data);
+      pollCall(data.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not place the call.");
+    } finally {
+      setPlacing(false);
+    }
+  };
+
+  const isActive = call ? ACTIVE_CALL_STATUSES.has(call.status) : false;
+
+  return (
+    <section className="py-16 sm:py-20 border-t border-zinc-200/80 bg-zinc-50/50">
+      <div className="max-w-3xl mx-auto px-6">
+        <div className="text-center max-w-xl mx-auto mb-10">
+          <span className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-widest text-emerald-700 font-semibold px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200">
+            <PhoneCall className="w-3.5 h-3.5" /> Real call — not a demo
+          </span>
+          <h2 className="text-[clamp(1.5rem,3vw,2rem)] font-extrabold text-zinc-900 tracking-tight mt-4">
+            Place a real call right now
+          </h2>
+          <p className="text-zinc-600 text-[14px] mt-2 leading-relaxed">
+            Enter a real phone number and {AGENT_NAME} will actually call it via Twilio, ask real
+            questions, and adapt to what&rsquo;s said — live, right now.
+          </p>
+        </div>
+
+        <div className="rounded-3xl border border-zinc-200 bg-white shadow-xl overflow-hidden">
+          <div className="grid sm:grid-cols-2 gap-4 p-5 sm:p-6 border-b border-zinc-100">
+            <label className="block sm:col-span-2">
+              <span className="text-[11px] font-semibold text-zinc-500 mb-1 block">Phone number (E.164 format)</span>
+              <input
+                value={toNumber}
+                onChange={(e) => setToNumber(e.target.value)}
+                placeholder="+14155551234"
+                disabled={isActive}
+                className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-blue-400 bg-white disabled:bg-zinc-50 disabled:text-zinc-400"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[11px] font-semibold text-zinc-500 mb-1 block">Candidate name (optional)</span>
+              <input
+                value={candidateName}
+                onChange={(e) => setCandidateName(e.target.value)}
+                placeholder="Priya"
+                disabled={isActive}
+                className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-blue-400 bg-white disabled:bg-zinc-50 disabled:text-zinc-400"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[11px] font-semibold text-zinc-500 mb-1 block">Role being screened for</span>
+              <input
+                value={roleTitle}
+                onChange={(e) => setRoleTitle(e.target.value)}
+                disabled={isActive}
+                className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-blue-400 bg-white disabled:bg-zinc-50 disabled:text-zinc-400"
+              />
+            </label>
+          </div>
+
+          <div className="p-5 sm:p-6">
+            <button
+              onClick={placeCall}
+              disabled={placing || isActive}
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {placing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Placing call…
+                </>
+              ) : isActive ? (
+                <>
+                  <PhoneCall className="w-4 h-4" /> Call in progress — {call?.status}
+                </>
+              ) : (
+                <>
+                  <Phone className="w-4 h-4" /> Call this number
+                </>
+              )}
+            </button>
+
+            <p className="text-[11px] text-zinc-400 text-center mt-3">
+              Uses a real Twilio account. On a Twilio trial account, calls can only reach phone
+              numbers verified in that Twilio console.
+            </p>
+
+            {error && (
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /> {error}
+              </div>
+            )}
+
+            {call && (
+              <div className="mt-5 rounded-2xl border border-zinc-100 bg-zinc-50/60 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[11px] font-mono font-bold uppercase tracking-wide text-zinc-500">
+                    Call status
+                  </span>
+                  <CallStatusBadge status={call.status} />
+                </div>
+
+                {call.error_message && (
+                  <p className="text-xs text-red-600 mb-3">{call.error_message}</p>
+                )}
+
+                {call.transcript.length > 0 ? (
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {call.transcript.map((turn, i) => (
+                      <div key={i} className={`flex ${turn.role === "candidate" ? "justify-end" : "justify-start"}`}>
+                        <div
+                          className={`max-w-[85%] px-3 py-2 rounded-xl text-[13px] leading-snug ${
+                            turn.role === "agent"
+                              ? "bg-blue-50 text-blue-900 border border-blue-100"
+                              : "bg-white text-zinc-700 border border-zinc-200"
+                          }`}
+                        >
+                          {turn.text}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-zinc-400">Waiting for the call to connect…</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CallStatusBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; className: string; icon: ComponentType<{ className?: string }> }> = {
+    queued: { label: "Queued", className: "text-zinc-600 bg-zinc-100 border-zinc-200", icon: Loader2 },
+    initiated: { label: "Initiated", className: "text-blue-600 bg-blue-50 border-blue-200", icon: Loader2 },
+    ringing: { label: "Ringing", className: "text-blue-600 bg-blue-50 border-blue-200", icon: PhoneCall },
+    "in-progress": { label: "In progress", className: "text-emerald-600 bg-emerald-50 border-emerald-200", icon: PhoneCall },
+    answered: { label: "Answered", className: "text-emerald-600 bg-emerald-50 border-emerald-200", icon: PhoneCall },
+    completed: { label: "Completed", className: "text-emerald-600 bg-emerald-50 border-emerald-200", icon: CheckCircle2 },
+    "no-answer": { label: "No answer", className: "text-amber-600 bg-amber-50 border-amber-200", icon: PhoneMissed },
+    busy: { label: "Busy", className: "text-amber-600 bg-amber-50 border-amber-200", icon: PhoneMissed },
+    failed: { label: "Failed", className: "text-red-600 bg-red-50 border-red-200", icon: PhoneOff },
+    canceled: { label: "Canceled", className: "text-zinc-500 bg-zinc-100 border-zinc-200", icon: PhoneOff },
+  };
+  const entry = map[status] || { label: status, className: "text-zinc-600 bg-zinc-100 border-zinc-200", icon: Loader2 };
+  const Icon = entry.icon;
+  const spin = Icon === Loader2;
+  return (
+    <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border flex items-center gap-1.5 ${entry.className}`}>
+      <Icon className={`w-3 h-3 ${spin ? "animate-spin" : ""}`} /> {entry.label}
+    </span>
   );
 }
 
