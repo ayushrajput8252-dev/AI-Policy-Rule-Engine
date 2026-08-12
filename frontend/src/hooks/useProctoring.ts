@@ -16,10 +16,12 @@ import {
  * the least effort.
  */
 
-const WASM_BASE =
-  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm";
-const MODEL_URL =
-  "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+// Self-hosted under /public — the CDN/GCS equivalents (jsdelivr, storage.googleapis.com)
+// throw "Failed to fetch" in the browser whenever a firewall, ad-blocker, or corporate
+// proxy blocks third-party hosts, which took proctoring down entirely. Same-origin
+// static assets remove that failure mode.
+const WASM_BASE = "/mediapipe/wasm";
+const MODEL_URL = "/mediapipe/models/face_landmarker.task";
 
 const NO_FACE_GRACE_MS = 3000; // spec: flag "no face" only after >3s
 const LOOKING_AWAY_GRACE_MS = 2500; // spec: flag "looking away" after >2-3s
@@ -311,26 +313,24 @@ export function useProctoring() {
       integrityScore: 100,
       tabSwitchCount: 0,
     }));
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setState((prev) => ({
+        ...prev,
+        status: "error",
+        errorMessage:
+          "Camera access isn't available in this browser context (it requires HTTPS or localhost).",
+      }));
+      return;
+    }
+
+    let stream: MediaStream;
     try {
-      const [stream] = await Promise.all([
-        navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: 640, height: 480 },
-          audio: false,
-        }),
-        getLandmarker(),
-      ]);
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-      startedAtRef.current = Date.now();
-      noFaceSinceRef.current = null;
-      lookingAwaySinceRef.current = null;
-      setState((prev) => ({ ...prev, status: "live" }));
-      rafRef.current = requestAnimationFrame(detectLoop);
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: 640, height: 480 },
+        audio: false,
+      });
     } catch (err) {
-      console.error("Failed to start proctoring", err);
+      console.error("Failed to acquire camera", err);
       setState((prev) => ({
         ...prev,
         status: "error",
@@ -339,7 +339,36 @@ export function useProctoring() {
             ? "Camera permission was denied. Allow camera access to run live proctoring."
             : "Could not start the camera. Make sure no other app is using it.",
       }));
+      return;
     }
+
+    try {
+      await getLandmarker();
+    } catch (err) {
+      console.error("Failed to load the face detection model", err);
+      stream.getTracks().forEach((t) => t.stop());
+      // Loading the model failed independently of the camera itself — most
+      // likely the self-hosted WASM/model assets under /public are missing
+      // or the dev server needs a restart to pick them up, so say so.
+      setState((prev) => ({
+        ...prev,
+        status: "error",
+        errorMessage:
+          "Could not load the face detection model. Check that /mediapipe assets are served and reload the page.",
+      }));
+      return;
+    }
+
+    streamRef.current = stream;
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+    }
+    startedAtRef.current = Date.now();
+    noFaceSinceRef.current = null;
+    lookingAwaySinceRef.current = null;
+    setState((prev) => ({ ...prev, status: "live" }));
+    rafRef.current = requestAnimationFrame(detectLoop);
   }, [detectLoop]);
 
   // Tab-switch / focus-loss detection — plain DOM events, active only while live.

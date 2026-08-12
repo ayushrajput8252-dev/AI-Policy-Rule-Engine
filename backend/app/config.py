@@ -16,6 +16,11 @@ class Settings(BaseSettings):
 
     TAVILY_API_KEY: str = ""
 
+    # OAuth client ID from Google Cloud Console (Credentials > OAuth 2.0 Client
+    # IDs > Web application). Must match NEXT_PUBLIC_GOOGLE_CLIENT_ID on the
+    # frontend — used to reject ID tokens issued for a different app.
+    GOOGLE_CLIENT_ID: str = ""
+
     # Comma-separated list of allowed frontend origins in production (e.g. the
     # Vercel URL). Empty means "allow any origin" — fine for local dev, but
     # tightening this in render.yaml is what actually makes CORS_ORIGINS mean
