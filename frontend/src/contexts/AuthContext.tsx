@@ -19,6 +19,11 @@ import {
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 export const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
 
+// Single kill switch for the whole login feature — flip back to true to
+// re-enable the sign-in popup and header bar with no other code changes.
+// Nothing else in the auth code path is removed while this is off.
+export const AUTH_GATE_ENABLED = false;
+
 const GSI_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
 
 export type AuthStatus = "loading" | "signed-out" | "signed-in" | "error";

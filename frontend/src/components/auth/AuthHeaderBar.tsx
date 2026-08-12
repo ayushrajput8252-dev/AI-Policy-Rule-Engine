@@ -2,12 +2,13 @@
 
 import { Users, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import GoogleSignInButton from "./GoogleSignInButton";
 
-/** Slim utility strip above every page's own nav — the one place Google
- * sign-in and the unique-tester count live site-wide. */
+/** Slim utility strip above every page's own nav — shows the unique-tester
+ * count and, once signed in, who's signed in. Sign-in itself only ever
+ * happens through the popup (ProductGate) — this bar carries no sign-in
+ * control of its own. */
 export default function AuthHeaderBar() {
-  const { status, user, uniqueUserCount, signOut, notConfigured } = useAuth();
+  const { status, user, uniqueUserCount, signOut } = useAuth();
 
   return (
     <div className="w-full bg-zinc-900 text-zinc-100 text-[12px]">
@@ -43,13 +44,7 @@ export default function AuthHeaderBar() {
             </div>
           ) : status === "loading" ? (
             <span className="text-zinc-500">Loading…</span>
-          ) : notConfigured ? (
-            <span className="text-zinc-500">Sign-in coming soon</span>
-          ) : (
-            <div className="scale-90 origin-right">
-              <GoogleSignInButton size="small" shape="pill" />
-            </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

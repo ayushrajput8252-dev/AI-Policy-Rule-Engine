@@ -1,20 +1,29 @@
 "use client";
 
+import { motion } from "framer-motion";
 import { Loader2, ShieldCheck, Users, Settings2 } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
+import { AUTH_GATE_ENABLED, useAuth } from "@/contexts/AuthContext";
 import GoogleSignInButton from "./GoogleSignInButton";
 
 /** Wraps every product route — nothing behind it renders until the visitor
- * has signed in with Google, which is also the only source of truth for the
- * unique-tester count shown once they're in. */
+ * has signed in with Google. Presented as a popup dialog (dim backdrop, card
+ * pops in) rather than a plain page, and is the single place sign-in lives —
+ * the site header carries no sign-in control of its own.
+ * Gating is currently switched off via AUTH_GATE_ENABLED (see AuthContext). */
 export default function ProductGate({ children }: { children: React.ReactNode }) {
   const { status, uniqueUserCount, errorMessage, notConfigured } = useAuth();
 
-  if (status === "signed-in") return <>{children}</>;
+  if (!AUTH_GATE_ENABLED || status === "signed-in") return <>{children}</>;
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center px-6 py-20">
-      <div className="w-full max-w-sm text-center">
+    <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-blue-950 flex items-center justify-center px-6 py-20">
+      <motion.div
+        key="signin-popup"
+        initial={{ opacity: 0, y: 24, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ type: "spring", stiffness: 300, damping: 26 }}
+        className="w-full max-w-sm text-center bg-white rounded-3xl shadow-2xl border border-white/10 px-8 py-10"
+      >
         <div className="mx-auto mb-5 w-14 h-14 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600">
           <ShieldCheck className="w-7 h-7" />
         </div>
@@ -49,7 +58,7 @@ export default function ProductGate({ children }: { children: React.ReactNode })
             unique {uniqueUserCount === 1 ? "person has" : "people have"} tested this platform
           </p>
         )}
-      </div>
+      </motion.div>
     </div>
   );
 }

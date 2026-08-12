@@ -68,8 +68,25 @@ const FLAG_LABEL: Record<FlagType, string> = {
 
 let landmarkerPromise: Promise<FaceLandmarker> | null = null;
 
+// MediaPipe's WASM runtime routes its own informational logs (e.g. "INFO:
+// Created TensorFlow Lite XNNPACK delegate for CPU.") through console.error
+// instead of console.info — harmless, but Next's dev overlay treats every
+// console.error as a reportable error. Drop only lines that actually start
+// with "INFO:"/"WARNING:" so real errors still surface normally.
+let consolePatchedForMediapipe = false;
+function silenceMediapipeInfoLogs() {
+  if (consolePatchedForMediapipe || typeof window === "undefined") return;
+  consolePatchedForMediapipe = true;
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => {
+    if (typeof args[0] === "string" && /^(INFO|WARNING):/.test(args[0])) return;
+    originalError(...args);
+  };
+}
+
 function getLandmarker(): Promise<FaceLandmarker> {
   if (!landmarkerPromise) {
+    silenceMediapipeInfoLogs();
     landmarkerPromise = FilesetResolver.forVisionTasks(WASM_BASE).then(
       (fileset) =>
         FaceLandmarker.createFromOptions(fileset, {

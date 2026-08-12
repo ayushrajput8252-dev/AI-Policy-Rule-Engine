@@ -25,7 +25,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ArrowLeft, ArrowRight, Sparkles, ShieldCheck, Video, Mic, Square,
+  ArrowLeft, ArrowRight, Sparkles, ShieldCheck, Video, Mic,
   Loader2, AlertTriangle, Volume2, Bot, FileText,
   Award, MessageSquare, Radio,
 } from "lucide-react";
@@ -36,6 +36,13 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const INTERVIEWER_NAME = "Ayush";
 const DEFAULT_ROLE = "Backend Engineer";
 const MAX_TURNS = 4;
+
+// Voice-activity detection tuning for the hands-free "just talk" mic — no
+// record button, the candidate's own speech starts and stops the turn.
+const VAD_SPEECH_RMS_THRESHOLD = 0.025; // normalized 0..1 RMS level counted as "speaking"
+const VAD_SILENCE_STOP_MS = 1300; // stop this long after speech trails off
+const VAD_NO_SPEECH_TIMEOUT_MS = 12000; // give up and re-prompt if nothing was ever said
+const VAD_MAX_RECORD_MS = 45000; // hard safety cap regardless of VAD state
 
 /**
  * One retry after a short backoff. Smooths over a transient network blip
@@ -188,13 +195,102 @@ function LiveInterviewDemo() {
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
+  // Voice-activity detection state — no record button, speech itself drives it.
+  const vadRafRef = useRef<number | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const hasSpokenRef = useRef(false);
+  const silenceSinceRef = useRef<number | null>(null);
+  const recordingStartedAtRef = useRef(0);
+  const [micLevel, setMicLevel] = useState(0);
+  const [hasHeardSpeech, setHasHeardSpeech] = useState(false);
+
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [transcript]);
 
+  const stopVadLoop = useCallback(() => {
+    if (vadRafRef.current !== null) {
+      cancelAnimationFrame(vadRafRef.current);
+      vadRafRef.current = null;
+    }
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
+    }
+    hasSpokenRef.current = false;
+    silenceSinceRef.current = null;
+    setMicLevel(0);
+    setHasHeardSpeech(false);
+  }, []);
+
+  /** Watches mic input level via Web Audio and auto-stops the recorder once
+   * the candidate has spoken and then paused — or bails out on prolonged
+   * silence / a hard duration cap so a broken mic can't hang the turn. */
+  const startVadLoop = useCallback((stream: MediaStream) => {
+    const AudioCtxCtor =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtxCtor) return; // no VAD available — VAD_MAX_RECORD_MS still caps the turn
+
+    const ctx = new AudioCtxCtor();
+    audioCtxRef.current = ctx;
+    const source = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    source.connect(analyser);
+    const data = new Uint8Array(analyser.fftSize);
+
+    recordingStartedAtRef.current = Date.now();
+    hasSpokenRef.current = false;
+    silenceSinceRef.current = null;
+    let lastUiUpdate = 0;
+
+    const tick = () => {
+      analyser.getByteTimeDomainData(data);
+      let sumSquares = 0;
+      for (let i = 0; i < data.length; i++) {
+        const norm = (data[i] - 128) / 128;
+        sumSquares += norm * norm;
+      }
+      const rms = Math.sqrt(sumSquares / data.length);
+      const now = Date.now();
+
+      if (now - lastUiUpdate > 100) {
+        lastUiUpdate = now;
+        setMicLevel(Math.min(1, rms * 6));
+      }
+
+      if (rms > VAD_SPEECH_RMS_THRESHOLD) {
+        if (!hasSpokenRef.current) {
+          hasSpokenRef.current = true;
+          setHasHeardSpeech(true);
+        }
+        silenceSinceRef.current = null;
+      } else if (hasSpokenRef.current) {
+        if (silenceSinceRef.current === null) silenceSinceRef.current = now;
+        else if (now - silenceSinceRef.current > VAD_SILENCE_STOP_MS) {
+          mediaRecorderRef.current?.stop();
+          return;
+        }
+      } else if (now - recordingStartedAtRef.current > VAD_NO_SPEECH_TIMEOUT_MS) {
+        mediaRecorderRef.current?.stop();
+        return;
+      }
+
+      if (now - recordingStartedAtRef.current > VAD_MAX_RECORD_MS) {
+        mediaRecorderRef.current?.stop();
+        return;
+      }
+
+      vadRafRef.current = requestAnimationFrame(tick);
+    };
+    vadRafRef.current = requestAnimationFrame(tick);
+  }, []);
+
   useEffect(() => {
     return () => {
       stopProctoring();
+      stopVadLoop();
       micStreamRef.current?.getTracks().forEach((t) => t.stop());
       audioElRef.current?.pause();
     };
@@ -312,11 +408,10 @@ function LiveInterviewDemo() {
     }
   }, [startProctoring, fetchNextTurn, addTurn, speak]);
 
-  const handleMicClick = useCallback(async () => {
-    if (phase === "recording") {
-      mediaRecorderRef.current?.stop();
-      return;
-    }
+  /** Hands-free turn: opens the mic the instant we're "listening" and lets
+   * voice-activity detection (startVadLoop) decide when the answer is done —
+   * no record button, no manual stop. */
+  const startAutoRecording = useCallback(async () => {
     if (phase !== "listening") return;
 
     try {
@@ -332,6 +427,7 @@ function LiveInterviewDemo() {
 
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
+        stopVadLoop();
         setPhase("transcribing");
         try {
           const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
@@ -343,7 +439,7 @@ function LiveInterviewDemo() {
           const candidateText: string = (data.transcript || "").trim();
 
           if (!candidateText) {
-            setErrorMessage("Didn't catch that — no speech was detected. Try again.");
+            setErrorMessage("Didn't catch that — listening again…");
             setPhase("listening");
             return;
           }
@@ -361,26 +457,42 @@ function LiveInterviewDemo() {
           }
         } catch (err) {
           console.error("Answer processing failed", err);
-          setErrorMessage("Something went wrong processing that answer. You can try recording again.");
+          setErrorMessage("Something went wrong processing that answer — listening again…");
           setPhase("listening");
         }
       };
 
       recorder.start();
       setPhase("recording");
+      startVadLoop(stream);
     } catch (err) {
       console.error("Mic access failed", err);
       setErrorMessage("Microphone permission was denied. Allow mic access to answer.");
-      setPhase("listening");
     }
-  }, [phase, transcript, addTurn, fetchNextTurn, speak, runEvaluation]);
+  }, [phase, transcript, addTurn, fetchNextTurn, speak, runEvaluation, startVadLoop, stopVadLoop]);
+
+  // Fires exactly once per genuine transition into "listening" (not on every
+  // re-creation of startAutoRecording, e.g. when transcript changes) — same
+  // ref-indirection pattern AIAssistantWidget uses for its askAssistant hook.
+  const startAutoRecordingRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    startAutoRecordingRef.current = startAutoRecording;
+  });
+  useEffect(() => {
+    if (phase === "listening") startAutoRecordingRef.current();
+  }, [phase]);
 
   const stopEverything = useCallback(() => {
     stopProctoring();
+    stopVadLoop();
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.onstop = null; // ending the session — don't process a trailing turn
+      mediaRecorderRef.current.stop();
+    }
     micStreamRef.current?.getTracks().forEach((t) => t.stop());
     audioElRef.current?.pause();
     setPhase("setup");
-  }, [stopProctoring]);
+  }, [stopProctoring, stopVadLoop]);
 
   const isLive = proctoring.status === "live";
   const canEditSetup = phase === "setup";
@@ -484,7 +596,7 @@ function LiveInterviewDemo() {
 
           <InterviewerAvatarCard speaking={phase === "speaking"} />
 
-          <MicControl phase={phase} onClick={handleMicClick} />
+          <MicStatusIndicator phase={phase} micLevel={micLevel} hasHeardSpeech={hasHeardSpeech} />
         </div>
 
         {/* Transcript column */}
@@ -568,31 +680,59 @@ function InterviewerAvatarCard({ speaking }: { speaking: boolean }) {
   );
 }
 
-function MicControl({ phase, onClick }: { phase: InterviewPhase; onClick: () => void }) {
-  const disabled = !["listening", "recording"].includes(phase);
+/** Hands-free mic status — no button, just live feedback for what the
+ * automatic voice-activity detection is doing. */
+function MicStatusIndicator({
+  phase,
+  micLevel,
+  hasHeardSpeech,
+}: {
+  phase: InterviewPhase;
+  micLevel: number;
+  hasHeardSpeech: boolean;
+}) {
+  const active = phase === "listening" || phase === "recording";
   const recording = phase === "recording";
+
+  let label = "Waiting…";
+  if (active && !recording) label = "Getting your mic ready…";
+  if (recording) {
+    label = hasHeardSpeech
+      ? "Recording — pause when you're done"
+      : "Listening — start speaking whenever you're ready";
+  }
+
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`flex items-center justify-center gap-2 rounded-2xl border py-3 text-sm font-bold transition-all ${
+    <div
+      className={`flex items-center justify-center gap-2.5 rounded-2xl border py-3 text-sm font-bold transition-all ${
         recording
-          ? "bg-red-600 border-red-600 text-white shadow-md shadow-red-600/25"
-          : disabled
-          ? "bg-zinc-50 border-zinc-200 text-zinc-400 cursor-not-allowed"
-          : "bg-white border-blue-300 text-blue-700 hover:bg-blue-50"
+          ? "bg-red-50 border-red-200 text-red-700"
+          : active
+          ? "bg-blue-50 border-blue-200 text-blue-700"
+          : "bg-zinc-50 border-zinc-200 text-zinc-400"
       }`}
     >
       {recording ? (
-        <>
-          <Square className="w-4 h-4 fill-current" /> Stop &amp; Send Answer
-        </>
+        <span className="relative flex h-3 w-3 shrink-0">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+          <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
+        </span>
       ) : (
-        <>
-          <Mic className="w-4 h-4" /> {phase === "listening" ? "Record Your Answer" : "Waiting…"}
-        </>
+        <Mic className="w-4 h-4 shrink-0" />
       )}
-    </button>
+      <span>{label}</span>
+      {recording && (
+        <span className="flex items-end gap-0.5 h-4 shrink-0" aria-hidden>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <span
+              key={i}
+              className="w-1 rounded-full bg-red-400 transition-all duration-100"
+              style={{ height: `${4 + Math.min(1, micLevel * (0.6 + i * 0.15)) * 12}px` }}
+            />
+          ))}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -756,15 +896,19 @@ function CreateInMinutesSection() {
   return (
     <section className="py-20 border-t border-zinc-200/80 bg-white">
       <div className="max-w-5xl mx-auto px-6">
-        <IllustrativeBadge />
-        <div className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 shadow-sm">
+        <div className="overflow-hidden rounded-3xl border border-zinc-200 shadow-sm">
           <div className="border-b border-zinc-100 bg-zinc-50/60 px-8 py-8 text-left">
             <h2 className="text-2xl font-extrabold text-zinc-900 sm:text-3xl">Create in Minutes</h2>
             <p className="mt-1 text-zinc-500">Define role, skills, duration, and difficulty once.</p>
           </div>
           <div className="relative grid grid-cols-1 gap-6 px-8 py-10 md:grid-cols-2">
             {[leftFields, rightFields].map((fields, i) => (
-              <div key={i} className="rounded-2xl border border-zinc-100 bg-white p-5 text-left shadow-sm">
+              <motion.div
+                key={i}
+                className="rounded-2xl border border-zinc-100 bg-white p-5 text-left shadow-sm"
+                animate={{ y: i === 0 ? [0, -10, 0] : [0, 10, 0] }}
+                transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut", delay: i * 0.3 }}
+              >
                 <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">Fill Interview Details</p>
                 <div className="space-y-3">
                   {fields.map((f) => (
@@ -773,7 +917,7 @@ function CreateInMinutesSection() {
                     </div>
                   ))}
                 </div>
-              </div>
+              </motion.div>
             ))}
             <div className="pointer-events-none absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 md:block">
               <div className="flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-zinc-700 shadow-[0_10px_30px_-5px_rgba(37,99,235,0.35)] ring-1 ring-zinc-100">
