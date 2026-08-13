@@ -9,66 +9,77 @@ import {
   ArrowUpDown, ChevronLeft, ChevronRight, Sparkles, Send, RotateCcw, Users,
   KeyRound, Laptop2, Building2, ScrollText, Video, CalendarClock, ClipboardCheck,
   Plug, Radio, Filter, GitBranch, PartyPopper, Bot, MailCheck, Star, ArrowUpRight,
+  AlertTriangle,
 } from "lucide-react";
 import { writeSyncedHires, clearSyncedHires } from "@/lib/hiringSync";
 
 /* ═══════════════════════════════════════════════════════════
-   TYPES & FIXED DEMO DATA
+   TYPES
    ═══════════════════════════════════════════════════════════
-   POC constraint: no backend, no APIs, no real parsing. Whatever PDFs the
-   user drops in, the workflow always narrates these two fixed candidates —
-   only the displayed resume filename reflects what was actually uploaded. */
+   Bulk Upload → Resume Parser → ATS + Email Extraction → Requirement Matching
+   → Assignment Generator all call the real backend (/api/v1/hiring/*): actual
+   PDF text extraction (PyMuPDF) plus LLM-based structured extraction/scoring
+   (Groq-primary, Gemini-fallback — see backend/app/services/hiring_service.py).
+   Bulk-send (MCP email), Onboarding, and Knowledge Transfer stay simulated —
+   there's no SMTP/MCP/Okta/Slack integration wired into this project — but they
+   run on the real parsed candidates, which then hand off via sessionStorage to
+   the existing Onboarding / Knowledge Transfer pages. */
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+const AVATAR_PALETTE = [
+  { bg: "bg-blue-50 border-blue-200", text: "text-blue-600" },
+  { bg: "bg-emerald-50 border-emerald-200", text: "text-emerald-600" },
+  { bg: "bg-violet-50 border-violet-200", text: "text-violet-600" },
+  { bg: "bg-amber-50 border-amber-200", text: "text-amber-600" },
+  { bg: "bg-rose-50 border-rose-200", text: "text-rose-600" },
+  { bg: "bg-cyan-50 border-cyan-200", text: "text-cyan-600" },
+];
 
 interface Candidate {
   id: string;
+  filename: string;
   name: string;
-  email: string;
-  ats: number;
+  email: string | null;
+  phone: string | null;
   experience: string;
   skills: string[];
+  summary: string;
+  ats: number;
   status: string;
-  assignmentScore: number;
-  recommendation: "Strong Hire" | "Hire";
+  matchScore: number | null;
+  matchedSkills: string[];
+  missingSkills: string[];
+  recommendation: "Strong Hire" | "Hire" | "Consider" | "Not a Fit" | null;
   emailStatus: string;
   mcpStatus: string;
   avatarBg: string;
   avatarText: string;
 }
 
-const CANDIDATES: Candidate[] = [
-  {
-    id: "ayush-singh",
-    name: "Ayush Singh",
-    email: "ayush.singh.dev@gmail.com",
-    ats: 91,
-    experience: "4 Years",
-    skills: ["React", "Node.js", "Python", "AWS", "FastAPI"],
+function candidateFromParsed(raw: Record<string, unknown>, index: number): Candidate {
+  const palette = AVATAR_PALETTE[index % AVATAR_PALETTE.length];
+  return {
+    id: (raw.id as string) || `candidate-${index}`,
+    filename: (raw.filename as string) || `resume-${index + 1}.pdf`,
+    name: (raw.name as string) || (raw.filename as string) || `Candidate ${index + 1}`,
+    email: (raw.email as string) || null,
+    phone: (raw.phone as string) || null,
+    experience: (raw.experience as string) || "Not specified",
+    skills: Array.isArray(raw.skills) ? (raw.skills as string[]) : [],
+    summary: (raw.summary as string) || "",
+    ats: typeof raw.ats_score === "number" ? raw.ats_score : 0,
     status: "Shortlisted",
-    assignmentScore: 95,
-    recommendation: "Strong Hire",
-    emailStatus: "Delivered",
-    mcpStatus: "Reply Received",
-    avatarBg: "bg-blue-50 border-blue-200",
-    avatarText: "text-blue-600",
-  },
-  {
-    id: "hetvi",
-    name: "Hetvi",
-    email: "hetvi.shah.dev@gmail.com",
-    ats: 84,
-    experience: "3 Years",
-    skills: ["FastAPI", "Docker", "PostgreSQL", "Django", "CI/CD"],
-    status: "Shortlisted",
-    assignmentScore: 88,
-    recommendation: "Hire",
-    emailStatus: "Delivered",
-    mcpStatus: "Reply Received",
-    avatarBg: "bg-emerald-50 border-emerald-200",
-    avatarText: "text-emerald-600",
-  },
-];
-
-const DEFAULT_FILENAMES = ["Ayush_Singh_Resume.pdf", "Hetvi_Resume.pdf"];
+    matchScore: null,
+    matchedSkills: [],
+    missingSkills: [],
+    recommendation: null,
+    emailStatus: "Pending",
+    mcpStatus: "Pending",
+    avatarBg: palette.bg,
+    avatarText: palette.text,
+  };
+}
 
 const PIPELINE_NODES = [
   { key: "upload", title: "Bulk PDF Upload", desc: "Ingests resumes from HR bulk upload", icon: Upload },
@@ -131,41 +142,15 @@ const DEFAULT_ASSIGNMENT: GeneratedAssignment = {
   submission: "GitHub Repository",
 };
 
-/* Lightweight, deterministic heuristics — no AI call. Reads the HR requirement
-   textarea and produces a short, believable assignment brief from it. */
-function buildAssignmentFromRequirement(text: string): GeneratedAssignment {
-  const lower = text.toLowerCase();
-
-  const bulletLines = text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => /^[•\-*]|^\d+[.)]/.test(l))
-    .map((l) => l.replace(/^[•\-*]\s*|^\d+[.)]\s*/, "").trim())
-    .filter(Boolean);
-
-  let title = "Technical Assessment";
-  if (/full[\s-]?stack/.test(lower)) title = "Full-Stack Engineer Assessment";
-  else if (/backend|back-end|api/.test(lower)) title = "Backend Engineer Assessment";
-  else if (/frontend|front-end|react|next\.?js|ui/.test(lower)) title = "Frontend Engineer Assessment";
-  else if (/machine learning|\bml\b|\bai\b|llm/.test(lower)) title = "AI/ML Engineer Assessment";
-  else if (/data engineer|etl|pipeline/.test(lower)) title = "Data Engineer Assessment";
-  else if (/devops|infra|kubernetes|k8s/.test(lower)) title = "DevOps Engineer Assessment";
-
-  const hourMatch = lower.match(/(\d+)\s*hour/);
-  const dayMatch = lower.match(/(\d+)\s*day/);
-  const duration = hourMatch ? `${hourMatch[1]} Hours` : dayMatch ? `${dayMatch[1]} Day${dayMatch[1] === "1" ? "" : "s"}` : DEFAULT_ASSIGNMENT.duration;
-
-  const requirements = bulletLines.length > 0 ? bulletLines.slice(0, 6) : DEFAULT_ASSIGNMENT.requirements;
-
-  let submission = DEFAULT_ASSIGNMENT.submission;
-  if (/notebook|colab/.test(lower)) submission = "Jupyter Notebook";
-  else if (/\bzip\b/.test(lower)) submission = "ZIP Upload";
-  else if (/figma/.test(lower)) submission = "Figma File";
-
-  return { title, duration, requirements, submission };
-}
-
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/* Runs a real API call alongside a minimum visible delay, so fast responses
+   still read as a deliberate pipeline stage instead of a jarring instant
+   flash — but a slow backend call is never cut short to fit the animation. */
+async function withMinDelay<T>(promise: Promise<T>, ms: number): Promise<T> {
+  const [result] = await Promise.all([promise, sleep(ms)]);
+  return result;
+}
 
 /* ═══════════════════════════════════════════════════════════
    MAIN PAGE
@@ -177,6 +162,8 @@ export default function HiringAutomationPage() {
   const [completedNodes, setCompletedNodes] = useState<number[]>([]);
   const [activeNode, setActiveNode] = useState<number | null>(null);
   const [parsingLog, setParsingLog] = useState("");
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [requirement, setRequirement] = useState("");
   const [genStep, setGenStep] = useState(0);
   const [assignment, setAssignment] = useState<GeneratedAssignment>(DEFAULT_ASSIGNMENT);
@@ -190,8 +177,6 @@ export default function HiringAutomationPage() {
   // a pending setTimeout from a chain still running when the user navigates away (e.g. via
   // the "Open Onboarding Agent" link mid-animation) would call setState after unmount.
   useEffect(() => () => { runId.current += 1; }, []);
-
-  const resumeFileNames = CANDIDATES.map((_, i) => files[i]?.name || DEFAULT_FILENAMES[i]);
 
   const nodeStatus = (idx: number): NodeStatus =>
     completedNodes.includes(idx) ? "done" : activeNode === idx ? "active" : "pending";
@@ -216,33 +201,124 @@ export default function HiringAutomationPage() {
   const handleProcess = async () => {
     if (files.length === 0 || stage !== "idle") return;
     const myRun = ++runId.current;
+    setApiError(null);
     setStage("parsing");
-    setParsingLog("Uploading bulk PDF batch to ingestion queue…");
-    await runNode(0, 800);
+    setParsingLog(`Uploading ${files.length} resume${files.length === 1 ? "" : "s"} to the parsing engine…`);
+    await runNode(0, 500);
     if (myRun !== runId.current) return;
-    setParsingLog("Resume Parser extracting text, sections & entities…");
-    await runNode(1, 1400);
+
+    setParsingLog("Resume Parser extracting text, sections & entities (PyMuPDF + LLM)…");
+    const formData = new FormData();
+    files.forEach((f) => formData.append("files", f));
+
+    let parsed: Record<string, unknown>[];
+    try {
+      const res = await withMinDelay(
+        fetch(`${API_URL}/api/v1/hiring/parse-resumes`, { method: "POST", body: formData }),
+        1200
+      );
+      if (myRun !== runId.current) return;
+      if (!res.ok) throw new Error(`Resume parsing failed (${res.status})`);
+      const data = await res.json();
+      parsed = data.candidates || [];
+    } catch (err) {
+      if (myRun !== runId.current) return;
+      setApiError(err instanceof Error ? err.message : "Could not reach the resume parsing backend.");
+      setStage("idle");
+      return;
+    }
     if (myRun !== runId.current) return;
-    setParsingLog("ATS engine scoring resumes & extracting emails…");
-    await runNode(2, 1300);
+    await runNode(1, 300);
     if (myRun !== runId.current) return;
-    setParsingLog("2 candidates parsed and added to the spreadsheet.");
+
+    const failed = parsed.filter((p) => p.status === "failed");
+    const ok = parsed.filter((p) => p.status !== "failed").map((p, i) => candidateFromParsed(p, i));
+    if (ok.length === 0) {
+      setApiError(failed[0]?.reason as string || "No resumes could be parsed.");
+      setStage("idle");
+      return;
+    }
+
+    setParsingLog(`ATS engine scored ${ok.length} resume${ok.length === 1 ? "" : "s"} & extracted contact info.`);
+    setCandidates(ok);
+    await runNode(2, 500);
+    if (myRun !== runId.current) return;
     setStage("spreadsheet");
   };
 
   const handleGenerateAssignment = async () => {
-    if (stage !== "spreadsheet" || !requirement.trim()) return;
+    if (stage !== "spreadsheet" || !requirement.trim() || candidates.length === 0) return;
     const myRun = runId.current;
+    setApiError(null);
     setStage("generating");
-    await runNode(3, 1100);
+
+    try {
+      const matchRes = await withMinDelay(
+        fetch(`${API_URL}/api/v1/hiring/match`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            candidates: candidates.map((c) => ({
+              id: c.id, name: c.name, experience: c.experience, skills: c.skills, summary: c.summary, ats_score: c.ats,
+            })),
+            requirement,
+            role_title: "the open role",
+          }),
+        }),
+        1100
+      );
+      if (myRun !== runId.current) return;
+      if (!matchRes.ok) throw new Error(`Requirement matching failed (${matchRes.status})`);
+      const matchData = await matchRes.json();
+      const byId = new Map((matchData.results || []).map((r: Record<string, unknown>) => [r.id, r]));
+      setCandidates((prev) => prev.map((c) => {
+        const m = byId.get(c.id) as Record<string, unknown> | undefined;
+        if (!m) return c;
+        return {
+          ...c,
+          matchScore: typeof m.match_score === "number" ? m.match_score : c.matchScore,
+          matchedSkills: Array.isArray(m.matched_skills) ? (m.matched_skills as string[]) : c.matchedSkills,
+          missingSkills: Array.isArray(m.missing_skills) ? (m.missing_skills as string[]) : c.missingSkills,
+          recommendation: (m.recommendation as Candidate["recommendation"]) || c.recommendation,
+        };
+      }));
+    } catch (err) {
+      if (myRun !== runId.current) return;
+      setApiError(err instanceof Error ? err.message : "Could not reach the requirement matching backend.");
+      setStage("spreadsheet");
+      return;
+    }
     if (myRun !== runId.current) return;
-    for (let s = 0; s < GEN_STEPS.length; s++) {
+    await runNode(3, 400);
+    if (myRun !== runId.current) return;
+
+    for (let s = 0; s < GEN_STEPS.length - 1; s++) {
       setGenStep(s);
-      await sleep(650);
+      await sleep(500);
       if (myRun !== runId.current) return;
     }
-    setAssignment(buildAssignmentFromRequirement(requirement));
-    await runNode(4, 700);
+
+    try {
+      const asgRes = await withMinDelay(
+        fetch(`${API_URL}/api/v1/hiring/assignment`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requirement, role_title: "the open role" }),
+        }),
+        600
+      );
+      if (myRun !== runId.current) return;
+      if (!asgRes.ok) throw new Error(`Assignment generation failed (${asgRes.status})`);
+      setAssignment(await asgRes.json());
+    } catch (err) {
+      if (myRun !== runId.current) return;
+      setApiError(err instanceof Error ? err.message : "Could not reach the assignment generation backend.");
+      setStage("spreadsheet");
+      return;
+    }
+    setGenStep(GEN_STEPS.length - 1);
+    if (myRun !== runId.current) return;
+    await runNode(4, 500);
     if (myRun !== runId.current) return;
     setStage("assignment");
   };
@@ -256,6 +332,7 @@ export default function HiringAutomationPage() {
       await sleep(700);
       if (myRun !== runId.current) return;
     }
+    setCandidates((prev) => prev.map((c) => ({ ...c, emailStatus: "Delivered", mcpStatus: "Reply Received" })));
     await runNode(5, 900);
     if (myRun !== runId.current) return;
     setStage("evaluation");
@@ -265,13 +342,13 @@ export default function HiringAutomationPage() {
 
   useEffect(() => {
     if (stage !== "evaluation") return;
-    if (!CANDIDATES.every((c) => approvals[c.id])) return;
+    if (candidates.length === 0 || !candidates.every((c) => approvals[c.id])) return;
     const myRun = runId.current;
     (async () => {
       await runNode(6, 900);
       if (myRun !== runId.current) return;
-      writeSyncedHires(CANDIDATES.map((c) => ({
-        id: c.id, name: c.name, email: c.email, designation: "Backend Engineer",
+      writeSyncedHires(candidates.map((c) => ({
+        id: c.id, name: c.name, email: c.email || "unknown@example.com", designation: "Backend Engineer",
         ats: c.ats, experience: c.experience, skills: c.skills,
       })));
       setStage("onboarding");
@@ -292,7 +369,7 @@ export default function HiringAutomationPage() {
       if (myRun !== runId.current) return;
       setStage("done");
     })();
-  }, [approvals, stage]);
+  }, [approvals, stage, candidates]);
 
   const handleReset = () => {
     runId.current += 1;
@@ -302,6 +379,8 @@ export default function HiringAutomationPage() {
     setCompletedNodes([]);
     setActiveNode(null);
     setParsingLog("");
+    setCandidates([]);
+    setApiError(null);
     setRequirement("");
     setGenStep(0);
     setAssignment(DEFAULT_ASSIGNMENT);
@@ -363,6 +442,7 @@ export default function HiringAutomationPage() {
         <UploadPanel
           files={files}
           stage={stage}
+          error={apiError}
           onAdd={handleAddFiles}
           onRemove={handleRemoveFile}
           onProcess={handleProcess}
@@ -375,9 +455,9 @@ export default function HiringAutomationPage() {
 
         {/* CANDIDATE SPREADSHEET */}
         <AnimatePresence>
-          {reached("spreadsheet") && (
+          {reached("spreadsheet") && candidates.length > 0 && (
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              <CandidateSpreadsheet candidates={CANDIDATES} resumeFileNames={resumeFileNames} />
+              <CandidateSpreadsheet candidates={candidates} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -391,6 +471,7 @@ export default function HiringAutomationPage() {
                 setRequirement={setRequirement}
                 onGenerate={handleGenerateAssignment}
                 locked={stage !== "spreadsheet"}
+                candidateCount={candidates.length}
               />
             </motion.div>
           )}
@@ -412,14 +493,14 @@ export default function HiringAutomationPage() {
 
         {/* MCP EMAIL TOOL */}
         <AnimatePresence>
-          {stage === "sending" && <McpSendPanel step={mcpStep} candidates={CANDIDATES} />}
+          {stage === "sending" && <McpSendPanel step={mcpStep} candidates={candidates} />}
         </AnimatePresence>
 
         {/* EVALUATION TABLE */}
         <AnimatePresence>
           {reached("evaluation") && (
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              <EvaluationTable candidates={CANDIDATES} approvals={approvals} onConfirm={handleConfirm} />
+              <EvaluationTable candidates={candidates} approvals={approvals} onConfirm={handleConfirm} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -428,7 +509,7 @@ export default function HiringAutomationPage() {
         <AnimatePresence>
           {reached("onboarding") && (
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              <OnboardingPanel progress={onboardProgress} />
+              <OnboardingPanel progress={onboardProgress} candidateCount={candidates.length} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -437,14 +518,14 @@ export default function HiringAutomationPage() {
         <AnimatePresence>
           {reached("knowledge") && (
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              <KnowledgeTransferPanel progress={ktProgress} />
+              <KnowledgeTransferPanel progress={ktProgress} candidateCount={candidates.length} />
             </motion.div>
           )}
         </AnimatePresence>
 
         {/* COMPLETION */}
         <AnimatePresence>
-          {stage === "done" && <CompletionBanner onReset={handleReset} />}
+          {stage === "done" && <CompletionBanner onReset={handleReset} candidates={candidates} />}
         </AnimatePresence>
       </main>
     </div>
@@ -599,9 +680,9 @@ function PipelineStickyBar({ nodeStatus }: { nodeStatus: (idx: number) => NodeSt
    ═══════════════════════════════════════════════════════════ */
 
 function UploadPanel({
-  files, stage, onAdd, onRemove, onProcess,
+  files, stage, error, onAdd, onRemove, onProcess,
 }: {
-  files: File[]; stage: Stage;
+  files: File[]; stage: Stage; error: string | null;
   onAdd: (l: FileList | null) => void; onRemove: (i: number) => void; onProcess: () => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
@@ -614,8 +695,14 @@ function UploadPanel({
           <Upload className="w-4 h-4 text-blue-600" />
           <h3 className="text-sm font-bold text-zinc-900">Bulk PDF Upload</h3>
         </div>
-        <span className="text-[10px] font-mono text-zinc-400">Simulated locally — no files leave your browser</span>
+        <span className="text-[10px] font-mono text-zinc-400">Sent to the backend for real PDF parsing & ATS scoring</span>
       </div>
+
+      {error && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-600 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /> {error}
+        </div>
+      )}
 
       <label
         onDragOver={(e) => { e.preventDefault(); if (!locked) setDragOver(true); }}
@@ -660,7 +747,7 @@ function UploadPanel({
 
       <div className="flex items-center justify-between mt-5 flex-wrap gap-3">
         <span className="text-[11px] font-mono text-zinc-400">
-          {files.length === 0 ? "No files added yet" : `${files.length} file(s) queued · pipeline always resolves 2 candidates`}
+          {files.length === 0 ? "No files added yet" : `${files.length} file(s) queued`}
         </span>
         <button
           onClick={onProcess}
@@ -705,7 +792,7 @@ function SortIcon({ active }: { active: boolean }) {
   return <ArrowUpDown className={`w-3 h-3 ${active ? "text-blue-600" : "text-zinc-300"}`} />;
 }
 
-function CandidateSpreadsheet({ candidates, resumeFileNames }: { candidates: Candidate[]; resumeFileNames: string[] }) {
+function CandidateSpreadsheet({ candidates }: { candidates: Candidate[] }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [sortKey, setSortKey] = useState<SortKey>("ats");
@@ -714,12 +801,12 @@ function CandidateSpreadsheet({ candidates, resumeFileNames }: { candidates: Can
   const [page, setPage] = useState(1);
   const pageSize = 5;
 
-  const rows = candidates.map((c, i) => ({ ...c, resumeFile: resumeFileNames[i] }));
+  const rows = candidates.map((c) => ({ ...c, resumeFile: c.filename }));
   const statuses = ["All", ...Array.from(new Set(rows.map((r) => r.status)))];
 
   const filtered = useMemo(() => rows.filter((r) => {
     const q = search.trim().toLowerCase();
-    const matchesSearch = !q || r.name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q) || r.skills.some((s) => s.toLowerCase().includes(q));
+    const matchesSearch = !q || r.name.toLowerCase().includes(q) || (r.email || "").toLowerCase().includes(q) || r.skills.some((s) => s.toLowerCase().includes(q));
     const matchesStatus = statusFilter === "All" || r.status === statusFilter;
     return matchesSearch && matchesStatus;
   }), [rows, search, statusFilter]);
@@ -813,7 +900,7 @@ function CandidateSpreadsheet({ candidates, resumeFileNames }: { candidates: Can
                     </div>
                   </div>
                 </td>
-                <td className="px-3 py-3 font-mono text-zinc-600">{r.email}</td>
+                <td className="px-3 py-3 font-mono text-zinc-600">{r.email || "—"}</td>
                 <td className="px-3 py-3">
                   <span className={`font-mono font-bold px-2 py-0.5 rounded-full border ${r.ats >= 90 ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-blue-50 border-blue-200 text-blue-700"}`}>{r.ats}%</span>
                 </td>
@@ -848,9 +935,9 @@ function CandidateSpreadsheet({ candidates, resumeFileNames }: { candidates: Can
    ═══════════════════════════════════════════════════════════ */
 
 function HumanInLoopPanel({
-  requirement, setRequirement, onGenerate, locked,
+  requirement, setRequirement, onGenerate, locked, candidateCount,
 }: {
-  requirement: string; setRequirement: (v: string) => void; onGenerate: () => void; locked: boolean;
+  requirement: string; setRequirement: (v: string) => void; onGenerate: () => void; locked: boolean; candidateCount: number;
 }) {
   return (
     <div className="rounded-2xl bg-white border border-zinc-200 p-6 shadow-sm">
@@ -868,7 +955,7 @@ function HumanInLoopPanel({
         className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-xs font-mono leading-relaxed focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10 resize-none disabled:opacity-60"
       />
       <div className="flex items-center justify-between mt-4 flex-wrap gap-3">
-        <span className="text-[11px] text-zinc-400 font-mono">Applies to 2 shortlisted candidates</span>
+        <span className="text-[11px] text-zinc-400 font-mono">Applies to {candidateCount} shortlisted candidate{candidateCount === 1 ? "" : "s"}</span>
         <button
           onClick={onGenerate}
           disabled={locked || !requirement.trim()}
@@ -963,6 +1050,7 @@ function McpSendPanel({ step, candidates }: { step: number; candidates: Candidat
           <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 flex items-center gap-1">
             <Radio className="w-2.5 h-2.5 animate-pulse" /> {MCP_STEPS[step]}
           </span>
+          <span className="text-[10px] font-mono text-zinc-400 ml-auto">Simulated — no SMTP/MCP email tool is wired up yet</span>
         </div>
 
         <div className="flex flex-col sm:flex-row items-center gap-4">
@@ -995,7 +1083,7 @@ function McpSendPanel({ step, candidates }: { step: number; candidates: Candidat
                 <div className={`w-7 h-7 rounded-full border flex items-center justify-center text-[10px] font-bold shrink-0 ${c.avatarBg} ${c.avatarText}`}>{c.name[0]}</div>
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-bold text-zinc-900 truncate">{c.name}</div>
-                  <div className="text-[10px] text-zinc-500 font-mono truncate">{c.email}</div>
+                  <div className="text-[10px] text-zinc-500 font-mono truncate">{c.email || "no email extracted"}</div>
                 </div>
                 {completed && <MailCheck className="w-4 h-4 text-emerald-600 shrink-0" />}
               </div>
@@ -1024,7 +1112,7 @@ function EvaluationTable({
     <div className="rounded-2xl bg-white border border-zinc-200 shadow-sm overflow-hidden">
       <div className="p-5 border-b border-zinc-100">
         <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2"><Award className="w-4 h-4 text-blue-600" />Candidate Evaluation</h3>
-        <p className="text-[11px] text-zinc-500 mt-0.5">Assignment scores are simulated · confirm each candidate to trigger onboarding</p>
+        <p className="text-[11px] text-zinc-500 mt-0.5">Match score is real (requirement-to-resume fit) · this demo doesn&apos;t collect real assignment submissions · confirm each candidate to trigger onboarding</p>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
@@ -1032,7 +1120,7 @@ function EvaluationTable({
             <tr className="bg-zinc-50 text-zinc-500 border-b border-zinc-200">
               <th className="px-4 py-2.5 text-left font-bold">Candidate</th>
               <th className="px-3 py-2.5 text-left font-bold">ATS</th>
-              <th className="px-3 py-2.5 text-left font-bold">Assignment Score</th>
+              <th className="px-3 py-2.5 text-left font-bold">Match Score</th>
               <th className="px-3 py-2.5 text-left font-bold">Email Status</th>
               <th className="px-3 py-2.5 text-left font-bold">MCP Status</th>
               <th className="px-3 py-2.5 text-left font-bold">Recommendation</th>
@@ -1052,7 +1140,7 @@ function EvaluationTable({
                   </td>
                   <td className="px-3 py-3 font-mono font-bold text-zinc-700">{c.ats}%</td>
                   <td className="px-3 py-3">
-                    <span className="font-mono font-bold px-2 py-0.5 rounded-full border bg-blue-50 border-blue-200 text-blue-700">{c.assignmentScore}%</span>
+                    <span className="font-mono font-bold px-2 py-0.5 rounded-full border bg-blue-50 border-blue-200 text-blue-700">{c.matchScore ?? "—"}%</span>
                   </td>
                   <td className="px-3 py-3">
                     <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center gap-1 w-fit"><MailCheck className="w-3 h-3" />{c.emailStatus}</span>
@@ -1062,9 +1150,12 @@ function EvaluationTable({
                   </td>
                   <td className="px-3 py-3">
                     <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 w-fit ${
-                      c.recommendation === "Strong Hire" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-blue-50 border-blue-200 text-blue-700"
+                      c.recommendation === "Strong Hire" ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                        : c.recommendation === "Not a Fit" ? "bg-red-50 border-red-200 text-red-700"
+                        : c.recommendation === "Consider" ? "bg-amber-50 border-amber-200 text-amber-700"
+                        : "bg-blue-50 border-blue-200 text-blue-700"
                     }`}>
-                      <Star className="w-3 h-3" />{c.recommendation}
+                      <Star className="w-3 h-3" />{c.recommendation || "Pending"}
                     </span>
                   </td>
                   <td className="px-3 py-3">
@@ -1092,7 +1183,7 @@ function EvaluationTable({
    ONBOARDING AGENT
    ═══════════════════════════════════════════════════════════ */
 
-function OnboardingPanel({ progress }: { progress: number }) {
+function OnboardingPanel({ progress, candidateCount }: { progress: number; candidateCount: number }) {
   const done = progress >= ONBOARDING_STEPS.length;
   return (
     <div className="rounded-2xl bg-white border border-zinc-200 p-6 shadow-sm">
@@ -1108,7 +1199,7 @@ function OnboardingPanel({ progress }: { progress: number }) {
           {done ? <><CheckCircle2 className="w-3 h-3" /> Completed</> : <><Loader2 className="w-3 h-3 animate-spin" /> Provisioning…</>}
         </span>
       </div>
-      <p className="text-[11px] text-zinc-500 mb-4">Handing off both approved hires to the existing onboarding system.</p>
+      <p className="text-[11px] text-zinc-500 mb-4">Handing off {candidateCount} approved hire{candidateCount === 1 ? "" : "s"} to the existing onboarding system.</p>
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         {ONBOARDING_STEPS.map((s, i) => {
@@ -1131,7 +1222,7 @@ function OnboardingPanel({ progress }: { progress: number }) {
         {done && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="overflow-hidden">
             <div className="flex items-center justify-between mt-4 pt-4 border-t border-zinc-100 flex-wrap gap-3">
-              <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" /> 2 employees created — synced to the Onboarding workspace</span>
+              <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" /> {candidateCount} employee{candidateCount === 1 ? "" : "s"} created — synced to the Onboarding workspace</span>
               <Link
                 href="/onboarding"
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-zinc-900 text-white text-xs font-bold hover:bg-blue-600 transition-colors shadow-sm"
@@ -1150,12 +1241,12 @@ function OnboardingPanel({ progress }: { progress: number }) {
    KNOWLEDGE TRANSFER AGENT
    ═══════════════════════════════════════════════════════════ */
 
-function KnowledgeTransferPanel({ progress }: { progress: number }) {
+function KnowledgeTransferPanel({ progress, candidateCount }: { progress: number; candidateCount: number }) {
   const done = progress >= KT_STEPS.length;
   const running = !done;
   return (
     <div className="rounded-2xl bg-white border border-zinc-200 p-6 shadow-sm">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <BookOpen className="w-4 h-4 text-blue-600" />
           <h3 className="text-sm font-bold text-zinc-900">Knowledge Transfer Agent</h3>
@@ -1167,6 +1258,7 @@ function KnowledgeTransferPanel({ progress }: { progress: number }) {
           {done ? <><CheckCircle2 className="w-3 h-3" /> Completed</> : <><Loader2 className="w-3 h-3 animate-spin" /> Syncing…</>}
         </span>
       </div>
+      <p className="text-[11px] text-zinc-500 mb-4">Assigning onboarding docs, videos & training to {candidateCount} new hire{candidateCount === 1 ? "" : "s"}.</p>
 
       <div className="flex items-center gap-2 sm:gap-4 mb-4">
         <div className="w-16 h-14 sm:w-20 sm:h-16 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col items-center justify-center gap-1 shrink-0">
@@ -1233,13 +1325,18 @@ function KnowledgeTransferPanel({ progress }: { progress: number }) {
    COMPLETION BANNER
    ═══════════════════════════════════════════════════════════ */
 
-function CompletionBanner({ onReset }: { onReset: () => void }) {
+function CompletionBanner({ onReset, candidates }: { onReset: () => void; candidates: Candidate[] }) {
+  const n = candidates.length;
   const stats = [
-    { label: "Candidates Onboarded", value: "2/2" },
-    { label: "Assignments Sent", value: "2/2" },
+    { label: "Candidates Onboarded", value: `${n}/${n}` },
+    { label: "Assignments Sent", value: `${n}/${n}` },
     { label: "Knowledge Transfer", value: "100%" },
-    { label: "Human Approvals", value: "2/2" },
+    { label: "Human Approvals", value: `${n}/${n}` },
   ];
+  const names = candidates.map((c) => c.name);
+  const namesText = names.length <= 1
+    ? names[0] || "The candidate"
+    : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
   return (
     <motion.div initial={{ opacity: 0, y: 16, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} className="rounded-2xl bg-zinc-900 border border-zinc-800 p-8 text-center relative overflow-hidden">
       <div className="absolute -top-16 -right-16 w-56 h-56 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
@@ -1248,7 +1345,7 @@ function CompletionBanner({ onReset }: { onReset: () => void }) {
           <PartyPopper className="w-7 h-7" />
         </div>
         <h3 className="text-xl font-extrabold text-white mb-1.5">Hiring Workflow Complete</h3>
-        <p className="text-xs text-zinc-400 max-w-md mx-auto mb-6">All 9 agents executed autonomously end-to-end, with a human approval gate before onboarding — Ayush Singh and Hetvi are fully onboarded.</p>
+        <p className="text-xs text-zinc-400 max-w-md mx-auto mb-6">All 9 agents executed end-to-end on real parsed resumes, with a human approval gate before onboarding — {namesText} {n === 1 ? "is" : "are"} fully onboarded.</p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-xl mx-auto mb-6">
           {stats.map((s) => (
             <div key={s.label} className="rounded-xl bg-white/5 border border-white/10 p-3">

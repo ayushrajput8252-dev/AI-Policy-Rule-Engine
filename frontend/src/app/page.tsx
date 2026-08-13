@@ -340,7 +340,7 @@ export default function LandingPage() {
               each gets the full row; Fraud Detection and Telephonic are both
               simple single-column cards, so they sit side by side at equal
               width — every row now has cards that genuinely match. ── */}
-          <div className="grid md:grid-cols-2 gap-6 mt-14 items-start">
+          <div className="grid md:grid-cols-2 gap-6 mt-14 items-stretch">
             <div className="md:col-span-2">
               <RAGCardInteractive />
             </div>
@@ -1596,7 +1596,17 @@ function TelephonicAgentCard() {
         <p className="text-[13px] text-zinc-500 mb-5">AI Voice Call · Screening</p>
 
         <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl mb-5">
-          <div className="text-[11px] font-mono text-zinc-500">8–10 min · WhatsApp verified · 10+ languages</div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="text-[22px] font-extrabold text-zinc-900 font-mono leading-none">8–10<span className="text-[11px] font-medium text-zinc-500 ml-1">min</span></div>
+              <div className="text-[10px] text-zinc-500 mt-1.5">Call duration</div>
+            </div>
+            <div>
+              <div className="text-[22px] font-extrabold text-zinc-900 font-mono leading-none">10+</div>
+              <div className="text-[10px] text-zinc-500 mt-1.5">Languages</div>
+            </div>
+          </div>
+          <div className="text-[11px] font-mono text-zinc-500 mt-3 pt-3 border-t border-zinc-200">WhatsApp verified numbers</div>
         </div>
 
         <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 mb-6 pt-1 border-t border-zinc-100">
@@ -1637,7 +1647,7 @@ function ScreeningAgentCard() {
     <FeaturedCardFrame>
       <div className="cpu-burn-card p-7 h-full bg-white rounded-2xl shadow-sm">
         <div className="flex flex-col md:flex-row gap-7">
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 flex flex-col">
             <div className="flex items-center justify-between mb-3 gap-2">
               <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
                 <Video className="w-5 h-5" />
@@ -1660,6 +1670,13 @@ function ScreeningAgentCard() {
                 </span>
               ))}
             </div>
+
+            <Link
+              href="/screening-agent"
+              className="mt-auto pt-6 md:pt-0 md:mt-6 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-[13px] font-bold hover:bg-blue-700 transition-colors shadow-sm"
+            >
+              <Video className="w-3.5 h-3.5" /> Try Screening Agent
+            </Link>
           </div>
 
           <div className="w-full md:w-64 shrink-0 space-y-2.5">
@@ -1671,13 +1688,6 @@ function ScreeningAgentCard() {
             ))}
           </div>
         </div>
-
-        <Link
-          href="/screening-agent"
-          className="mt-6 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-[13px] font-bold hover:bg-blue-700 transition-colors shadow-sm"
-        >
-          <Video className="w-3.5 h-3.5" /> Try Screening Agent
-        </Link>
       </div>
     </FeaturedCardFrame>
   );
