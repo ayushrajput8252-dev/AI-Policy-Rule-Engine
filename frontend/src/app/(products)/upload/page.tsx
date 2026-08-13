@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 type UploadStatus = "idle" | "uploading" | "success" | "error";
 
 type FileWithStatus = {
@@ -80,7 +82,7 @@ export default function UploadPage() {
       formData.append("files", files[i].file);
       
       try {
-        const response = await fetch("http://localhost:8000/api/v1/upload", {
+        const response = await fetch(`${API_URL}/api/v1/upload`, {
           method: "POST",
           body: formData,
         });

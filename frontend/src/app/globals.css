@@ -105,14 +105,36 @@
   position: relative;
   background-color: #FFFFFF;
 }
+/* Honeycomb line lattice — replaces the old plain crosshatch grid with a
+   tileable hex-outline pattern for a more premium backdrop. Each tile draws
+   exactly two hexagons (one at the tile origin, one centered) plus two small
+   "node" dots at the lattice joints for a circuit-board feel — the rest of
+   the lattice is reconstructed for free by background-repeat, since every
+   corner hex is shared with its neighboring tiles. Faded via a radial mask
+   so it reads as a soft accent near the top of each page instead of a flat,
+   uniform wallpaper running the full page length. */
 .bg-white-grid::before {
   content: "";
   position: absolute;
   inset: 0;
-  background-image:
-    linear-gradient(rgba(15, 23, 42, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(15, 23, 42, 0.035) 1px, transparent 1px);
-  background-size: 48px 48px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48.5' height='84' viewBox='0 0 48.5 84'%3E%3Cpath d='M0,-28 L24.25,-14 L24.25,14 L0,28 L-24.25,14 L-24.25,-14 Z' fill='none' stroke='rgba(37,99,235,0.11)' stroke-width='1'/%3E%3Cpath d='M24.25,14 L48.5,28 L48.5,56 L24.25,70 L0,56 L0,28 Z' fill='none' stroke='rgba(37,99,235,0.11)' stroke-width='1'/%3E%3Ccircle cx='0' cy='0' r='1.6' fill='rgba(37,99,235,0.22)'/%3E%3Ccircle cx='24.25' cy='42' r='1.6' fill='rgba(37,99,235,0.22)'/%3E%3C/svg%3E");
+  background-size: 48.5px 84px;
+  -webkit-mask-image: radial-gradient(ellipse 1200px 780px at 50% 0%, black 0%, black 35%, transparent 88%);
+  mask-image: radial-gradient(ellipse 1200px 780px at 50% 0%, black 0%, black 35%, transparent 88%);
+  pointer-events: none;
+  z-index: 0;
+}
+/* Soft ambient glow behind the honeycomb — the bit of depth that makes it
+   read as a lit backdrop rather than a printed texture. */
+.bg-white-grid::after {
+  content: "";
+  position: absolute;
+  top: -8%;
+  left: 50%;
+  width: min(1000px, 90vw);
+  height: 560px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at center, rgba(37, 99, 235, 0.07), transparent 72%);
   pointer-events: none;
   z-index: 0;
 }

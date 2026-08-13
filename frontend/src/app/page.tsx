@@ -350,17 +350,6 @@ export default function LandingPage() {
               <FraudDetectionCard />
             </div>
 
-            {/* Divider: usage-based pricing */}
-            <div className="md:col-span-3 flex items-center justify-center gap-4 pt-6 pb-2">
-              <div className="h-px flex-1 bg-gradient-to-r from-transparent to-zinc-200" />
-              <div className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-full bg-blue-600 shadow-md shadow-blue-600/20">
-                <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
-                <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-white">Usage-Based Add-Ons</span>
-                <span className="hidden sm:inline text-[10px] text-blue-100 font-medium normal-case">· pay only for what you use</span>
-              </div>
-              <div className="h-px flex-1 bg-gradient-to-l from-transparent to-zinc-200" />
-            </div>
-
             {/* Card: Telephonic Agent — self-start so this row's height is driven by
                 each card's own content instead of CSS Grid stretching the shorter
                 Screening Agent card to match, which left dead empty space at its
@@ -1053,11 +1042,11 @@ function PreviewBadge() {
 function FeaturedCardFrame({ children }: { children: ReactNode }) {
   return (
     <div className="relative pt-4">
-      <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-400 to-amber-500 shadow-md shadow-amber-500/30 border border-amber-300">
+      <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-blue-600 to-blue-700 shadow-md shadow-blue-600/30 border border-blue-500">
         <Crown className="w-3.5 h-3.5 text-white fill-white" />
         <span className="text-[10px] font-mono font-bold text-white uppercase tracking-wider">Featured</span>
       </div>
-      <div className="rounded-2xl ring-2 ring-amber-200 hover:ring-amber-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-amber-500/10 transition-all duration-300 h-full">
+      <div className="rounded-2xl ring-2 ring-blue-200 hover:ring-blue-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-600/10 transition-all duration-300 h-full">
         {children}
       </div>
     </div>
