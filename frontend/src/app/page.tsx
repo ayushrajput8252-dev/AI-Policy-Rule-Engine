@@ -331,70 +331,51 @@ export default function LandingPage() {
           <SectionHeader
             badge="Performance Capabilities"
             title="Engineered for High-Consequence Enterprise Scale"
-            subtitle="Autonomous reasoning, RAG vector indexing, and zero-trust orchestration."
+            subtitle="RAG retrieval, fraud forensics, voice screening, and interview automation — live and tested, not mockups."
           />
 
-          <div className="grid md:grid-cols-3 gap-6 mt-14">
-            {/* ── Working today — tested end-to-end against the real backend,
-                grouped first since these are the highest-value, referral-worth
-                agents. Everything below the second divider is an illustrative
-                preview. ── */}
-
-            {/* Card: RAG */}
+          {/* ── Working today — tested end-to-end against the real backend.
+              Paired by actual shape instead of the old arbitrary 2:1 spans:
+              RAG and Screening both have a wide content+sidebar layout, so
+              each gets the full row; Fraud Detection and Telephonic are both
+              simple single-column cards, so they sit side by side at equal
+              width — every row now has cards that genuinely match. ── */}
+          <div className="grid md:grid-cols-2 gap-6 mt-14 items-start">
             <div className="md:col-span-2">
               <RAGCardInteractive />
             </div>
-
-            {/* Card: Fraud Detection */}
-            <div className="md:col-span-1">
-              <FraudDetectionCard />
-            </div>
-
-            {/* Card: Telephonic Agent — self-start so this row's height is driven by
-                each card's own content instead of CSS Grid stretching the shorter
-                Screening Agent card to match, which left dead empty space at its
-                bottom. */}
-            <div className="md:self-start">
-              <TelephonicAgentCard />
-            </div>
-
-            {/* Card: Screening Agent */}
-            <div className="md:col-span-2 md:self-start">
+            <FraudDetectionCard />
+            <TelephonicAgentCard />
+            <div className="md:col-span-2">
               <ScreeningAgentCard />
             </div>
+          </div>
 
-            {/* Divider: everything below is an illustrative preview, not wired live */}
-            <div className="md:col-span-3 flex items-center justify-center gap-4 pt-8 pb-2">
-              <div className="h-px flex-1 bg-gradient-to-r from-transparent to-zinc-200" />
-              <div className="shrink-0 flex items-center gap-2 px-4 py-1.5 rounded-full bg-white border border-zinc-200">
-                <FileSearch className="w-3.5 h-3.5 text-zinc-400" />
-                <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-zinc-500">More Capabilities</span>
-                <span className="hidden sm:inline text-[10px] text-zinc-400 font-medium normal-case">· illustrative previews</span>
-              </div>
-              <div className="h-px flex-1 bg-gradient-to-l from-transparent to-zinc-200" />
+          {/* Divider: everything below is an illustrative preview, not wired live */}
+          <div className="flex items-center justify-center gap-4 pt-10 pb-2">
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent to-zinc-200" />
+            <div className="shrink-0 flex items-center gap-2 px-4 py-1.5 rounded-full bg-white border border-zinc-200">
+              <FileSearch className="w-3.5 h-3.5 text-zinc-400" />
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-zinc-500">More Capabilities</span>
+              <span className="hidden sm:inline text-[10px] text-zinc-400 font-medium normal-case">· illustrative previews</span>
             </div>
+            <div className="h-px flex-1 bg-gradient-to-l from-transparent to-zinc-200" />
+          </div>
 
-            {/* Card: Onboarding */}
+          {/* ── Illustrative previews — spans reordered so every row fills
+              exactly 3 columns (no dangling mid-grid gaps from a col-span-2
+              item not fitting the remaining slot in its row). ── */}
+          <div className="grid md:grid-cols-3 gap-6 items-start">
             <OnboardingCardInteractive />
-
-            {/* Card: Knowledge Graph */}
             <KnowledgeCardInteractive />
+            <PIPAgentCard />
 
-            {/* Card: Automation Agent */}
             <div className="md:col-span-2">
               <AutomationCardInteractive />
             </div>
-
-            {/* Card: PIP Agent */}
-            <PIPAgentCard />
-
-            {/* Card: Reports */}
             <ReportsCardWhite onOpenReport={() => setWeeklyReportOpen(true)} />
 
-            {/* Card: Security */}
             <SecurityCardWhite />
-
-            {/* Card: Native Integrations with Brand Icons */}
             <IntegrationsCardInteractive />
           </div>
         </div>
