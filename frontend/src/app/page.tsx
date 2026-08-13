@@ -1596,11 +1596,7 @@ function TelephonicAgentCard() {
         <p className="text-[13px] text-zinc-500 mb-5">AI Voice Call · Screening</p>
 
         <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl mb-5">
-          <div className="text-[11px] font-mono text-zinc-500 mb-2">8–10 min · WhatsApp verified · 10+ languages</div>
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-[26px] font-extrabold text-zinc-900 font-mono leading-none">₹60</span>
-            <span className="text-[11px] text-zinc-500 font-medium">per call</span>
-          </div>
+          <div className="text-[11px] font-mono text-zinc-500">8–10 min · WhatsApp verified · 10+ languages</div>
         </div>
 
         <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 mb-6 pt-1 border-t border-zinc-100">
@@ -1626,9 +1622,9 @@ function TelephonicAgentCard() {
 /* ── Screening Agent — 3D avatar interviews, tiered per-interview pricing ── */
 function ScreeningAgentCard() {
   const tiers = [
-    { name: "AI Standard Interview", detail: "15–20 min · adaptive avatar · resume aware", price: "₹250", unit: "per interview" },
-    { name: "AI Deep Interview", detail: "25–30 min · probing follow-ups", price: "₹450", unit: "per interview" },
-    { name: "Structured Interview", detail: "You write the questions · AI conducts", price: "₹90", unit: "per interview" },
+    { name: "AI Standard Interview", detail: "15–20 min · adaptive avatar · resume aware" },
+    { name: "AI Deep Interview", detail: "25–30 min · probing follow-ups" },
+    { name: "Structured Interview", detail: "You write the questions · AI conducts" },
   ];
   const features = [
     { label: "BrewShield proctoring", icon: <ShieldCheck className="w-3 h-3 text-blue-600" /> },
@@ -1669,14 +1665,8 @@ function ScreeningAgentCard() {
           <div className="w-full md:w-64 shrink-0 space-y-2.5">
             {tiers.map((t) => (
               <div key={t.name} className="p-3.5 bg-zinc-50 border border-zinc-200 rounded-xl">
-                <div className="flex items-start justify-between gap-2">
-                  <span className="text-[12px] font-bold text-zinc-900 leading-tight">{t.name}</span>
-                  <span className="text-[13px] font-extrabold text-blue-700 shrink-0 font-mono">{t.price}</span>
-                </div>
-                <div className="flex items-end justify-between gap-2 mt-1.5">
-                  <span className="text-[10px] text-zinc-500 leading-tight">{t.detail}</span>
-                  <span className="text-[9px] text-zinc-400 shrink-0 whitespace-nowrap">{t.unit}</span>
-                </div>
+                <span className="text-[12px] font-bold text-zinc-900 leading-tight">{t.name}</span>
+                <div className="text-[10px] text-zinc-500 leading-tight mt-1.5">{t.detail}</div>
               </div>
             ))}
           </div>

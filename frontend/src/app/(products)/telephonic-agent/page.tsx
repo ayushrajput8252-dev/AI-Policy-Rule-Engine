@@ -163,12 +163,12 @@ function HeroSection() {
         </p>
 
         <div className="flex flex-wrap items-center justify-center gap-3 mb-5">
-          <Link
-            href="/hiring-automation"
+          <a
+            href="#real-call"
             className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-[14px] font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all"
           >
             Try Telephonic Agent <ArrowRight className="w-4 h-4" />
-          </Link>
+          </a>
           <button
             onClick={() => askAssistant("I'd like to book a demo of the Telephonic Agent voice screening product.")}
             className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-[14px] font-semibold border border-zinc-200 text-zinc-700 bg-white hover:bg-zinc-50 hover:border-zinc-300 transition-all"
@@ -376,7 +376,7 @@ function RealCallSection() {
   const isActive = call ? ACTIVE_CALL_STATUSES.has(call.status) : false;
 
   return (
-    <section className="py-16 sm:py-20 border-t border-zinc-200/80 bg-zinc-50/50">
+    <section id="real-call" className="py-16 sm:py-20 border-t border-zinc-200/80 bg-zinc-50/50 scroll-mt-16">
       <div className="max-w-3xl mx-auto px-6">
         <div className="text-center max-w-xl mx-auto mb-10">
           <span className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-widest text-emerald-700 font-semibold px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200">
@@ -444,11 +444,6 @@ function RealCallSection() {
                 </>
               )}
             </button>
-
-            <p className="text-[11px] text-zinc-400 text-center mt-3">
-              Uses a real Twilio account. On a Twilio trial account, calls can only reach phone
-              numbers verified in that Twilio console.
-            </p>
 
             {error && (
               <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 flex items-start gap-2">
@@ -923,12 +918,12 @@ function ClosingCtaBanner() {
               >
                 Book a Demo
               </button>
-              <Link
-                href="/hiring-automation"
+              <a
+                href="#real-call"
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-[14px] font-semibold bg-white text-blue-700 hover:bg-blue-50 transition-colors shadow-sm"
               >
                 Try Telephonic Agent <ArrowRight className="w-4 h-4" />
-              </Link>
+              </a>
             </div>
           </div>
         </div>
