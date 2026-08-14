@@ -14,14 +14,14 @@ export default function AuthHeaderBar() {
     <div className="w-full bg-zinc-900 text-zinc-100 text-[12px]">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-9 flex items-center justify-between gap-3">
         <div className="flex items-center gap-1.5 text-zinc-400 truncate">
-          <Users className="w-3.5 h-3.5 shrink-0 text-blue-400" />
-          {uniqueUserCount !== null ? (
-            <span className="truncate">
-              <span className="font-bold text-white">{uniqueUserCount.toLocaleString()}</span>{" "}
-              unique {uniqueUserCount === 1 ? "person has" : "people have"} tested this platform
-            </span>
-          ) : (
-            <span className="truncate">Sign in to try any product live</span>
+          {uniqueUserCount !== null && (
+            <>
+              <Users className="w-3.5 h-3.5 shrink-0 text-blue-400" />
+              <span className="truncate">
+                <span className="font-bold text-white">{uniqueUserCount.toLocaleString()}</span>{" "}
+                unique {uniqueUserCount === 1 ? "person has" : "people have"} tested this platform
+              </span>
+            </>
           )}
         </div>
 
