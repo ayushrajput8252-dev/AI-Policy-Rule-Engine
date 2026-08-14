@@ -11,12 +11,14 @@ from twilio.twiml.voice_response import Gather, VoiceResponse
 from .. import models
 from ..config import settings
 from ..database import get_db
-from ..services.telephonic_service import generate_call_turn
+from ..services.telephonic_service import generate_call_evaluation, generate_call_turn
 
 router = APIRouter(prefix="/telephonic", tags=["telephonic"])
 
 MAX_TURNS = 4
-GATHER_TIMEOUT_SEC = 6
+GATHER_TIMEOUT_SEC = 10
+MAX_CONSECUTIVE_MISSES = 2
+LOW_CONFIDENCE_THRESHOLD = 0.5
 
 
 def _twilio_client() -> Client:
@@ -39,6 +41,10 @@ def _serialize(record: models.CallRecord) -> dict:
         "transcript": record.transcript or [],
         "duration_sec": record.duration_sec,
         "error_message": record.error_message,
+        "communication_score": record.communication_score,
+        "relevance_score": record.relevance_score,
+        "confidence_score": record.confidence_score,
+        "evaluation_summary": record.evaluation_summary,
         "created_at": record.created_at.isoformat() if record.created_at else None,
     }
 
@@ -131,19 +137,31 @@ def get_call(call_id: str, db: Session = Depends(get_db)):
     return _serialize(record)
 
 
-def _gather_twiml(record_id: str, say_text: str) -> str:
+def _gather_twiml(record: models.CallRecord, say_text: str, misses: int = 0) -> str:
     """Builds the TwiML for one turn: speak `say_text`, then listen for the
     candidate's spoken reply and post it to /gather. If nothing is heard,
     Twilio still posts to `action` with an empty SpeechResult, which /gather
-    treats as "didn't catch that" rather than silently hanging up."""
+    treats as "didn't catch that" rather than silently hanging up.
+
+    `misses` carries the consecutive-empty/low-confidence-result count through
+    to the next /gather webhook via the action URL, since call state isn't
+    otherwise threaded between requests beyond the DB-backed CallRecord."""
     base = settings.PUBLIC_BASE_URL.rstrip("/")
     vr = VoiceResponse()
+    # Domain vocabulary Twilio's speech recognizer should be biased toward —
+    # only include values that are actually known for this call.
+    hint_terms = [t for t in (record.role_title, record.candidate_name, "AgenticFlow AI") if t]
     gather = Gather(
         input="speech",
-        action=f"{base}/api/v1/telephonic/gather?call_record_id={record_id}",
+        action=f"{base}/api/v1/telephonic/gather?call_record_id={record.id}&misses={misses}",
         method="POST",
         speech_timeout="auto",
         timeout=GATHER_TIMEOUT_SEC,
+        # "phone_call" is Twilio's speech model tuned for 8kHz telephony audio
+        # (vs. the generic default), which materially improves ASR accuracy here.
+        speech_model="phone_call",
+        language="en-US",
+        hints=", ".join(hint_terms) if hint_terms else None,
     )
     gather.say(say_text)
     vr.append(gather)
@@ -169,13 +187,15 @@ async def voice_webhook(call_record_id: str, db: Session = Depends(get_db)):
     record.transcript = [{"role": "agent", "text": turn["question"]}]
     db.commit()
 
-    return Response(content=_gather_twiml(record.id, turn["question"]), media_type="application/xml")
+    return Response(content=_gather_twiml(record, turn["question"]), media_type="application/xml")
 
 
 @router.post("/gather")
 async def gather_webhook(
     call_record_id: str,
     SpeechResult: Optional[str] = Form(None),
+    Confidence: Optional[str] = Form(None),
+    misses: int = 0,
     db: Session = Depends(get_db),
 ):
     """Twilio hits this after each Gather with what the candidate said."""
@@ -187,15 +207,37 @@ async def gather_webhook(
         return Response(content=str(vr), media_type="application/xml")
 
     candidate_text = (SpeechResult or "").strip()
-    transcript = record.transcript or []
+    try:
+        confidence = float(Confidence) if Confidence not in (None, "") else None
+    except (TypeError, ValueError):
+        confidence = None
 
-    if not candidate_text:
+    transcript = record.transcript or []
+    low_confidence = bool(candidate_text) and confidence is not None and confidence < LOW_CONFIDENCE_THRESHOLD
+
+    if not candidate_text or low_confidence:
+        next_misses = misses + 1
+        if next_misses >= MAX_CONSECUTIVE_MISSES:
+            # Repeated empty/unclear results in a row — stop looping on the
+            # same prompt and end the call gracefully instead.
+            vr = VoiceResponse()
+            vr.say("We're having a little trouble hearing you clearly. We'll follow up by email instead. Goodbye for now.")
+            vr.hangup()
+            record.status = "completed"
+            db.commit()
+            return Response(content=str(vr), media_type="application/xml")
+
+        reask_text = (
+            "Sorry, could you repeat that a bit more clearly?"
+            if low_confidence
+            else "Sorry, I didn't catch that — could you say that again?"
+        )
         return Response(
-            content=_gather_twiml(record.id, "Sorry, I didn't catch that — could you say that again?"),
+            content=_gather_twiml(record, reask_text, misses=next_misses),
             media_type="application/xml",
         )
 
-    transcript.append({"role": "candidate", "text": candidate_text})
+    transcript.append({"role": "candidate", "text": candidate_text, "confidence": confidence})
 
     turn = generate_call_turn(transcript, record.candidate_name, record.role_title, MAX_TURNS)
     transcript.append({"role": "agent", "text": turn["question"]})
@@ -210,7 +252,7 @@ async def gather_webhook(
         db.commit()
         return Response(content=str(vr), media_type="application/xml")
 
-    return Response(content=_gather_twiml(record.id, turn["question"]), media_type="application/xml")
+    return Response(content=_gather_twiml(record, turn["question"]), media_type="application/xml")
 
 
 @router.post("/status")
@@ -233,5 +275,18 @@ async def status_webhook(
                 record.duration_sec = int(CallDuration)
             except ValueError:
                 pass
+
+        # Score the call once Twilio confirms it's actually over — by this point
+        # the transcript in the DB is final. Guarded on communication_score being
+        # unset so a duplicate "completed" callback doesn't re-score for free.
+        if CallStatus == "completed" and record.communication_score is None:
+            transcript = record.transcript or []
+            if any(t.get("role") == "candidate" for t in transcript):
+                evaluation = generate_call_evaluation(transcript, record.role_title)
+                record.communication_score = evaluation.get("communication_score")
+                record.relevance_score = evaluation.get("relevance_score")
+                record.confidence_score = evaluation.get("confidence_score")
+                record.evaluation_summary = evaluation.get("summary")
+
         db.commit()
     return Response(status_code=204)

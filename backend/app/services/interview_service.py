@@ -84,7 +84,10 @@ def generate_next_turn(
     if not isinstance(result, dict) or not result.get("question"):
         result = {"question": FALLBACK_QUESTION, "is_final": candidate_turns >= max_turns}
 
-    result.setdefault("is_final", candidate_turns >= max_turns)
+    # Hard stop: once the turn limit is reached, force is_final=True even if
+    # the LLM returned is_final=false — setdefault alone only fills the key
+    # when it's absent, so it could never override a wrongly-false answer.
+    result["is_final"] = bool(result.get("is_final", False)) or candidate_turns >= max_turns
     return result
 
 
@@ -100,7 +103,21 @@ def generate_evaluation(history: List[Dict[str, str]], role_title: str = "the op
         result = generate_json(prompt, system_instruction)
         if not isinstance(result, dict):
             raise ValueError("Evaluation response was not a JSON object")
-        return result
     except Exception as e:
         print(f"[Interview Evaluation Error] {e}")
         return FALLBACK_EVALUATION
+
+    for field in ("communication_score", "relevance_score", "confidence_score"):
+        try:
+            result[field] = max(0, min(100, int(result.get(field, 50))))
+        except (TypeError, ValueError):
+            result[field] = 50
+
+    # Single server-computed, auditable overall score instead of leaving
+    # aggregation of the three sub-scores implicit/undone.
+    result["overall_score"] = round(
+        0.5 * result["relevance_score"]
+        + 0.3 * result["communication_score"]
+        + 0.2 * result["confidence_score"]
+    )
+    return result

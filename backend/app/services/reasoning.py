@@ -25,8 +25,9 @@ def generate_answer_with_fallback(query: str, retrieved_rules: list[dict], retri
     for r in retrieved_rules:
         meta = r.get("metadata", {})
         rule_str = meta.get("canonical_rule") or meta.get("key_finding", "")
-        # Include match if score > 0.15
-        if rule_str and r.get("score", 0) > 0.15:
+        # Include match if score > 0.45 (BGE cosine similarity below this is
+        # typically unrelated content, not a genuine match)
+        if rule_str and r.get("score", 0) > 0.45:
             rules_text_list.append(
                 f"- [Rule ID: {meta.get('rule_id', r.get('rule_id', 'N/A'))}] ({meta.get('type', 'GUIDELINE')}): {rule_str}. Section: {meta.get('section', 'General')}"
             )
@@ -57,7 +58,7 @@ def generate_answer_with_fallback(query: str, retrieved_rules: list[dict], retri
 
         Instructions:
         1. If the rules context contains relevant information or allows answering the user question, provide a detailed answer and set "has_info": true.
-        2. ONLY set "has_info": false if the rules context is completely unrelated or missing the required information.
+        2. Set "has_info": false unless the rules context explicitly and directly answers the question.
 
         Return ONLY a JSON object:
         {{
@@ -99,13 +100,16 @@ def generate_answer_with_fallback(query: str, retrieved_rules: list[dict], retri
             chunk_id = meta.get("chunk_id")
             content = meta.get("content", "")
             
-            # Fetch full content from DB if metadata preview is short
-            if chunk_id and len(content) < 50:
+            # Fetch full content from DB if the metadata preview was truncated.
+            # canonicalization.py stores at most content[:1000] in Pinecone
+            # metadata, so anything at or above that length is a truncated
+            # preview, not the full chunk.
+            if chunk_id and len(content) >= 1000:
                 db_chunk = db.query(Chunk).filter(Chunk.id == chunk_id).first()
                 if db_chunk and db_chunk.content:
                     content = db_chunk.content
-                    
-            if content and c.get("score", 0) > 0.15:
+
+            if content and c.get("score", 0) > 0.45:
                 chunks_text_list.append(f"- [Section: {meta.get('section', 'General')}, Page {meta.get('page', 1)}]: {content}")
                 bbox = meta.get("bbox")
                 page_dim = meta.get("page_dim")
@@ -140,7 +144,7 @@ def generate_answer_with_fallback(query: str, retrieved_rules: list[dict], retri
 
         Instructions:
         1. If the document context contains relevant information or allows answering the question, provide a complete response and set "has_info": true.
-        2. ONLY set "has_info": false if the document context is completely unrelated or missing the required information.
+        2. Set "has_info": false unless the document context explicitly and directly answers the question.
 
         Return ONLY a JSON object:
         {{

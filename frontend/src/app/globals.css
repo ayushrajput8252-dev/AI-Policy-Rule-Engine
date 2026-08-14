@@ -198,13 +198,56 @@
   100% { background-position: 200% 0; }
 }
 
+/* ── Unified capability card shell ──
+   Every landing-page card shares this exact shape/shadow/hover language so the
+   whole grid reads as one design system instead of a dozen hand-tuned boxes.
+   Background, radius, border, padding and the resting shadow all live here;
+   individual cards only add layout modifiers (flex direction, h-full, etc). */
 .cpu-burn-card {
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  padding: 1.75rem;
+  background: #ffffff;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(24, 24, 27, 0.08);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 14px 32px -20px rgba(15, 23, 42, 0.16);
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .cpu-burn-card:hover {
-  border-color: #93c5fd !important;
-  box-shadow: 0 8px 24px -6px rgba(37, 99, 235, 0.08);
-  transform: translateY(-2px);
+  border-color: rgba(37, 99, 235, 0.35);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 28px 48px -22px rgba(37, 99, 235, 0.22);
+  transform: translateY(-3px);
+}
+
+/* ── Shared icon badge for card headers — one gradient/ring language
+   instead of a dozen copies of the same bg/border utility string. ── */
+.card-icon-badge {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #2563eb;
+  background: linear-gradient(135deg, rgba(239, 246, 255, 1), rgba(219, 234, 254, 0.55));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 1px 2px rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(191, 219, 254, 0.8);
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.cpu-burn-card:hover .card-icon-badge {
+  transform: scale(1.06) rotate(-2deg);
+}
+.card-icon-badge.amber {
+  color: #b45309;
+  background: linear-gradient(135deg, rgba(255, 251, 235, 1), rgba(253, 230, 138, 0.5));
+  border-color: rgba(252, 211, 77, 0.8);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 1px 2px rgba(180, 83, 9, 0.08);
 }
 .animate-data-packet {
   animation: data-packet-flow 1.8s infinite ease-in-out;

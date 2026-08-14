@@ -3,13 +3,28 @@ from datetime import datetime, timedelta
 import fitz
 from PIL import Image, ExifTags
 
-EDITING_SOFTWARE_BLOCKLIST = [
-    "photoshop", "canva", "gimp", "illustrator", "paint.net", "snapseed",
-    "pixlr", "lightroom", "affinity photo", "inkscape", "corel", "picsart",
-    "photopea", "fotor",
-]
+# Raw photo-editing tools showing up as the *producer* of a document (as opposed
+# to a template/design tool) are a weak but real signal — kept, at a much lower
+# penalty than before. Generic design/template tools (Canva, Illustrator, Affinity,
+# Inkscape, Corel, Photopea, PicsArt, Fotor, Paint.NET) are routinely used by small
+# and mid-size businesses to build legitimate letterheads, offer letters, and
+# payslip templates, so they were dropped entirely — they were previously causing
+# false positives on ordinary company-designed documents.
+EDITING_SOFTWARE_WATCHLIST = ["photoshop", "gimp", "lightroom", "snapseed", "pixlr"]
+EDITING_SOFTWARE_PENALTY = 15
 
-DATE_MISMATCH_TOLERANCE = timedelta(seconds=60)
+# A document's own creation/modification timestamps legitimately drift by more
+# than a minute during a normal lifecycle (generated -> e-signed -> re-saved by
+# a different tool -> re-uploaded). A 60-second window flagged nearly every
+# document that went through any real-world workflow; widened to a day, and
+# treated as a softer signal.
+DATE_MISMATCH_TOLERANCE = timedelta(days=1)
+DATE_MISMATCH_PENALTY = 15
+
+# Missing EXIF is the norm for phone photos shared via WhatsApp/screenshots
+# (which strip EXIF by design) and is not meaningful evidence on its own — kept
+# as an informational flag only, no score penalty.
+MISSING_EXIF_PENALTY = 0
 
 
 def _parse_pdf_date(raw: str) -> datetime | None:
@@ -36,16 +51,16 @@ def _check_pdf(file_path: str) -> dict:
     flags = []
     score = 100
 
-    hit = next((sw for sw in EDITING_SOFTWARE_BLOCKLIST if sw in fingerprint), None)
+    hit = next((sw for sw in EDITING_SOFTWARE_WATCHLIST if sw in fingerprint), None)
     if hit:
-        flags.append(f"Editing software fingerprint detected: '{hit}' in Producer/Creator metadata.")
-        score -= 45
+        flags.append(f"Raw image-editing tool fingerprint detected: '{hit}' in Producer/Creator metadata.")
+        score -= EDITING_SOFTWARE_PENALTY
 
     created = _parse_pdf_date(meta.get("creationDate", ""))
     modified = _parse_pdf_date(meta.get("modDate", ""))
     if created and modified and abs(modified - created) > DATE_MISMATCH_TOLERANCE:
-        flags.append(f"Creation date ({created}) and modification date ({modified}) differ by more than a minute.")
-        score -= 30
+        flags.append(f"Creation date ({created}) and modification date ({modified}) differ by more than a day.")
+        score -= DATE_MISMATCH_PENALTY
 
     score = max(0, score)
     status = "pass" if not flags else ("warn" if score >= 50 else "fail")
@@ -75,10 +90,10 @@ def _check_image(file_path: str) -> dict:
     tag_map = {ExifTags.TAGS.get(k, k): v for k, v in exif.items()} if exif else {}
     software = str(tag_map.get("Software", "")).lower()
 
-    hit = next((sw for sw in EDITING_SOFTWARE_BLOCKLIST if sw in software), None)
+    hit = next((sw for sw in EDITING_SOFTWARE_WATCHLIST if sw in software), None)
     if hit:
-        flags.append(f"Editing software fingerprint detected: '{hit}' in image EXIF Software tag.")
-        score -= 45
+        flags.append(f"Raw image-editing tool fingerprint detected: '{hit}' in image EXIF Software tag.")
+        score -= EDITING_SOFTWARE_PENALTY
 
     dt_original = tag_map.get("DateTimeOriginal")
     dt_modified = tag_map.get("DateTime")
@@ -88,14 +103,14 @@ def _check_image(file_path: str) -> dict:
             d_orig = datetime.strptime(dt_original, fmt)
             d_mod = datetime.strptime(dt_modified, fmt)
             if abs(d_mod - d_orig) > DATE_MISMATCH_TOLERANCE:
-                flags.append(f"EXIF original capture time ({d_orig}) and modified time ({d_mod}) differ by more than a minute.")
-                score -= 30
+                flags.append(f"EXIF original capture time ({d_orig}) and modified time ({d_mod}) differ by more than a day.")
+                score -= DATE_MISMATCH_PENALTY
         except ValueError:
             pass
 
     if not tag_map:
-        flags.append("No EXIF metadata present — common after re-saving/editing, but not conclusive on its own.")
-        score -= 10
+        flags.append("No EXIF metadata present — common after re-saving/sharing (e.g. WhatsApp, screenshots), not conclusive on its own.")
+        score -= MISSING_EXIF_PENALTY
 
     score = max(0, score)
     status = "pass" if not flags else ("warn" if score >= 50 else "fail")
@@ -115,6 +130,16 @@ def _check_image(file_path: str) -> dict:
 
 
 def check_metadata(file_path: str, content_type: str) -> dict:
-    if content_type == "pdf":
-        return _check_pdf(file_path)
-    return _check_image(file_path)
+    try:
+        if content_type == "pdf":
+            return _check_pdf(file_path)
+        return _check_image(file_path)
+    except Exception as e:
+        return {
+            "key": "metadata",
+            "title": "Metadata Fingerprint Check",
+            "status": "error",
+            "score": None,
+            "summary": f"Metadata check could not be run: {e}",
+            "details": {},
+        }

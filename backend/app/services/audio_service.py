@@ -69,16 +69,26 @@ def transcribe_audio(file_path: str) -> List[Dict[str, Any]]:
         # "base" trades a little speed for materially better accuracy than "tiny",
         # which was misreading short mic clips and even mis-detecting the spoken language.
         model = WhisperModel("base", device="cpu", compute_type="int8")
-        raw_segments, info = model.transcribe(target_path, beam_size=5, vad_filter=True)
-        
+        # language="en" pins the language explicitly — auto-detection is
+        # unreliable on short/noisy clips and can pick the wrong language entirely.
+        raw_segments, info = model.transcribe(target_path, beam_size=5, vad_filter=True, language="en")
+
         for s in raw_segments:
             text = s.text.strip()
-            if text:
-                segments_list.append({
-                    "start": round(s.start, 2),
-                    "end": round(s.end, 2),
-                    "text": text
-                })
+            if not text:
+                continue
+            # Whisper hallucinates text during silence/noise; no_speech_prob and
+            # avg_logprob (both on faster-whisper segment objects) flag those
+            # low-confidence segments so they don't pollute the transcript.
+            no_speech_prob = getattr(s, "no_speech_prob", 0.0) or 0.0
+            avg_logprob = getattr(s, "avg_logprob", 0.0) or 0.0
+            if no_speech_prob > 0.6 or avg_logprob < -1.0:
+                continue
+            segments_list.append({
+                "start": round(s.start, 2),
+                "end": round(s.end, 2),
+                "text": text
+            })
         print(f"[Audio Pipeline] Faster-Whisper transcribed {len(segments_list)} segments. Detected language: {info.language}")
         if segments_list:
             return segments_list
@@ -132,8 +142,11 @@ def merge_small_segments(segments: List[Dict[str, Any]], max_duration: float = 3
         duration = seg["end"] - current_start
         combined_text_len = sum(len(t) for t in current_texts) + len(seg["text"])
         
-        # Merge if duration is under max_duration and combined length is acceptable
-        if duration <= max_duration or combined_text_len < min_chars:
+        # Merge only while BOTH duration and combined length are still under
+        # their caps — using "or" here let short-text segments keep merging
+        # indefinitely regardless of accumulated duration, bundling minutes of
+        # unrelated speech under one wrong timestamp.
+        if duration <= max_duration and combined_text_len < min_chars:
             current_end = seg["end"]
             current_texts.append(seg["text"])
         else:

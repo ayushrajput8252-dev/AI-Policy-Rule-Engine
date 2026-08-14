@@ -26,9 +26,13 @@ def _process_text_blocks(document_id: str, blocks_data: list[dict], db) -> dict:
     from .services.chunking import chunk_document
     from .services.canonicalization import store_chunks_batch_in_pinecone, canonicalize_and_store_rule
     from .services.extraction import extract_rules_batch
+    from .services.classification import classify_rule, DISCARD_LABELS
+    from .services.validation import validate_rule
     from .models import Chunk, Document
     from concurrent.futures import ThreadPoolExecutor
     import time
+
+    MIN_RULE_CONFIDENCE = 70  # confidence is on a 0-100 scale (see canonicalization.py)
 
     chunks = chunk_document(document_id, blocks_data)
     print(f"Generated {len(chunks)} chunks for {document_id}")
@@ -75,6 +79,27 @@ def _process_text_blocks(document_id: str, blocks_data: list[dict], db) -> dict:
                     "type": res.get("type", "GUIDELINE"),
                     "confidence": res.get("confidence", 85)
                 }
+
+                # Quality gate 1: discard non-actionable statement types (facts,
+                # stories, examples, definitions) before they ever hit storage.
+                classification = classify_rule(extracted["key_finding"] or c.get("content", ""))
+                if classification.get("type") in DISCARD_LABELS:
+                    continue
+
+                # Quality gate 2: minimum extraction confidence (0-100 scale).
+                if extracted["confidence"] < MIN_RULE_CONFIDENCE:
+                    continue
+
+                # Quality gate 3: LLM cross-validation of the rule against its
+                # source text. Fail open (keep the rule) if the validator itself
+                # errors out (e.g. both LLM providers down) so an infra hiccup
+                # doesn't wipe out an entire ingestion batch.
+                try:
+                    validation = validate_rule(c.get("content", ""), extracted)
+                    if isinstance(validation, dict) and str(validation.get("status", "")).upper() == "INVALID":
+                        continue
+                except Exception as validation_err:
+                    print(f"[Rule Validation Warning] Skipping validation due to error: {validation_err}")
 
                 canonicalize_and_store_rule(
                     document_id=document_id,

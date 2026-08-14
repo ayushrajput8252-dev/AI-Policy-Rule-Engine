@@ -16,7 +16,66 @@ from .llm_service import generate_json
 from .parsing import parse_pdf
 
 EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
-PHONE_RE = re.compile(r"(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{3,4}\)?[\s.-]?)?\d{3,4}[\s.-]?\d{3,4}")
+# Matches an optional leading country code plus 2-5 grouped digit runs
+# (covering formats like "+91 98765 43210", "(415) 555-2671", "555-123-4567").
+# This alone is still loose enough to match a date range or a zip code, so
+# every caller MUST additionally check PHONE_DIGIT_RANGE via
+# _looks_like_phone() below before trusting a match as a real phone number.
+PHONE_RE = re.compile(
+    r"(?<!\d)(?:\+\d{1,3}[\s.-]?)?\(?\d{2,5}\)?(?:[\s.-]?\d{2,5}){1,4}(?!\d)"
+)
+# A real phone number, once separators are stripped, has this many digits —
+# short of it and it's more likely a zip/pin code, longer and it's more
+# likely a date range or an unrelated id number that happened to match.
+PHONE_DIGIT_RANGE = (10, 13)
+
+
+def _looks_like_phone(candidate: Optional[str]) -> bool:
+    if not candidate:
+        return False
+    digits = re.sub(r"\D", "", candidate)
+    return PHONE_DIGIT_RANGE[0] <= len(digits) <= PHONE_DIGIT_RANGE[1]
+
+# Resume text is truncated before being sent to the LLM for scoring; keep
+# this equal to RESUME_TEXT_STORE_CHARS below so scoring always sees at
+# least as much of the resume as we persist for later use.
+RESUME_TEXT_PROMPT_CHARS = 8000
+RESUME_TEXT_STORE_CHARS = 8000
+
+# Recommendation tiers shared by every code path (LLM-scored and fallback)
+# so "Not a Fit" is always reachable and thresholds never silently diverge.
+_STRONG_HIRE_MIN = 85
+_HIRE_MIN = 65
+_CONSIDER_MIN = 40
+
+# Generic English words that show up in requirement briefs but aren't
+# themselves skills — filtered out when heuristically tokenizing a
+# requirement brief for the no-LLM fallback matcher.
+_REQUIREMENT_STOPWORDS = {
+    "a", "an", "and", "or", "the", "with", "for", "of", "to", "in", "on", "is",
+    "are", "be", "we", "you", "our", "this", "that", "as", "at", "by", "from",
+    "will", "who", "role", "roles", "job", "years", "year", "experience",
+    "strong", "good", "excellent", "solid", "knowledge", "skills", "skill",
+    "required", "must", "have", "having", "working", "proficiency",
+    "proficient", "understanding", "ability", "candidate", "candidates",
+    "looking", "should", "preferred", "plus", "etc", "using", "use",
+    "develop", "developing", "development", "build", "building", "team",
+    "work", "also", "including", "include", "responsibilities",
+    "requirements", "nice", "have", "familiarity", "familiar", "hands",
+    "need", "needs", "needed", "someone", "person", "people", "background",
+    "environment", "level", "based", "across", "into", "can", "well",
+}
+
+
+def _recommendation_from_score(score: int) -> str:
+    """Single shared threshold table for every recommendation string in this file."""
+    if score >= _STRONG_HIRE_MIN:
+        return "Strong Hire"
+    if score >= _HIRE_MIN:
+        return "Hire"
+    if score >= _CONSIDER_MIN:
+        return "Consider"
+    return "Not a Fit"
 
 RESUME_SYSTEM_INSTRUCTION = """You are a resume parsing and ATS scoring engine. Given the raw extracted
 text of a resume PDF, extract structured fields and score the resume's overall quality/completeness
@@ -54,7 +113,11 @@ def _extract_email_phone(text: str) -> tuple[Optional[str], Optional[str]]:
     email_match = EMAIL_RE.search(text)
     phone_match = PHONE_RE.search(text)
     email = email_match.group(0) if email_match else None
-    phone = phone_match.group(0).strip() if phone_match else None
+    candidate_phone = phone_match.group(0).strip() if phone_match else None
+    # Only surface the regex hit if it actually looks phone-shaped (right
+    # digit count) — otherwise it's likely a date range or id number that
+    # happened to match the loose grouping pattern above.
+    phone = candidate_phone if _looks_like_phone(candidate_phone) else None
     return email, phone
 
 
@@ -78,7 +141,7 @@ def extract_resume_fields(filename: str, text: str) -> Dict[str, Any]:
     if not text.strip():
         return {**_fallback_resume_fields(filename, text), "summary": "No extractable text found in this PDF."}
 
-    prompt = f"Resume filename: {filename}\n\nRaw extracted resume text:\n{text[:6000]}"
+    prompt = f"Resume filename: {filename}\n\nRaw extracted resume text:\n{text[:RESUME_TEXT_PROMPT_CHARS]}"
     try:
         result = generate_json(prompt, RESUME_SYSTEM_INSTRUCTION)
         if not isinstance(result, dict):
@@ -89,6 +152,10 @@ def extract_resume_fields(filename: str, text: str) -> Dict[str, Any]:
 
     # Regex-extracted contact info is more reliable than LLM output for exact
     # strings — prefer it when present, fall back to whatever the LLM found.
+    # _extract_email_phone() already discards regex phone matches that don't
+    # look phone-shaped (see _looks_like_phone), so a non-None regex_phone
+    # here is safe to prefer over the LLM's answer; otherwise keep the LLM's
+    # contextual answer instead of a false-positive date/id match.
     regex_email, regex_phone = _extract_email_phone(text)
     result["email"] = regex_email or result.get("email")
     result["phone"] = regex_phone or result.get("phone")
@@ -118,23 +185,66 @@ def parse_resume_pdf(filename: str, file_path: str) -> Dict[str, Any]:
         text = ""
     fields = extract_resume_fields(filename, text)
     fields["filename"] = filename
-    fields["resume_text"] = text[:8000]
+    fields["resume_text"] = text[:RESUME_TEXT_STORE_CHARS]
     return fields
+
+
+def _skill_matches_text(skill: str, text_lower: str) -> bool:
+    """Word-boundary-aware containment check so short skill names (e.g. 'R',
+    'Go') don't false-match inside unrelated words ('Good', 'Angular')."""
+    skill_lower = skill.lower().strip()
+    if not skill_lower:
+        return False
+    return re.search(rf"\b{re.escape(skill_lower)}\b", text_lower) is not None
+
+
+def _tokenize_requirement(requirement: str) -> List[str]:
+    """Best-effort extraction of skill-like tokens from a free-text
+    requirement brief (there's no structured 'required skills' list to
+    read from), filtering out common non-skill English words."""
+    words = re.findall(r"[A-Za-z][A-Za-z0-9+.#/-]*", requirement)
+    tokens: List[str] = []
+    seen = set()
+    for w in words:
+        token = w.lower().strip(".-/")
+        if len(token) < 2 or token in _REQUIREMENT_STOPWORDS or token in seen:
+            continue
+        seen.add(token)
+        tokens.append(token)
+    return tokens
 
 
 def _fallback_match(candidate: Dict[str, Any], requirement: str) -> Dict[str, Any]:
     req_lower = requirement.lower()
     skills = candidate.get("skills") or []
-    matched = [s for s in skills if s.lower() in req_lower]
-    missing = [] if matched else skills[:3]
-    base = candidate.get("ats_score", 60)
-    score = base if matched else max(40, base - 15)
-    recommendation = "Strong Hire" if score >= 85 else "Hire" if score >= 65 else "Consider"
+
+    matched = [s for s in skills if _skill_matches_text(s, req_lower)]
+    matched_lower = {m.lower().strip() for m in matched}
+
+    # missing_skills = tokens the requirement appears to ask for that the
+    # candidate's own skill list doesn't cover — not the candidate's skills
+    # themselves (that told us nothing about a gap).
+    candidate_skills_lower = [s.lower().strip() for s in skills]
+    missing = [
+        token for token in _tokenize_requirement(requirement)
+        if token not in matched_lower
+        and not any(_skill_matches_text(token, cs) for cs in candidate_skills_lower)
+    ][:10]
+
+    total_considered = len(matched) + len(missing)
+    if total_considered > 0:
+        score = round(100 * len(matched) / total_considered)
+    else:
+        # No requirement text (or nothing tokenizable) to compare against —
+        # fall back to the resume's own quality score as a last resort.
+        score = candidate.get("ats_score", 60)
+    score = max(0, min(100, score))
+
     return {
         "match_score": score,
         "matched_skills": matched,
         "missing_skills": missing,
-        "recommendation": recommendation,
+        "recommendation": _recommendation_from_score(score),
     }
 
 
@@ -143,10 +253,13 @@ def match_candidate_to_requirement(candidate: Dict[str, Any], requirement: str, 
     if not requirement.strip():
         return _fallback_match(candidate, requirement)
 
+    # Candidate name is deliberately left out of the prompt — it carries no
+    # legitimate signal for skill/experience fit and only exposes the model
+    # to unnecessary demographic bias risk. Attach it to the result below,
+    # after scoring, if callers need it.
     prompt = (
         f"Role: {role_title}\n\n"
         f"Requirement brief:\n{requirement.strip()}\n\n"
-        f"Candidate: {candidate.get('name')}\n"
         f"Experience: {candidate.get('experience')}\n"
         f"Skills: {', '.join(candidate.get('skills') or [])}\n"
         f"Summary: {candidate.get('summary')}"
@@ -165,7 +278,8 @@ def match_candidate_to_requirement(candidate: Dict[str, Any], requirement: str, 
         result["match_score"] = 60
     result.setdefault("matched_skills", [])
     result.setdefault("missing_skills", [])
-    result.setdefault("recommendation", "Hire" if result["match_score"] >= 65 else "Consider")
+    result.setdefault("recommendation", _recommendation_from_score(result["match_score"]))
+    result["candidate_name"] = candidate.get("name")
     return result
 
 

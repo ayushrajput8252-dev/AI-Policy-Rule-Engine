@@ -403,12 +403,12 @@ export default function LandingPage() {
             title="Built to be fair, human-led, and secure by default"
             subtitle="The principles behind every automated decision this platform makes."
           />
-          <div className="mt-14 grid sm:grid-cols-2 rounded-3xl border border-dotted border-zinc-300 divide-y divide-x-0 sm:divide-x divide-dotted divide-zinc-300 overflow-hidden">
+          <div className="mt-14 grid sm:grid-cols-2 gap-5">
             {MISSION_PILLARS.map((m) => {
               const Icon = m.icon;
               return (
-                <div key={m.title} className="p-8 sm:p-10">
-                  <div className="w-11 h-11 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 mb-4">
+                <div key={m.title} className="cpu-burn-card h-full">
+                  <div className="card-icon-badge mb-4">
                     <Icon className="w-5 h-5" />
                   </div>
                   <h3 className="text-[16px] font-bold text-zinc-900 mb-2">{m.title}</h3>
@@ -796,6 +796,15 @@ function BurningArchitectureModal({ isOpen, onClose }: { isOpen: boolean; onClos
     return () => clearInterval(iv);
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, onClose]);
+
   const nodes = [
     { title: "Document Ingestion", sub: "PDF / OCR / Audio Transcribe", latency: "14ms", details: "Parses PDF bounding boxes & transcribes audio files with Faster-Whisper.", icon: <FileText className="w-4 h-4" />, agentIndex: 1 },
     { title: "Vector Embedding Engine", sub: "BGE / Pinecone HNSW Vector Store", latency: "22ms", details: "Generates high-dimensional vector embeddings and indexes into Pinecone.", icon: <Database className="w-4 h-4" />, agentIndex: 1 },
@@ -812,12 +821,14 @@ function BurningArchitectureModal({ isOpen, onClose }: { isOpen: boolean; onClos
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          onClick={onClose}
           className="fixed inset-0 z-50 bg-zinc-900/40 backdrop-blur-md flex items-center justify-center p-4"
         >
           <motion.div
             initial={{ scale: 0.96, y: 15 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.96, y: 15 }}
+            onClick={(e) => e.stopPropagation()}
             className="bg-white border border-zinc-200/90 rounded-3xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden font-sans relative"
           >
             {/* Modal Header */}
@@ -1022,12 +1033,15 @@ function PreviewBadge() {
  * used for the two premium usage-based add-ons (Telephonic + Screening Agent). */
 function FeaturedCardFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="relative pt-4">
-      <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-blue-600 to-blue-700 shadow-md shadow-blue-600/30 border border-blue-500">
+    <div className="relative pt-4 group/featured">
+      <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-blue-600 to-blue-700 shadow-lg shadow-blue-600/30 ring-1 ring-blue-500/60">
         <Crown className="w-3.5 h-3.5 text-white fill-white" />
         <span className="text-[10px] font-mono font-bold text-white uppercase tracking-wider">Featured</span>
       </div>
-      <div className="rounded-2xl ring-2 ring-blue-200 hover:ring-blue-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-600/10 transition-all duration-300 h-full">
+      {/* Ring-only accent — the inner .cpu-burn-card already owns the lift/shadow
+          hover motion, so this wrapper just brightens in step instead of adding
+          a second, compounding transform. */}
+      <div className="rounded-[1.5rem] ring-2 ring-blue-200 group-hover/featured:ring-blue-300 transition-colors duration-300 h-full">
         {children}
       </div>
     </div>
@@ -1194,10 +1208,10 @@ function RAGCardInteractive() {
   const [selectedIdx, setSelectedIdx] = useState(0);
 
   return (
-    <div className="cpu-burn-card p-7 h-full flex flex-col md:flex-row gap-7 bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+    <div className="cpu-burn-card h-full flex flex-col md:flex-row gap-7">
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-5">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+          <div className="card-icon-badge">
             <Database className="w-5 h-5" />
           </div>
           <WorkingBadge />
@@ -1267,9 +1281,9 @@ function OnboardingCardInteractive() {
   const [active] = useState(2);
 
   return (
-    <div className="cpu-burn-card p-7 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+    <div className="cpu-burn-card h-full">
       <div className="flex items-center justify-between mb-5">
-        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+        <div className="card-icon-badge">
           <UserPlus className="w-5 h-5" />
         </div>
         <div className="flex items-center gap-1.5">
@@ -1329,9 +1343,9 @@ function KnowledgeCardInteractive() {
   const activeNode = nodes[activeIdx];
 
   return (
-    <div className="cpu-burn-card p-7 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+    <div className="cpu-burn-card h-full">
       <div className="flex items-center justify-between mb-5">
-        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+        <div className="card-icon-badge">
           <Brain className="w-5 h-5" />
         </div>
         <div className="flex items-center gap-1.5">
@@ -1391,14 +1405,14 @@ function AutomationCardInteractive() {
   }, [stages.length]);
 
   return (
-    <div className="cpu-burn-card p-7 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm relative overflow-hidden">
+    <div className="cpu-burn-card h-full relative overflow-hidden">
       {/* Subtle corner wash — a restrained accent instead of decorative doodles */}
       <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-bl from-amber-100/50 to-transparent pointer-events-none" />
 
       <div className="flex flex-col md:flex-row gap-7 relative z-10">
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-3 mb-5">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700">
+            <div className="card-icon-badge amber">
               <Bot className="w-5 h-5" />
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
@@ -1456,9 +1470,9 @@ function PIPAgentCard() {
   ];
 
   return (
-    <div className="cpu-burn-card p-7 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm flex flex-col">
+    <div className="cpu-burn-card h-full flex flex-col">
       <div className="flex items-center justify-between mb-5">
-        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+        <div className="card-icon-badge">
           <ClipboardX className="w-5 h-5" />
         </div>
         <PreviewBadge />
@@ -1505,9 +1519,9 @@ function FraudDetectionCard() {
   const activeLabel = allChecks[activeIdx];
 
   return (
-    <div className="cpu-burn-card p-7 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm flex flex-col">
+    <div className="cpu-burn-card h-full flex flex-col">
       <div className="flex items-center justify-between mb-5">
-        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+        <div className="card-icon-badge">
           <ShieldAlert className="w-5 h-5" />
         </div>
         <WorkingBadge />
@@ -1580,9 +1594,9 @@ function TelephonicAgentCard() {
 
   return (
     <FeaturedCardFrame>
-      <div className="cpu-burn-card p-7 h-full bg-white rounded-2xl shadow-sm flex flex-col">
+      <div className="cpu-burn-card h-full flex flex-col">
         <div className="flex items-center justify-between mb-3 gap-2">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+          <div className="card-icon-badge">
             <Phone className="w-5 h-5" />
           </div>
           <div className="flex items-center gap-1.5">
@@ -1645,11 +1659,11 @@ function ScreeningAgentCard() {
 
   return (
     <FeaturedCardFrame>
-      <div className="cpu-burn-card p-7 h-full bg-white rounded-2xl shadow-sm">
+      <div className="cpu-burn-card h-full">
         <div className="flex flex-col md:flex-row gap-7">
           <div className="flex-1 min-w-0 flex flex-col">
             <div className="flex items-center justify-between mb-3 gap-2">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+              <div className="card-icon-badge">
                 <Video className="w-5 h-5" />
               </div>
               <div className="flex items-center gap-1.5">
@@ -1702,9 +1716,9 @@ function ReportsCardWhite({ onOpenReport }: { onOpenReport: () => void }) {
   ];
 
   return (
-    <div className="cpu-burn-card p-7 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+    <div className="cpu-burn-card h-full">
       <div className="flex items-center justify-between mb-5">
-        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+        <div className="card-icon-badge">
           <BarChart3 className="w-5 h-5" />
         </div>
         <div className="flex items-center gap-1.5">
@@ -1758,9 +1772,9 @@ const SECURITY_CATEGORY_LABELS = [
 
 function SecurityCardWhite() {
   return (
-    <div className="cpu-burn-card p-7 h-full bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+    <div className="cpu-burn-card h-full">
       <div className="flex items-center justify-between mb-5">
-        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+        <div className="card-icon-badge">
           <Shield className="w-5 h-5" />
         </div>
         <div className="flex items-center gap-1.5">
@@ -1801,10 +1815,10 @@ function IntegrationsCardInteractive() {
   ];
 
   return (
-    <div className="cpu-burn-card p-7 h-full flex flex-col justify-between bg-white border border-zinc-200/90 rounded-2xl shadow-sm">
+    <div className="cpu-burn-card h-full flex flex-col justify-between">
       <div>
         <div className="flex items-center justify-between mb-5">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+          <div className="card-icon-badge">
             <Globe className="w-5 h-5" />
           </div>
           <PreviewBadge />
@@ -1874,17 +1888,17 @@ function MathComparisonCard() {
         </p>
 
         <div className="grid sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
-          <div className="p-5">
+          <div className="p-5 rounded-2xl bg-white/5 ring-1 ring-white/10">
             <div className="text-2xl sm:text-3xl font-extrabold text-white font-mono">{inr(MATH_MANUAL_COST)}</div>
             <div className="text-[13px] font-bold text-blue-50 mt-1.5">Manual cost</div>
             <div className="text-[11px] text-blue-100/80 mt-0.5">{MATH_RECRUITER_HOURS} recruiter hrs + {MATH_ENGINEER_HOURS} engineer hrs</div>
           </div>
-          <div className="p-5 rounded-2xl bg-white/10 border border-white/20">
+          <div className="p-5 rounded-2xl bg-white/15 ring-1 ring-white/25 shadow-lg shadow-black/10">
             <div className="text-2xl sm:text-3xl font-extrabold text-emerald-300 font-mono">{inr(MATH_AI_COST)}</div>
             <div className="text-[13px] font-bold text-white mt-1.5">AgenticFlow AI cost</div>
             <div className="text-[11px] text-blue-100/80 mt-0.5">Telephonic Agent + Screening Agent, end to end</div>
           </div>
-          <div className="p-5">
+          <div className="p-5 rounded-2xl bg-white/5 ring-1 ring-white/10">
             <div className="text-2xl sm:text-3xl font-extrabold text-white font-mono">{inr(MATH_SAVINGS)}</div>
             <div className="text-[13px] font-bold text-blue-50 mt-1.5">You save</div>
             <div className="text-[11px] text-blue-100/80 mt-0.5">~{MATH_SAVINGS_PCT}% reduction + time back</div>

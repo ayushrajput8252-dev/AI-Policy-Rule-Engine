@@ -73,6 +73,10 @@ def _call_gemini_api(prompt: str, system_instruction: str = None) -> str:
                 contents=full_prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
+                    # Match the Groq/Grok primary path's temperature so scoring
+                    # is comparably deterministic whichever provider actually
+                    # serves the request (Gemini is a silent fallback).
+                    temperature=0.2,
                 ),
             )
             if response and response.text:

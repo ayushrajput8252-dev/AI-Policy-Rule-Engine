@@ -19,12 +19,12 @@ def get_redis_client():
 def _hash_key(text: str) -> str:
     return hashlib.md5(text.encode("utf-8")).hexdigest()
 
-def get_cached_query(document_id: str | None, query: str) -> dict | None:
+def get_cached_query(document_id: str | None, query: str, top_k: int = 5) -> dict | None:
     r = get_redis_client()
     if not r:
         return None
     try:
-        key = f"query_cache:{document_id or 'global'}:{_hash_key(query)}"
+        key = f"query_cache:{document_id or 'global'}:{top_k}:{_hash_key(query)}"
         cached = r.get(key)
         if cached:
             print(f"[Redis Cache HIT]: Query '{query[:30]}...' retrieved from cache.")
@@ -33,12 +33,12 @@ def get_cached_query(document_id: str | None, query: str) -> dict | None:
         print(f"[Redis Cache Error]: Failed to read query cache: {e}")
     return None
 
-def set_cached_query(document_id: str | None, query: str, data: dict, ttl_seconds: int = 3600):
+def set_cached_query(document_id: str | None, query: str, data: dict, top_k: int = 5, ttl_seconds: int = 3600):
     r = get_redis_client()
     if not r:
         return
     try:
-        key = f"query_cache:{document_id or 'global'}:{_hash_key(query)}"
+        key = f"query_cache:{document_id or 'global'}:{top_k}:{_hash_key(query)}"
         r.setex(key, ttl_seconds, json.dumps(data))
     except Exception as e:
         print(f"[Redis Cache Error]: Failed to write query cache: {e}")

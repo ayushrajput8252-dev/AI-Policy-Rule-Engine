@@ -32,23 +32,33 @@ def check_fonts(file_path: str, content_type: str) -> dict:
             "details": {},
         }
 
-    doc = fitz.open(file_path)
-    all_spans = []
-    for page in doc[:MAX_PAGES]:
-        page_h = page.rect.height
-        raw = page.get_text("dict")
-        for block in raw.get("blocks", []):
-            for line in block.get("lines", []):
-                for span in line.get("spans", []):
-                    text = span.get("text", "").strip()
-                    if not text:
-                        continue
-                    all_spans.append({
-                        "font": span.get("font", "?"),
-                        "size": round(span.get("size", 0), 1),
-                        "y0": span["bbox"][1],
-                        "page_h": page_h,
-                    })
+    try:
+        doc = fitz.open(file_path)
+        all_spans = []
+        for page in doc[:MAX_PAGES]:
+            page_h = page.rect.height
+            raw = page.get_text("dict")
+            for block in raw.get("blocks", []):
+                for line in block.get("lines", []):
+                    for span in line.get("spans", []):
+                        text = span.get("text", "").strip()
+                        if not text:
+                            continue
+                        all_spans.append({
+                            "font": span.get("font", "?"),
+                            "size": round(span.get("size", 0), 1),
+                            "y0": span["bbox"][1],
+                            "page_h": page_h,
+                        })
+    except Exception as e:
+        return {
+            "key": "fonts",
+            "title": "Font & Layout Consistency",
+            "status": "error",
+            "score": None,
+            "summary": f"Font consistency check could not be run: {e}",
+            "details": {},
+        }
 
     if len(all_spans) < 5:
         return {

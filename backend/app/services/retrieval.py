@@ -1,7 +1,10 @@
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from .detection import get_embedding_model
 from .canonicalization import get_pinecone_index
 from .cache import get_cached_embedding, set_cached_embedding
+
+logger = logging.getLogger(__name__)
 
 def get_query_vector(query: str) -> list[float]:
     """
@@ -44,7 +47,14 @@ def _query_pinecone(vector: list[float], vector_type: str, top_k: int, document_
             })
         return matches
     except Exception as e:
-        print(f"[Retrieval Warning] Pinecone search for {vector_type} failed: {e}")
+        # Loud, diagnosable failure: a Pinecone outage must not look the same
+        # as "no relevant results" in the logs, since callers silently treat
+        # an empty list as a valid (if unhelpful) retrieval outcome.
+        logger.error(
+            "[Retrieval Error] Pinecone search failed (vector_type=%s, top_k=%s, document_id=%s): %s: %s",
+            vector_type, top_k, document_id, type(e).__name__, str(e),
+            exc_info=True
+        )
         return []
 
 def retrieve_rules(query: str, top_k: int = 5, document_id: str | None = None) -> list[dict]:

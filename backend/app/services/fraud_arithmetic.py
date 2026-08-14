@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from . import llm_service
 
 EXTRACTION_PROMPT = """You are extracting structured fields from a document (likely a salary slip, offer letter, or relieving letter) for a fraud-consistency check.
@@ -21,7 +21,19 @@ Document text:
 ---
 """
 
-TOLERANCE = 1.0
+MIN_TOLERANCE = 1.0
+RELATIVE_TOLERANCE = 0.001  # 0.1% — absorbs independent per-line rounding on larger salary figures
+
+# Dates on these documents are legitimately forward-looking (offer letters state a
+# future joining date; relieving letters are often issued during a notice period,
+# ahead of the actual last working day) or historical (old payslips re-uploaded
+# years later). A bare "<= today" check auto-fails nearly every genuine offer
+# letter, so instead we only flag dates that fall outside a generous plausibility
+# window rather than requiring them to be in the past.
+PLAUSIBLE_PAST = timedelta(days=365 * 10)
+PLAUSIBLE_FUTURE = timedelta(days=180)
+
+OCR_RELIABLE_THRESHOLD = 80
 
 
 def _parse_date(value) -> date | None:
@@ -44,7 +56,19 @@ def _parse_number(value) -> float | None:
         return None
 
 
-OCR_RELIABLE_THRESHOLD = 80
+def _appears_in_text(value: float, text: str) -> bool:
+    """Cross-checks an LLM-extracted number against the raw document text so a
+    misread digit doesn't get silently trusted as a real figure. Tries a few
+    common formattings (plain, with/without decimals) against comma-stripped
+    text."""
+    normalized_text = text.replace(",", "")
+    is_int = abs(value - round(value)) < 1e-6
+    candidates = [str(int(round(value)))] if is_int else [f"{value:.2f}", f"{value:.1f}", str(value)]
+    return any(c in normalized_text for c in candidates)
+
+
+def _plausible_date(d: date, today: date) -> bool:
+    return (today - PLAUSIBLE_PAST) <= d <= (today + PLAUSIBLE_FUTURE)
 
 
 def check_arithmetic(text: str, ocr_confidence: float | None = None) -> dict:
@@ -77,14 +101,30 @@ def check_arithmetic(text: str, ocr_confidence: float | None = None) -> dict:
     relieving = _parse_date(fields.get("relieving_date"))
     today = date.today()
 
+    # An LLM re-reading the page can misread a digit in a multi-column salary
+    # table. Before trusting any extracted amount as fraud evidence, confirm it
+    # actually appears (in some plausible formatting) in the raw extracted text —
+    # if it doesn't, the extraction itself is suspect, not the document.
+    unverified = [
+        name for name, val in (("gross", gross), ("deductions", deductions), ("net", net))
+        if val is not None and not _appears_in_text(val, text)
+    ]
+    if "gross" in unverified:
+        gross = None
+    if "deductions" in unverified:
+        deductions = None
+    if "net" in unverified:
+        net = None
+
     checks = []
 
     if gross is not None and deductions is not None and net is not None:
-        ok = abs((gross - deductions) - net) <= TOLERANCE
+        tolerance = max(MIN_TOLERANCE, RELATIVE_TOLERANCE * max(abs(gross), abs(net)))
+        ok = abs((gross - deductions) - net) <= tolerance
         checks.append({
             "rule": "gross - deductions = net",
             "passed": ok,
-            "detail": f"{gross} - {deductions} = {gross - deductions:.2f} vs stated net {net}",
+            "detail": f"{gross} - {deductions} = {gross - deductions:.2f} vs stated net {net} (tolerance {tolerance:.2f})",
         })
 
     if joining and relieving:
@@ -92,11 +132,12 @@ def check_arithmetic(text: str, ocr_confidence: float | None = None) -> dict:
         checks.append({"rule": "joining_date < relieving_date", "passed": ok, "detail": f"{joining} vs {relieving}"})
 
     if relieving:
-        ok = relieving <= today
-        checks.append({"rule": "relieving_date <= today", "passed": ok, "detail": f"{relieving} vs {today}"})
-    elif joining:
-        ok = joining <= today
-        checks.append({"rule": "joining_date <= today", "passed": ok, "detail": f"{joining} vs {today}"})
+        ok = _plausible_date(relieving, today)
+        checks.append({"rule": "relieving_date is plausible", "passed": ok, "detail": f"{relieving} vs today {today}"})
+
+    if joining:
+        ok = _plausible_date(joining, today)
+        checks.append({"rule": "joining_date is plausible", "passed": ok, "detail": f"{joining} vs today {today}"})
 
     if not checks:
         return {
@@ -104,8 +145,12 @@ def check_arithmetic(text: str, ocr_confidence: float | None = None) -> dict:
             "title": "Field Arithmetic & Logic Consistency",
             "status": "na",
             "score": None,
-            "summary": "No salary figures or joining/relieving dates found in the document to cross-check.",
-            "details": {"extracted_fields": fields},
+            "summary": (
+                "No salary figures or joining/relieving dates found in the document to cross-check."
+                if not unverified
+                else f"Extracted field(s) {', '.join(unverified)} could not be verified against the document text, so no reliable checks could be run."
+            ),
+            "details": {"extracted_fields": fields, "unverified_fields": unverified},
         }
 
     passed = sum(1 for c in checks if c["passed"])
@@ -134,5 +179,5 @@ def check_arithmetic(text: str, ocr_confidence: float | None = None) -> dict:
         "status": status,
         "score": score,
         "summary": summary,
-        "details": {"extracted_fields": fields, "checks": checks, "ocr_confidence": ocr_confidence},
+        "details": {"extracted_fields": fields, "checks": checks, "ocr_confidence": ocr_confidence, "unverified_fields": unverified},
     }

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, JSON, Float
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, JSON, Float, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .database import Base
@@ -59,6 +59,10 @@ class CallRecord(Base):
     transcript = Column(JSON, default=list)  # [{"role": "agent"|"candidate", "text": str}, ...]
     duration_sec = Column(Integer, nullable=True)
     error_message = Column(String, nullable=True)
+    communication_score = Column(Integer, nullable=True)
+    relevance_score = Column(Integer, nullable=True)
+    confidence_score = Column(Integer, nullable=True)
+    evaluation_summary = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

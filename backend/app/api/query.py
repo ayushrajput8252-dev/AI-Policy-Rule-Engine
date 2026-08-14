@@ -25,7 +25,7 @@ async def process_query(request: QueryRequest):
             raise HTTPException(status_code=400, detail="Query string cannot be empty.")
 
         # 0. Redis Query Cache Check
-        cached_result = get_cached_query(request.document_id, raw_query)
+        cached_result = get_cached_query(request.document_id, raw_query, request.top_k)
         if cached_result:
             return cached_result
             
@@ -64,7 +64,7 @@ async def process_query(request: QueryRequest):
             answer_data["translated_query"] = search_query
             
         # 7. Write Result to Redis Cache
-        set_cached_query(request.document_id, raw_query, answer_data)
+        set_cached_query(request.document_id, raw_query, answer_data, request.top_k)
         
         return answer_data
         
