@@ -1,10 +1,15 @@
 services:
   - type: web
     name: ai-policy-backend
-    env: python
+    # Docker, not Render's native Python buildpack — the app depends on
+    # system binaries (tesseract-ocr for OCR, ffmpeg for audio via pydub)
+    # that the native "env: python" runtime has no way to apt-get install.
+    # backend/Dockerfile already installs both plus the spaCy model, so this
+    # just reuses it instead of silently running without OCR/audio support.
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
     plan: free
-    buildCommand: "cd backend && pip install -r requirements.txt && python -m spacy download en_core_web_sm"
-    startCommand: "cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: GROQ_API_KEY
         sync: false
@@ -20,5 +25,17 @@ services:
         sync: false
       - key: HF_TOKEN
         sync: false
+      - key: DATABASE_URL
+        sync: false # SQLite has no persistent disk on the free plan — point this at a hosted Postgres URL (e.g. Neon/Supabase) so data survives redeploys.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE_NUMBER
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false # Set to this service's own Render URL (e.g. https://ai-policy-backend.onrender.com) once deployed — Twilio calls back into this for TwiML/webhooks.
       - key: CORS_ORIGINS
-        value: "https://ai-policy-rule-engine.vercel.app" # Change to your Vercel URL
+        value: "https://ai-policy-rule-engine.vercel.app" # Set to your production Vercel domain (custom domain, or the project's default *.vercel.app URL). Every *.vercel.app preview deployment is additionally allowed automatically via regex in app/main.py.

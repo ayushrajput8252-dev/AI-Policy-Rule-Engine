@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, useInView, AnimatePresence } from "framer-motion";
 import WeeklyReportModal from "@/components/weekly-report/WeeklyReportModal";
@@ -1029,22 +1029,14 @@ function PreviewBadge() {
   );
 }
 
-/** Wraps a capability card with the gold crown ribbon + highlighted border
- * used for the two premium usage-based add-ons (Telephonic + Screening Agent). */
-function FeaturedCardFrame({ children }: { children: ReactNode }) {
+/** Small "Featured" badge, in the same flat pill style as the other card
+ * badges (WorkingBadge, PreviewBadge) — used inline in the badge row of the
+ * two premium usage-based add-ons (Telephonic + Screening Agent). */
+function FeaturedBadge() {
   return (
-    <div className="relative pt-4 group/featured">
-      <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-blue-600 to-blue-700 shadow-lg shadow-blue-600/30 ring-1 ring-blue-500/60">
-        <Crown className="w-3.5 h-3.5 text-white fill-white" />
-        <span className="text-[10px] font-mono font-bold text-white uppercase tracking-wider">Featured</span>
-      </div>
-      {/* Ring-only accent — the inner .cpu-burn-card already owns the lift/shadow
-          hover motion, so this wrapper just brightens in step instead of adding
-          a second, compounding transform. */}
-      <div className="rounded-[1.5rem] ring-2 ring-blue-200 group-hover/featured:ring-blue-300 transition-colors duration-300 h-full">
-        {children}
-      </div>
-    </div>
+    <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700 shrink-0">
+      <Crown className="w-2.5 h-2.5" /> FEATURED
+    </span>
   );
 }
 
@@ -1593,14 +1585,14 @@ function TelephonicAgentCard() {
   ];
 
   return (
-    <FeaturedCardFrame>
-      <div className="cpu-burn-card h-full flex flex-col">
+    <div className="cpu-burn-card h-full flex flex-col">
         <div className="flex items-center justify-between mb-3 gap-2">
           <div className="card-icon-badge">
             <Phone className="w-5 h-5" />
           </div>
           <div className="flex items-center gap-1.5">
             <WorkingBadge />
+            <FeaturedBadge />
             <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">
               PAY PER CONNECT
             </span>
@@ -1638,8 +1630,7 @@ function TelephonicAgentCard() {
         >
           <Phone className="w-3.5 h-3.5" /> Call Now
         </Link>
-      </div>
-    </FeaturedCardFrame>
+    </div>
   );
 }
 
@@ -1658,8 +1649,7 @@ function ScreeningAgentCard() {
   ];
 
   return (
-    <FeaturedCardFrame>
-      <div className="cpu-burn-card h-full">
+    <div className="cpu-burn-card h-full">
         <div className="flex flex-col md:flex-row gap-7">
           <div className="flex-1 min-w-0 flex flex-col">
             <div className="flex items-center justify-between mb-3 gap-2">
@@ -1668,6 +1658,7 @@ function ScreeningAgentCard() {
               </div>
               <div className="flex items-center gap-1.5">
                 <WorkingBadge />
+                <FeaturedBadge />
                 <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">
                   PAY PER INTERVIEW
                 </span>
@@ -1702,8 +1693,7 @@ function ScreeningAgentCard() {
             ))}
           </div>
         </div>
-      </div>
-    </FeaturedCardFrame>
+    </div>
   );
 }
 

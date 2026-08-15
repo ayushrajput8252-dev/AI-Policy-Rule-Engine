@@ -46,7 +46,11 @@ class Settings(BaseSettings):
 
     # Fraud detection pipeline
     FRAUD_ELA_THRESHOLD: float = 35.0
-    TESSERACT_CMD: str = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    # Empty by default so pytesseract resolves `tesseract` from PATH, which is
+    # how the apt-installed binary is found on Linux hosts (Render/Docker/HF
+    # Spaces). Only set this in .env on Windows dev machines, where Tesseract
+    # isn't on PATH by default — e.g. C:\Program Files\Tesseract-OCR\tesseract.exe.
+    TESSERACT_CMD: str = ""
 
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),

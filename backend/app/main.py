@@ -16,15 +16,34 @@ app = FastAPI(
     version="1.0.0"
 )
 
-cors_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()] or ["*"]
+cors_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Every Vercel deployment (production and each PR/branch preview) gets its own
+# hostname under *.vercel.app, so a fixed CORS_ORIGINS list can't keep up with
+# preview URLs on its own — match the whole vercel.app family by regex in
+# addition to whatever explicit custom domain(s) are set in CORS_ORIGINS.
+VERCEL_ORIGIN_REGEX = r"^https://[a-zA-Z0-9-]+\.vercel\.app$"
+
+if cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_origin_regex=VERCEL_ORIGIN_REGEX,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    # No explicit origins configured (local dev) — allow any origin, but
+    # without credentials, since browsers reject a wildcard origin combined
+    # with credentialed requests regardless of what the server sends.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 app.include_router(upload.router, prefix="/api/v1")
 app.include_router(query.router, prefix="/api/v1")
