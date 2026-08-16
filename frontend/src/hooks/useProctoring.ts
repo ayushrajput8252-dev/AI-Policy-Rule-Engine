@@ -84,18 +84,27 @@ function silenceMediapipeInfoLogs() {
   };
 }
 
+// The GPU delegate needs a real WebGL context (MediaPipe calls
+// emscripten_webgl_create_context() internally), which fails in plenty of
+// ordinary environments — VMs, remote desktop sessions, hardware
+// acceleration disabled, headless/software-rendered browsers. Worse, when
+// it fails, MediaPipe logs "StartGraph failed" via console.error but still
+// *resolves* createFromOptions with a landmarker whose graph never actually
+// started, so the crash surfaces later and deeper — inside detectForVideo()
+// — instead of a catchable rejection at setup time. CPU (XNNPACK) doesn't
+// need a GPU context at all and is plenty fast at this hook's 8fps/1-model
+// detection rate, so use it unconditionally rather than probing for GPU.
 function getLandmarker(): Promise<FaceLandmarker> {
   if (!landmarkerPromise) {
     silenceMediapipeInfoLogs();
-    landmarkerPromise = FilesetResolver.forVisionTasks(WASM_BASE).then(
-      (fileset) =>
-        FaceLandmarker.createFromOptions(fileset, {
-          baseOptions: { modelAssetPath: MODEL_URL, delegate: "GPU" },
-          runningMode: "VIDEO",
-          numFaces: 5,
-          outputFaceBlendshapes: false,
-          outputFacialTransformationMatrixes: false,
-        }),
+    landmarkerPromise = FilesetResolver.forVisionTasks(WASM_BASE).then((fileset) =>
+      FaceLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: MODEL_URL, delegate: "CPU" },
+        runningMode: "VIDEO",
+        numFaces: 5,
+        outputFaceBlendshapes: false,
+        outputFacialTransformationMatrixes: false,
+      }),
     );
   }
   return landmarkerPromise;
