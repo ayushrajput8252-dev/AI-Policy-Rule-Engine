@@ -29,7 +29,27 @@ const MULTI_FACE_DEBOUNCE_MS = 1500;
 const RE_FLAG_INTERVAL_MS = 4000; // don't spam the same sustained flag every frame
 const DETECT_FPS = 8;
 
-export type FlagType = "no_face" | "multi_face" | "looking_away" | "tab_switch";
+// Ambient background noise: a sustained noise floor above this level (e.g. a
+// TV, other conversations in the room) gets flagged after a grace period so
+// a brief cough or door slam doesn't trip it.
+const NOISE_RMS_THRESHOLD = 0.05;
+const NOISE_SUSTAINED_MS = 4000;
+// Cross-talk: while the AI interviewer is mid-question the candidate is
+// expected to stay quiet — any voice-level sound during that window is a
+// stronger cheating signal (someone talking over the agent / being coached)
+// than generic ambient noise, so it uses a lower threshold and shorter grace.
+const CROSS_TALK_RMS_THRESHOLD = 0.04;
+const CROSS_TALK_SUSTAINED_MS = 1500;
+const AUDIO_RE_FLAG_INTERVAL_MS = 6000;
+const AUDIO_SAMPLE_INTERVAL_MS = 200;
+
+export type FlagType =
+  | "no_face"
+  | "multi_face"
+  | "looking_away"
+  | "tab_switch"
+  | "background_noise"
+  | "cross_talk";
 
 export interface ProctorFlag {
   id: string;
@@ -57,6 +77,8 @@ const FLAG_PENALTY: Record<FlagType, number> = {
   multi_face: 10,
   looking_away: 5,
   tab_switch: 5,
+  background_noise: 5,
+  cross_talk: 8,
 };
 
 const FLAG_LABEL: Record<FlagType, string> = {
@@ -64,7 +86,13 @@ const FLAG_LABEL: Record<FlagType, string> = {
   multi_face: "Multiple faces detected",
   looking_away: "Candidate looking away",
   tab_switch: "Tab switched / window lost focus",
+  background_noise: "Sustained background noise detected",
+  cross_talk: "Talking over the interviewer detected",
 };
+
+/** "speaking" = the AI interviewer is currently talking (candidate should be
+ * quiet); "other" = any other phase (candidate is free to talk/make noise). */
+export type InterviewAudioPhase = "speaking" | "other";
 
 let landmarkerPromise: Promise<FaceLandmarker> | null = null;
 
@@ -171,6 +199,19 @@ export function useProctoring() {
   const lastTabFlagRef = useRef(0);
   const startedAtRef = useRef<number>(0);
   const mountedRef = useRef(true);
+
+  // Ambient noise / cross-talk detection — a second, independent audio-only
+  // stream from the video one (separate getUserMedia call), so camera and
+  // mic permission/failure stay isolated from each other.
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioAnalyserRef = useRef<AnalyserNode | null>(null);
+  const audioLoopIntervalRef = useRef<number | null>(null);
+  const interviewAudioPhaseRef = useRef<InterviewAudioPhase>("other");
+  const noiseSinceRef = useRef<number | null>(null);
+  const crossTalkSinceRef = useRef<number | null>(null);
+  const lastNoiseFlagRef = useRef(0);
+  const lastCrossTalkFlagRef = useRef(0);
 
   const [state, setState] = useState<ProctoringState>({
     status: "idle",
@@ -318,11 +359,86 @@ export function useProctoring() {
     rafRef.current = requestAnimationFrame(detectLoop);
   }, [pushFlag]);
 
+  /** RMS-sampled ambient noise / cross-talk monitor — runs on a plain
+   * interval (not rAF; audio doesn't need frame-rate sampling) against the
+   * persistent audio-only stream acquired in start(). Which check applies
+   * (cross-talk vs. generic background noise) depends on whether the
+   * interview is currently in its "speaking" phase, set via
+   * notifyInterviewPhase() from the consuming component. */
+  const sampleAudioLevel = useCallback(() => {
+    const analyser = audioAnalyserRef.current;
+    if (!analyser) return;
+    const data = new Uint8Array(analyser.fftSize);
+    analyser.getByteTimeDomainData(data);
+    let sumSquares = 0;
+    for (let i = 0; i < data.length; i++) {
+      const norm = (data[i] - 128) / 128;
+      sumSquares += norm * norm;
+    }
+    const rms = Math.sqrt(sumSquares / data.length);
+    const wallClock = Date.now();
+    const isSpeakingPhase = interviewAudioPhaseRef.current === "speaking";
+
+    if (isSpeakingPhase) {
+      noiseSinceRef.current = null;
+      if (rms > CROSS_TALK_RMS_THRESHOLD) {
+        if (crossTalkSinceRef.current === null) crossTalkSinceRef.current = wallClock;
+        const sustainedFor = wallClock - crossTalkSinceRef.current;
+        if (
+          sustainedFor > CROSS_TALK_SUSTAINED_MS &&
+          wallClock - lastCrossTalkFlagRef.current > AUDIO_RE_FLAG_INTERVAL_MS
+        ) {
+          lastCrossTalkFlagRef.current = wallClock;
+          pushFlag("cross_talk");
+        }
+      } else {
+        crossTalkSinceRef.current = null;
+      }
+    } else {
+      crossTalkSinceRef.current = null;
+      if (rms > NOISE_RMS_THRESHOLD) {
+        if (noiseSinceRef.current === null) noiseSinceRef.current = wallClock;
+        const sustainedFor = wallClock - noiseSinceRef.current;
+        if (
+          sustainedFor > NOISE_SUSTAINED_MS &&
+          wallClock - lastNoiseFlagRef.current > AUDIO_RE_FLAG_INTERVAL_MS
+        ) {
+          lastNoiseFlagRef.current = wallClock;
+          pushFlag("background_noise");
+        }
+      } else {
+        noiseSinceRef.current = null;
+      }
+    }
+  }, [pushFlag]);
+
+  /** Lets the consuming component report whether the AI interviewer is
+   * currently speaking, so the audio monitor can apply the stricter
+   * cross-talk check instead of the generic ambient-noise one. */
+  const notifyInterviewPhase = useCallback((phase: InterviewAudioPhase) => {
+    interviewAudioPhaseRef.current = phase;
+  }, []);
+
   const stop = useCallback(() => {
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
+    if (audioLoopIntervalRef.current !== null) {
+      window.clearInterval(audioLoopIntervalRef.current);
+      audioLoopIntervalRef.current = null;
+    }
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
+    }
+    audioAnalyserRef.current = null;
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach((t) => t.stop());
+      audioStreamRef.current = null;
+    }
+    noiseSinceRef.current = null;
+    crossTalkSinceRef.current = null;
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
@@ -395,7 +511,32 @@ export function useProctoring() {
     lookingAwaySinceRef.current = null;
     setState((prev) => ({ ...prev, status: "live" }));
     rafRef.current = requestAnimationFrame(detectLoop);
-  }, [detectLoop]);
+
+    // Noise/cross-talk detection is a non-fatal add-on — a second,
+    // independent getUserMedia({audio:true}) call. If mic permission is
+    // denied or a device is unavailable, proctoring continues video-only,
+    // same resilience pattern as the camera-error branch above.
+    try {
+      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      audioStreamRef.current = audioStream;
+      const AudioCtxCtor =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (AudioCtxCtor) {
+        const ctx = new AudioCtxCtor();
+        audioCtxRef.current = ctx;
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        ctx.createMediaStreamSource(audioStream).connect(analyser);
+        audioAnalyserRef.current = analyser;
+        noiseSinceRef.current = null;
+        crossTalkSinceRef.current = null;
+        audioLoopIntervalRef.current = window.setInterval(sampleAudioLevel, AUDIO_SAMPLE_INTERVAL_MS);
+      }
+    } catch (err) {
+      console.error("Failed to acquire mic for noise/cross-talk detection", err);
+    }
+  }, [detectLoop, sampleAudioLevel]);
 
   // Tab-switch / focus-loss detection — plain DOM events, active only while live.
   useEffect(() => {
@@ -431,5 +572,5 @@ export function useProctoring() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { videoRef, state, faceBoxes, start, stop };
+  return { videoRef, state, faceBoxes, start, stop, notifyInterviewPhase };
 }
