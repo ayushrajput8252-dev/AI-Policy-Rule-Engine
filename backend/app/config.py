@@ -38,6 +38,17 @@ class Settings(BaseSettings):
     # call back into localhost.
     PUBLIC_BASE_URL: str = ""
 
+    # SMTP — used only by the Screening Agent invite flow (app/services/email_service.py).
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+
+    # Candidate-facing origin (the frontend's own URL), used to build interview
+    # invite links — distinct from PUBLIC_BASE_URL, which is this backend's own
+    # public URL for Twilio webhooks.
+    FRONTEND_BASE_URL: str = "http://localhost:3000"
+
     DATABASE_URL: str = "sqlite:///./policy_engine.db"
     
     REDIS_URL: str = "redis://localhost:6379/0"

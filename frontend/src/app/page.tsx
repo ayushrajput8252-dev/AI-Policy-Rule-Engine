@@ -1,20 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { motion, useInView, AnimatePresence } from "framer-motion";
-import WeeklyReportModal from "@/components/weekly-report/WeeklyReportModal";
+import { motion, AnimatePresence } from "framer-motion";
 import { askAssistant } from "@/components/ai-assistant/AIAssistantWidget";
 import { reopenCookieConsent } from "@/components/CookieConsent";
 import {
   Database, UserPlus, Brain, Bot, BarChart3, Shield,
   ArrowRight, Menu, X, Zap, Users, Globe, CheckCircle2,
-  Sparkles, Search, FileText, Cpu, Activity, Play, ArrowUpRight, Radio, Terminal, Pause, SkipForward,
+  Sparkles, Search, FileText, Cpu, Play, ArrowUpRight, Radio, Terminal, Pause, SkipForward,
   MessageSquare, Layers, Server, Cloud, Plug, Share2, CheckSquare,
   Wallet, CalendarCheck, FileCheck,
   FolderOpen,
   Phone, Video, Minus, Plus, ShieldCheck, BadgeCheck, Lock, Calculator,
-  Scale, UserCheck, ClipboardX, ShieldAlert, MousePointer2, CalendarClock,
+  Scale, UserCheck, ClipboardX, ShieldAlert, MousePointer2,
   Award, Mail, ClipboardList, Target, Radar, Crown, FileSearch,
 } from "lucide-react";
 
@@ -112,31 +111,9 @@ function FloatingHeroDoodles() {
   );
 }
 
-/* ── Count Up Hook ── */
-function useCountUp(end: number, duration = 1800) {
-  const [count, setCount] = useState(0);
-  const ref = useRef<HTMLSpanElement>(null);
-  const inView = useInView(ref, { once: true, margin: "-60px" });
-  const started = useRef(false);
-
-  useEffect(() => {
-    if (!inView || started.current) return;
-    started.current = true;
-    const t0 = performance.now();
-    const tick = (now: number) => {
-      const p = Math.min((now - t0) / duration, 1);
-      setCount(Math.floor((1 - Math.pow(1 - p, 4)) * end));
-      if (p < 1) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  }, [inView, end, duration]);
-  return { count, ref };
-}
-
 export default function LandingPage() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [archModalOpen, setArchModalOpen] = useState(false);
-  const [weeklyReportOpen, setWeeklyReportOpen] = useState(false);
 
   const navLinks = [
     { label: "Platform", href: "#platform" },
@@ -368,14 +345,11 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-3 gap-6 items-start">
             <OnboardingCardInteractive />
             <KnowledgeCardInteractive />
-            <PIPAgentCard />
+            <SecurityCardWhite />
 
             <div className="md:col-span-2">
               <AutomationCardInteractive />
             </div>
-            <ReportsCardWhite onOpenReport={() => setWeeklyReportOpen(true)} />
-
-            <SecurityCardWhite />
             <IntegrationsCardInteractive />
           </div>
         </div>
@@ -422,9 +396,6 @@ export default function LandingPage() {
 
       {/* ─── ARCHITECTURE MODAL WITH BURNING LINES ─── */}
       <BurningArchitectureModal isOpen={archModalOpen} onClose={() => setArchModalOpen(false)} />
-
-      {/* ─── WEEKLY EXECUTIVE REPORT MODAL ─── */}
-      <WeeklyReportModal isOpen={weeklyReportOpen} onClose={() => setWeeklyReportOpen(false)} />
 
       {/* ─── THE MATH: COST COMPARISON ─── */}
       <section id="pricing" className="py-28 border-t border-zinc-200/80 bg-gradient-to-b from-white to-blue-50/40 relative">
@@ -1452,51 +1423,6 @@ function AutomationCardInteractive() {
   );
 }
 
-/* ── PIP Agent — auto-drafted Performance Improvement Plans ── */
-function PIPAgentCard() {
-  const features = [
-    "Clear, measurable targets",
-    "30–90 day resolution window",
-    "Auto-generated, HR-reviewed document",
-    "Progress check-ins logged automatically",
-  ];
-
-  return (
-    <div className="cpu-burn-card h-full flex flex-col">
-      <div className="flex items-center justify-between mb-5">
-        <div className="card-icon-badge">
-          <ClipboardX className="w-5 h-5" />
-        </div>
-        <PreviewBadge />
-      </div>
-      <h3 className="text-[16px] font-bold text-zinc-900 mb-1.5">PIP Agent</h3>
-      <p className="text-[13px] text-zinc-600 leading-relaxed mb-5">
-        Auto-drafts a Performance Improvement Plan the moment a manager flags an underperforming employee — clear goals, a fixed window to fix them, and a paper trail from day one.
-      </p>
-
-      <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl mb-5">
-        <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500 mb-2">
-          <span>Target</span>
-          <span className="flex items-center gap-1 text-blue-700 font-bold"><CalendarClock className="w-3 h-3" /> 30–90 days</span>
-        </div>
-        <div className="text-[12px] text-zinc-800 font-semibold">&ldquo;Ship 3 sprint commitments on time&rdquo;</div>
-        <div className="h-1.5 bg-zinc-200 rounded-full mt-3 overflow-hidden">
-          <div className="h-full w-2/5 bg-blue-600 rounded-full" />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 mt-auto pt-1 border-t border-zinc-100">
-        {features.map((f) => (
-          <div key={f} className="flex items-start gap-1.5 text-[12px] text-zinc-700 leading-snug pt-3">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-px" />
-            {f}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /* ── Fraud Detection — a live agent, continuously scanning the pre/post-join lifecycle ── */
 function FraudDetectionCard() {
   const preJoin = ["Resume authenticity check", "Duplicate identity scan", "Reference cross-check"];
@@ -1694,59 +1620,6 @@ function ScreeningAgentCard() {
           </div>
         </div>
     </div>
-  );
-}
-
-function ReportsCardWhite({ onOpenReport }: { onOpenReport: () => void }) {
-  const metrics = [
-    { label: "Automations", value: 1245, suffix: "" },
-    { label: "Hours Saved", value: 312, suffix: "" },
-    { label: "Docs Indexed", value: 95, suffix: "K" },
-    { label: "Cost Saved", value: 18, suffix: "K" },
-  ];
-
-  return (
-    <div className="cpu-burn-card h-full">
-      <div className="flex items-center justify-between mb-5">
-        <div className="card-icon-badge">
-          <BarChart3 className="w-5 h-5" />
-        </div>
-        <div className="flex items-center gap-1.5">
-          <PreviewBadge />
-          <button
-            onClick={onOpenReport}
-            className="text-[10px] font-mono font-bold bg-blue-600 text-white px-2.5 py-1 rounded-lg hover:bg-blue-700 transition-all flex items-center gap-1"
-          >
-            <ArrowUpRight className="w-3 h-3" />
-            <span>Try</span>
-          </button>
-        </div>
-      </div>
-      <h3 className="text-[16px] font-bold text-zinc-900 mb-4">Track Insights</h3>
-      <div className="grid grid-cols-2 gap-2.5 mb-4">
-        {metrics.map((m) => (
-          <div key={m.label} className="bg-zinc-50 border border-zinc-200 rounded-lg p-3">
-            <div className="text-[15px] font-bold text-zinc-900 font-mono">
-              <StatSpan end={m.value} suffix={m.suffix} />
-            </div>
-            <div className="text-[10px] text-zinc-500 font-medium">{m.label}</div>
-          </div>
-        ))}
-      </div>
-      <div className="text-[10px] text-zinc-500 font-mono flex items-center gap-1.5">
-        <Activity className="w-3 h-3 text-blue-600" /> Executive Digest dispatched weekly
-      </div>
-    </div>
-  );
-}
-
-function StatSpan({ end, suffix }: { end: number; suffix: string }) {
-  const { count, ref } = useCountUp(end);
-  return (
-    <span>
-      <span ref={ref}>{count.toLocaleString()}</span>
-      {suffix}
-    </span>
   );
 }
 

@@ -66,6 +66,17 @@ class CallRecord(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+class ScreeningSession(Base):
+    __tablename__ = "screening_sessions"
+
+    id = Column(String, primary_key=True, index=True)
+    email = Column(String, index=True, nullable=False)
+    role_title = Column(String, nullable=False)
+    jd_text = Column(Text, nullable=True)
+    status = Column(String, default="invited")  # invited -> opened -> in_progress -> completed
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
 class Rule(Base):
     __tablename__ = "rules"
 

@@ -23,3 +23,8 @@ faster-whisper
 Pillow
 pytesseract
 twilio
+langchain
+langchain-core
+langchain-groq
+langchain-google-genai
+email-validator
