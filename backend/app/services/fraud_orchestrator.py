@@ -2,7 +2,7 @@ import asyncio
 from typing import AsyncGenerator
 from ..database import SessionLocal
 from ..models import FraudScan
-from . import fraud_metadata, fraud_ocr, fraud_arithmetic, fraud_ela, fraud_font, fraud_reasoning
+from . import fraud_metadata, fraud_ocr, fraud_arithmetic, fraud_ela, fraud_font, fraud_identity, fraud_resume_authenticity, fraud_reasoning
 
 
 def _save(scan_id: str, status: str, result: dict) -> None:
@@ -17,7 +17,9 @@ def _save(scan_id: str, status: str, result: dict) -> None:
         db.close()
 
 
-async def run_scan(scan_id: str, file_path: str, content_type: str) -> AsyncGenerator[dict, None]:
+async def run_scan(
+    scan_id: str, file_path: str, content_type: str, ip_address: str | None = None, user_agent: str | None = None
+) -> AsyncGenerator[dict, None]:
     steps: list[dict] = []
 
     def emit_and_save(status: str):
@@ -48,6 +50,20 @@ async def run_scan(scan_id: str, file_path: str, content_type: str) -> AsyncGene
         steps.append(font_step)
         emit_and_save("scanning")
         yield {"type": "step", "step": font_step}
+
+        identity_step, extracted_identity = await asyncio.to_thread(
+            fraud_identity.check_identity, scan_id, text, ip_address, user_agent
+        )
+        steps.append(identity_step)
+        emit_and_save("scanning")
+        yield {"type": "step", "step": identity_step}
+
+        resume_step = await asyncio.to_thread(
+            fraud_resume_authenticity.check_resume_authenticity, scan_id, text, file_path, content_type, extracted_identity
+        )
+        steps.append(resume_step)
+        emit_and_save("scanning")
+        yield {"type": "step", "step": resume_step}
 
         reasoning_step = await asyncio.to_thread(fraud_reasoning.synthesize, text, steps)
         steps.append(reasoning_step)

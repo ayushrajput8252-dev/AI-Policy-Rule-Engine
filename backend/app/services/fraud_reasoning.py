@@ -1,12 +1,14 @@
 import json
 from . import llm_service
 
-REASONING_PROMPT = """You are a fraud-detection analyst reviewing a document (e.g. a salary slip, offer letter, or relieving letter) that has already been through five automated forensic checks. Your job is to synthesize their findings with the document's own text into a single judgment call.
+REASONING_PROMPT = """You are a fraud-detection analyst reviewing a document (e.g. a salary slip, offer letter, relieving letter, or resume) that has already been through seven automated forensic checks. Your job is to synthesize their findings with the document's own text into a single judgment call.
 
 Not all checks are equally reliable — weight them accordingly:
-- HIGH weight (strong, low-noise evidence): Metadata Fingerprint Check, Field Arithmetic & Logic.
-- MEDIUM weight: OCR Extraction Quality, Error Level Analysis.
+- HIGH weight (strong, low-noise evidence): Metadata Fingerprint Check, Field Arithmetic & Logic, Duplicate Identity Scan (a high-confidence identity match is strong, specific evidence of the same person applying under a different identity).
+- MEDIUM weight: OCR Extraction Quality, Error Level Analysis, Resume Authenticity Check (this one is already an internal ensemble of deterministic logic checks, an employer/domain cross-reference, file metadata, and embedding-similarity/AI-text signals — treat its own verdict as pre-weighted, don't re-amplify it).
 - LOW weight (noisy, prone to false positives on legitimate documents with normal typographic variety — headers, bold text, footnotes, multi-column layouts): Font & Layout Consistency. A "warn" or "fail" on this check ALONE, with every other check passing, is NOT sufficient grounds for "likely_fraudulent" — treat it as at most a mild reason for "needs_review", and only let it meaningfully raise risk_score if at least one other check also flagged something.
+
+If a check's status is "na" (not applicable — e.g. Duplicate Identity Scan or Resume Authenticity Check on a document with no identity fields or too little text), ignore it entirely rather than treating "na" as a negative signal.
 
 Automated check findings (JSON):
 {signals}

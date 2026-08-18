@@ -2,7 +2,7 @@ import json
 import os
 import uuid
 import fitz
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from ..database import get_db
@@ -76,15 +76,20 @@ async def upload_fraud_document(file: UploadFile = File(...), db: Session = Depe
 
 
 @router.get("/scan/{scan_id}/stream")
-async def stream_scan(scan_id: str, db: Session = Depends(get_db)):
+async def stream_scan(scan_id: str, request: Request, db: Session = Depends(get_db)):
     scan = db.query(FraudScan).filter(FraudScan.id == scan_id).first()
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found.")
 
     file_path, content_type = scan.file_path, scan.content_type
+    # Coarse, non-biometric signals for the Duplicate Identity Scan — only a
+    # SHA-256 hash of these ever reaches storage (see fraud_identity.py), so
+    # the raw IP/user-agent captured here is never persisted.
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
 
     async def event_stream():
-        async for event in run_scan(scan_id, file_path, content_type):
+        async for event in run_scan(scan_id, file_path, content_type, ip_address, user_agent):
             yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(
