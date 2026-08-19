@@ -7,10 +7,14 @@ import {
   ArrowLeft, ArrowRight, Upload, FileText, Image as ImageIcon, ShieldAlert, ScanSearch,
   Calculator, Layers, Type, Brain, CheckCircle2, XCircle, AlertTriangle,
   MinusCircle, Loader2, RotateCcw, X, Sparkles, ShieldCheck, Zap, Radio, FileScan,
+  Fingerprint, FileSearch, Camera,
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const ACCEPTED_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png"];
+const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"];
+
+type UploadMode = "document" | "photo";
 
 /* ═══════════════════════════════════════════════════════════
    TYPES & STEP METADATA — mirrors the backend pipeline order:
@@ -68,6 +72,18 @@ const STEP_META = [
     blurb: "Flags an unusually high number of distinct fonts/sizes in the body text — a common side-effect of manual edits.",
   },
   {
+    key: "identity",
+    title: "Duplicate Identity Scan",
+    icon: Fingerprint,
+    blurb: "Blocks by phone/email/name key against every prior submission, then an ensemble of a Random Forest and a small neural net scores name variants, DOB, device signal, IP, and bank account — matches cluster into an identity graph.",
+  },
+  {
+    key: "resume_authenticity",
+    title: "Resume Authenticity Check",
+    icon: FileSearch,
+    blurb: "Weighs employer/domain cross-referencing, file-metadata forensics, embedding similarity against every resume on file, and an AI-text classifier into one ensemble verdict — no single signal decides alone.",
+  },
+  {
     key: "reasoning",
     title: "AI Reasoning Synthesis",
     icon: Brain,
@@ -102,7 +118,7 @@ const HERO_STATS = [
   { value: String(STEP_META.length), label: "forensic checks per scan" },
   { value: "Real", label: "backend — nothing simulated" },
   { value: "Live", label: "step-by-step SSE streaming" },
-  { value: "PDF/JPG/PNG", label: "supported formats" },
+  { value: "PDF/JPG/PNG", label: "documents & photos" },
 ];
 
 type Stage = "landing" | "uploaded" | "scanning" | "done" | "error";
@@ -113,6 +129,7 @@ type Stage = "landing" | "uploaded" | "scanning" | "done" | "error";
 
 export default function FraudDetectionPage() {
   const [stage, setStage] = useState<Stage>("landing");
+  const [uploadMode, setUploadMode] = useState<UploadMode>("document");
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -138,6 +155,7 @@ export default function FraudDetectionPage() {
     esRef.current?.close();
     esRef.current = null;
     setStage("landing");
+    setUploadMode("document");
     setUploadError("");
     setScanError("");
     setStepsByKey({});
@@ -150,8 +168,9 @@ export default function FraudDetectionPage() {
   const handleFile = async (file: File | undefined | null) => {
     if (!file) return;
     const ext = "." + (file.name.split(".").pop() || "").toLowerCase();
-    if (!ACCEPTED_EXTENSIONS.includes(ext)) {
-      setUploadError(`Unsupported file type. Allowed: ${ACCEPTED_EXTENSIONS.join(", ")}`);
+    const allowedForMode = uploadMode === "photo" ? IMAGE_EXTENSIONS : ACCEPTED_EXTENSIONS;
+    if (!allowedForMode.includes(ext)) {
+      setUploadError(`Unsupported file type for ${uploadMode === "photo" ? "Photo / Image" : "Document"} mode. Allowed: ${allowedForMode.join(", ")}`);
       return;
     }
     setUploadError("");
@@ -250,6 +269,8 @@ export default function FraudDetectionPage() {
         <div className="max-w-3xl mx-auto px-6">
           <ScannerCard
             stage={stage}
+            uploadMode={uploadMode}
+            onUploadModeChange={setUploadMode}
             dragOver={dragOver}
             uploading={uploading}
             uploadError={uploadError}
@@ -299,11 +320,11 @@ function HeroSection() {
         </span>
 
         <h1 className="text-[clamp(2rem,4.5vw,3.2rem)] font-extrabold tracking-tight leading-[1.1] mb-5">
-          Catch a <span className="text-blue-600">fabricated document</span> before it costs you.
+          Catch a <span className="text-blue-600">fabricated document</span> — or a fabricated identity.
         </h1>
 
         <p className="text-[16px] text-zinc-600 leading-relaxed max-w-xl mx-auto mb-8">
-          Upload a salary slip, offer letter, or relieving letter. Six real forensic checks run against your file live — PDF/EXIF metadata, OCR confidence, field arithmetic, error level analysis, font consistency, and a final AI-reasoned verdict. No canned demo numbers.
+          Upload a resume, salary slip, offer letter, or relieving letter — as a PDF or a photo. {STEP_META.length} real forensic checks run against your file live: document metadata, OCR confidence, field arithmetic, error level analysis, font consistency, a duplicate-identity scan against every prior submission, a resume authenticity ensemble, and a final AI-reasoned verdict. No canned demo numbers.
         </p>
 
         <div className="flex flex-wrap items-center justify-center gap-3 mb-5">
@@ -345,10 +366,11 @@ function HeroSection() {
    ═══════════════════════════════════════════════════════════ */
 
 function ScannerCard({
-  stage, dragOver, uploading, uploadError, onDragOver, onFile,
+  stage, uploadMode, onUploadModeChange, dragOver, uploading, uploadError, onDragOver, onFile,
   filename, contentType, previewImageUrl, onStartScan, stepsByKey, scanError, onReset,
 }: {
-  stage: Stage; dragOver: boolean; uploading: boolean; uploadError: string;
+  stage: Stage; uploadMode: UploadMode; onUploadModeChange: (m: UploadMode) => void;
+  dragOver: boolean; uploading: boolean; uploadError: string;
   onDragOver: (v: boolean) => void; onFile: (f: File | undefined | null) => void;
   filename: string; contentType: "pdf" | "image"; previewImageUrl: string | null;
   onStartScan: () => void; stepsByKey: Record<string, StepResult>; scanError: string; onReset: () => void;
@@ -389,7 +411,15 @@ function ScannerCard({
         <AnimatePresence mode="wait">
           {stage === "landing" && (
             <motion.div key="landing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <UploadDropzone dragOver={dragOver} uploading={uploading} error={uploadError} onDragOver={onDragOver} onFile={onFile} />
+              <UploadDropzone
+                mode={uploadMode}
+                onModeChange={onUploadModeChange}
+                dragOver={dragOver}
+                uploading={uploading}
+                error={uploadError}
+                onDragOver={onDragOver}
+                onFile={onFile}
+              />
             </motion.div>
           )}
 
@@ -450,14 +480,56 @@ function ScannerCard({
    UPLOAD DROPZONE
    ═══════════════════════════════════════════════════════════ */
 
+const UPLOAD_MODE_META: Record<UploadMode, { label: string; icon: typeof FileText; hint: string; dropHint: string; accept: string[] }> = {
+  document: {
+    label: "Document",
+    icon: FileText,
+    hint: "PDF, JPG, or PNG — payslip, offer letter, relieving letter, or resume",
+    dropHint: "Drag & drop a document here",
+    accept: ACCEPTED_EXTENSIONS,
+  },
+  photo: {
+    label: "Photo / Image",
+    icon: Camera,
+    hint: "JPG or PNG — a photographed/scanned resume, payslip, or ID document",
+    dropHint: "Drag & drop a photo here",
+    accept: IMAGE_EXTENSIONS,
+  },
+};
+
 function UploadDropzone({
-  dragOver, uploading, error, onDragOver, onFile,
+  mode, onModeChange, dragOver, uploading, error, onDragOver, onFile,
 }: {
+  mode: UploadMode; onModeChange: (m: UploadMode) => void;
   dragOver: boolean; uploading: boolean; error: string;
   onDragOver: (v: boolean) => void; onFile: (f: File | undefined | null) => void;
 }) {
+  const meta = UPLOAD_MODE_META[mode];
   return (
     <div>
+      <div className="flex items-center gap-2 mb-4">
+        {(Object.keys(UPLOAD_MODE_META) as UploadMode[]).map((m) => {
+          const opt = UPLOAD_MODE_META[m];
+          const Icon = opt.icon;
+          const active = m === mode;
+          return (
+            <button
+              key={m}
+              type="button"
+              disabled={uploading}
+              onClick={() => onModeChange(m)}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-[12.5px] font-bold transition-colors disabled:opacity-60 ${
+                active
+                  ? "bg-blue-600 border-blue-600 text-white shadow-sm"
+                  : "bg-white border-zinc-200 text-zinc-600 hover:border-blue-200 hover:bg-blue-50/40"
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" /> {opt.label}
+            </button>
+          );
+        })}
+      </div>
+
       <label
         onDragOver={(e) => { e.preventDefault(); if (!uploading) onDragOver(true); }}
         onDragLeave={() => onDragOver(false)}
@@ -477,11 +549,17 @@ function UploadDropzone({
         <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${uploading ? "bg-zinc-100" : "bg-blue-50 border border-blue-200"}`}>
           {uploading ? <Loader2 className="w-5 h-5 text-zinc-400 animate-spin" /> : <Upload className="w-5 h-5 text-blue-600" />}
         </div>
-        <div className="text-sm font-bold text-zinc-800 mt-1">{uploading ? "Uploading…" : "Drag & drop a document here"}</div>
-        <div className="text-xs text-zinc-500">or click to browse · PDF, JPG, PNG</div>
+        <div className="text-sm font-bold text-zinc-800 mt-1">{uploading ? "Uploading…" : meta.dropHint}</div>
+        <div className="text-xs text-zinc-500 max-w-xs">{uploading ? "" : `or click to browse · ${meta.hint}`}</div>
         <input
+          key={mode}
           type="file"
-          accept={ACCEPTED_EXTENSIONS.join(",")}
+          // Photo mode uses the image/* MIME pattern (not file extensions) —
+          // that's what reliably makes `capture` open the device camera
+          // directly on mobile browsers instead of the file browser, the
+          // concrete mechanism behind the "Photo / Image" option.
+          accept={mode === "photo" ? "image/*" : meta.accept.join(",")}
+          {...(mode === "photo" ? { capture: "environment" as const } : {})}
           disabled={uploading}
           className="hidden"
           onChange={(e) => onFile(e.target.files?.[0])}
@@ -652,6 +730,21 @@ function StepDetailChips({ stepKey, details }: { stepKey: string; details?: Reco
     if (typeof details.distinct_families === "number") chips.push(`${details.distinct_families} font families`);
     const families = details.families as string[] | undefined;
     if (families?.length) chips.push(families.slice(0, 3).join(", "));
+  } else if (stepKey === "identity") {
+    const matches = details.matches as Array<{ matched_name: string | null; probability: number }> | undefined;
+    if (matches?.length) chips.push(`${matches.length} match${matches.length === 1 ? "" : "es"} · top ${Math.round(matches[0].probability * 100)}%`);
+    else chips.push("No prior submissions matched");
+    const clusterSize = details.identity_cluster_size as number | undefined;
+    if (typeof clusterSize === "number" && clusterSize > 1) chips.push(`Identity cluster: ${clusterSize}`);
+    const blocked = details.candidates_blocked as number | undefined;
+    if (typeof blocked === "number") chips.push(`${blocked} candidate${blocked === 1 ? "" : "s"} blocked for comparison`);
+  } else if (stepKey === "resume_authenticity") {
+    const subScores = details.sub_scores as Record<string, number> | undefined;
+    if (subScores) {
+      for (const [k, v] of Object.entries(subScores)) {
+        chips.push(`${k.replace(/_/g, " ")}: ${v}`);
+      }
+    }
   } else if (stepKey === "reasoning") {
     const concerns = details.key_concerns as string[] | undefined;
     if (concerns?.length) chips.push(...concerns.slice(0, 2));
@@ -765,7 +858,7 @@ function MethodologySection() {
             How It Works
           </span>
           <h2 className="text-[clamp(1.6rem,3vw,2.2rem)] font-extrabold text-zinc-900 tracking-tight mt-4">
-            Six real checks, <span className="text-blue-600">one honest verdict</span>
+            {STEP_META.length} real checks, <span className="text-blue-600">one honest verdict</span>
           </h2>
           <p className="text-zinc-600 text-[15px] mt-2 leading-relaxed">
             Every check below runs against your actual file — highest-signal, lowest-effort forgeries first, AI reasoning last to synthesize everything.

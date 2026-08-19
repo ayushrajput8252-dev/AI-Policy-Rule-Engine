@@ -14,7 +14,7 @@ import {
   FolderOpen,
   Phone, Video, Minus, Plus, ShieldCheck, BadgeCheck, Lock, Calculator,
   Scale, UserCheck, ClipboardX, ShieldAlert, MousePointer2,
-  Award, Mail, ClipboardList, Target, Radar, Crown, FileSearch,
+  Award, Mail, ClipboardList, Target, Crown, FileSearch,
 } from "lucide-react";
 
 /* ── Inline GitHub Icon ── */
@@ -986,8 +986,8 @@ function SectionHeader({ badge, title, subtitle }: { badge: string; title: strin
    "Preview" = the rest — illustrative UI, not wired to a live backend. */
 function WorkingBadge() {
   return (
-    <span className="inline-flex items-center gap-1.5 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 shrink-0">
-      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> WORKING
+    <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 shrink-0">
+      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Live
     </span>
   );
 }
@@ -1214,24 +1214,21 @@ function RAGCardInteractive() {
         </Link>
       </div>
 
-      <div className="w-full md:w-56 shrink-0 space-y-3 p-4 bg-zinc-50 rounded-xl border border-zinc-200 font-mono text-xs">
-        <div className="flex items-center justify-between border-b border-zinc-200 pb-2">
-          <span className="text-[10px] font-bold text-blue-600">RAG AGENT ACTIVE</span>
-          <span className="text-[10px] text-emerald-600 font-bold">98.4% ACC</span>
-        </div>
-
-        <div className="space-y-2 text-[10px]">
-          <div className="flex justify-between">
-            <span className="text-zinc-500">Target Query:</span>
-            <span className="font-bold text-zinc-900 truncate max-w-[100px]">{sampleQueries[selectedIdx].query}</span>
+      <div className="w-full md:w-56 shrink-0 p-4 bg-zinc-50 rounded-xl border border-zinc-200">
+        <div className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-3">Result preview</div>
+        <div className="space-y-3">
+          <div>
+            <div className="text-[10px] text-zinc-500">Matched page</div>
+            <div className="text-[13px] font-bold text-zinc-900">Page {sampleQueries[selectedIdx].page}</div>
           </div>
-          <div className="flex justify-between">
-            <span className="text-zinc-500">Target Page:</span>
-            <span className="font-bold text-blue-600">Page {sampleQueries[selectedIdx].page}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-zinc-500">Cosine Match:</span>
-            <span className="font-bold text-emerald-600">{sampleQueries[selectedIdx].match}%</span>
+          <div>
+            <div className="text-[10px] text-zinc-500">Match confidence</div>
+            <div className="flex items-center gap-2 mt-1">
+              <div className="flex-1 h-1.5 bg-zinc-200 rounded-full overflow-hidden">
+                <div className="h-full rounded-full bg-blue-600" style={{ width: `${sampleQueries[selectedIdx].match}%` }} />
+              </div>
+              <span className="text-[11px] font-bold text-zinc-900 shrink-0">{sampleQueries[selectedIdx].match}%</span>
+            </div>
           </div>
         </div>
       </div>
@@ -1447,32 +1444,27 @@ function FraudDetectionCard() {
 
       <h3 className="text-[16px] font-bold text-zinc-900 mb-1.5">Fraud Detection</h3>
       <p className="text-[13px] text-zinc-600 leading-relaxed mb-5">
-        A centralized memory and detection layer that screens every candidate and employee at each stage — before and after they join — catching duplicate identities, fabricated credentials, and policy violations before they get costly.
+        A shared detection layer that screens every candidate and employee at each stage — before and after they join — catching duplicate identities, fabricated credentials, and policy violations before they get costly.
       </p>
-
-      <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-zinc-900 text-white font-mono text-[11px] mb-5 overflow-hidden">
-        <Radar className="w-3.5 h-3.5 text-blue-400 shrink-0 animate-spin [animation-duration:3s]" />
-        <span className="truncate">Scanning: {activeLabel}…</span>
-      </div>
 
       <div className="grid grid-cols-2 gap-2.5">
         <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl">
-          <div className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider mb-1.5">Before Joining</div>
+          <div className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-1.5">Before joining</div>
           {preJoin.map((f) => {
             const active = f === activeLabel;
             return (
-              <div key={f} className={`flex items-center gap-1.5 text-[11.5px] py-0.5 transition-colors ${active ? "text-blue-700 font-bold" : "text-zinc-700"}`}>
+              <div key={f} className={`flex items-center gap-1.5 text-[11.5px] py-0.5 transition-colors ${active ? "text-blue-700 font-semibold" : "text-zinc-700"}`}>
                 <CheckCircle2 className={`w-3 h-3 shrink-0 ${active ? "text-blue-600" : "text-emerald-600"}`} />{f}
               </div>
             );
           })}
         </div>
         <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-xl">
-          <div className="text-[10px] font-mono font-bold text-blue-500 uppercase tracking-wider mb-1.5">After Joining</div>
+          <div className="text-[10px] font-semibold text-blue-500 uppercase tracking-wide mb-1.5">After joining</div>
           {postJoin.map((f) => {
             const active = f === activeLabel;
             return (
-              <div key={f} className={`flex items-center gap-1.5 text-[11.5px] py-0.5 transition-colors ${active ? "text-blue-900 font-extrabold" : "text-blue-800"}`}>
+              <div key={f} className={`flex items-center gap-1.5 text-[11.5px] py-0.5 transition-colors ${active ? "text-blue-900 font-bold" : "text-blue-800"}`}>
                 <CheckCircle2 className={`w-3 h-3 shrink-0 ${active ? "text-blue-700" : "text-blue-600"}`} />{f}
               </div>
             );
@@ -1481,12 +1473,12 @@ function FraudDetectionCard() {
       </div>
 
       <div className="mt-auto pt-5">
-        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-zinc-900 text-white">
-          <div className="w-8 h-8 rounded-lg bg-white/10 border border-white/15 flex items-center justify-center shrink-0">
-            <Brain className="w-4 h-4 text-blue-400" />
+        <div className="flex items-center gap-3 px-3.5 py-3 rounded-xl bg-blue-50/70 border border-blue-200">
+          <div className="w-8 h-8 rounded-lg bg-white border border-blue-200 flex items-center justify-center text-blue-600 shrink-0">
+            <Brain className="w-4 h-4" />
           </div>
-          <p className="text-[12px] text-zinc-200 leading-snug">
-            <span className="font-bold text-white">One shared fraud memory</span> across every hire and every stage — no duplicate checks, no blind spots between systems.
+          <p className="text-[12px] text-zinc-700 leading-snug">
+            <span className="font-bold text-zinc-900">One shared fraud memory</span> across every hire and every stage — no duplicate checks, no blind spots between systems.
           </p>
         </div>
 
@@ -1494,7 +1486,7 @@ function FraudDetectionCard() {
           href="/fraud-detection"
           className="mt-3 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-[13px] font-bold hover:bg-blue-700 transition-colors shadow-sm"
         >
-          Launch Live Agent <ArrowRight className="w-3.5 h-3.5" />
+          Open Fraud Detection <ArrowRight className="w-3.5 h-3.5" />
         </Link>
       </div>
     </div>
@@ -1504,10 +1496,10 @@ function FraudDetectionCard() {
 /* ── Telephonic Agent — pay-per-connect voice screening ── */
 function TelephonicAgentCard() {
   const features = [
-    "Pay only for connects",
     "Up to 500 calls/day",
     "Auto hand-off to interviews",
     "Excel + resume upload",
+    "WhatsApp verified numbers",
   ];
 
   return (
@@ -1519,26 +1511,22 @@ function TelephonicAgentCard() {
           <div className="flex items-center gap-1.5">
             <WorkingBadge />
             <FeaturedBadge />
-            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">
-              PAY PER CONNECT
-            </span>
           </div>
         </div>
         <h3 className="text-[16px] font-bold text-zinc-900 mb-1.5">Telephonic Agent</h3>
-        <p className="text-[13px] text-zinc-500 mb-5">AI Voice Call · Screening</p>
+        <p className="text-[13px] text-zinc-500 mb-5">AI voice screening · pay only for connects</p>
 
         <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl mb-5">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <div className="text-[22px] font-extrabold text-zinc-900 font-mono leading-none">8–10<span className="text-[11px] font-medium text-zinc-500 ml-1">min</span></div>
+              <div className="text-[22px] font-extrabold text-zinc-900 leading-none">8–10<span className="text-[11px] font-medium text-zinc-500 ml-1">min</span></div>
               <div className="text-[10px] text-zinc-500 mt-1.5">Call duration</div>
             </div>
             <div>
-              <div className="text-[22px] font-extrabold text-zinc-900 font-mono leading-none">10+</div>
+              <div className="text-[22px] font-extrabold text-zinc-900 leading-none">10+</div>
               <div className="text-[10px] text-zinc-500 mt-1.5">Languages</div>
             </div>
           </div>
-          <div className="text-[11px] font-mono text-zinc-500 mt-3 pt-3 border-t border-zinc-200">WhatsApp verified numbers</div>
         </div>
 
         <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 mb-6 pt-1 border-t border-zinc-100">
@@ -1585,13 +1573,10 @@ function ScreeningAgentCard() {
               <div className="flex items-center gap-1.5">
                 <WorkingBadge />
                 <FeaturedBadge />
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">
-                  PAY PER INTERVIEW
-                </span>
               </div>
             </div>
             <h3 className="text-[16px] font-bold text-zinc-900 mb-1.5">Screening Agent</h3>
-            <p className="text-[13px] text-zinc-500 mb-5">3D avatar interviews, on autopilot</p>
+            <p className="text-[13px] text-zinc-500 mb-5">3D avatar interviews · pay per interview</p>
 
             <div className="flex flex-wrap gap-2">
               {features.map((f) => (

@@ -418,7 +418,7 @@ def _build_match_graph(new_name: str | None, scored: list[dict]) -> dict:
     graph.add_node("new", label=new_name or "This document", is_new=True)
     for i, m in enumerate(scored):
         node_id = f"match_{i}"
-        graph.add_node(node_id, label=m["record"].full_name or "Unknown", is_new=False)
+        graph.add_node(node_id, label=m["matched_name"] or "Unknown", is_new=False)
         graph.add_edge("new", node_id, weight=round(m["probability"], 3))
     return {
         "nodes": [{"id": n, **d} for n, d in graph.nodes(data=True)],
@@ -486,7 +486,12 @@ def check_identity(scan_id: str, text: str, ip_address: str | None, user_agent: 
                 }
                 prob, feats = _match_probability(record_features, cand_features)
                 if prob >= MATCH_THRESHOLD:
-                    scored.append({"record": cand, "probability": prob, "features": feats})
+                    # Capture matched_name now, while `cand` is still attached to
+                    # this session — db.commit() below expires every loaded ORM
+                    # instance (SQLAlchemy's default expire_on_commit), and the
+                    # session is closed shortly after, so re-reading cand.full_name
+                    # later would raise DetachedInstanceError.
+                    scored.append({"record": cand, "probability": prob, "features": feats, "matched_name": cand.full_name})
             scored.sort(key=lambda m: -m["probability"])
 
             matched_records = [m["record"] for m in scored]
@@ -512,7 +517,7 @@ def check_identity(scan_id: str, text: str, ip_address: str | None, user_agent: 
     logic_checks = _identity_logic_checks(email, phone, dob)
     matches_payload = [
         {
-            "matched_name": m["record"].full_name,
+            "matched_name": m["matched_name"],
             "probability": round(m["probability"], 3),
             "reasons": _explain_match(m["features"]),
         }

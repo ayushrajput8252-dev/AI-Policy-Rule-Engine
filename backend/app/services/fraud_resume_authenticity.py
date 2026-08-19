@@ -37,7 +37,12 @@ METADATA_WEIGHT = 0.15
 EMBEDDING_WEIGHT = 0.20
 AI_TEXT_WEIGHT = 0.15
 
-EMBEDDING_TEMPLATE_THRESHOLD = 0.92
+# Calibrated empirically against BAAI/bge-base-en-v1.5 (the model this app
+# already uses elsewhere — see detection.py): two genuinely different resumes
+# in the same job domain land around ~0.6 cosine similarity; a templated
+# resume with only the name/contact swapped lands around ~0.85-0.90; a truly
+# identical body is ~1.0. 0.80 sits with margin in the gap between those.
+EMBEDDING_TEMPLATE_THRESHOLD = 0.80
 OVERLAP_TOLERANCE_DAYS = 45  # short employment-transition overlaps are normal, not evidence of fraud
 
 PERSONAL_EMAIL_DOMAINS = {
