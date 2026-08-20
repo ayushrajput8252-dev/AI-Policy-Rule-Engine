@@ -312,11 +312,11 @@ export default function LandingPage() {
           />
 
           {/* ── Working today — tested end-to-end against the real backend.
-              Paired by actual shape instead of the old arbitrary 2:1 spans:
-              RAG and Screening both have a wide content+sidebar layout, so
-              each gets the full row; Fraud Detection and Telephonic are both
-              simple single-column cards, so they sit side by side at equal
-              width — every row now has cards that genuinely match. ── */}
+              Paired by actual shape instead of arbitrary spans: RAG, Screening,
+              and the Hiring Orchestration Layer all have a wide content+sidebar
+              layout, so each gets the full row; Fraud Detection and Telephonic
+              are both simple single-column cards, so they sit side by side at
+              equal width — every row has cards that genuinely match. ── */}
           <div className="grid md:grid-cols-2 gap-6 mt-14 items-stretch">
             <div className="md:col-span-2">
               <RAGCardInteractive />
@@ -325,6 +325,9 @@ export default function LandingPage() {
             <TelephonicAgentCard />
             <div className="md:col-span-2">
               <ScreeningAgentCard />
+            </div>
+            <div className="md:col-span-2">
+              <AutomationCardInteractive />
             </div>
           </div>
 
@@ -339,18 +342,18 @@ export default function LandingPage() {
             <div className="h-px flex-1 bg-gradient-to-l from-transparent to-zinc-200" />
           </div>
 
-          {/* ── Illustrative previews — spans reordered so every row fills
-              exactly 3 columns (no dangling mid-grid gaps from a col-span-2
-              item not fitting the remaining slot in its row). ── */}
+          {/* ── Illustrative previews — three equal cards up top, then
+              Integrations spans full width since its content (a wrapped row
+              of brand chips) reads better wide than squeezed into a third
+              column. ── */}
           <div className="grid md:grid-cols-3 gap-6 items-start">
             <OnboardingCardInteractive />
             <KnowledgeCardInteractive />
             <SecurityCardWhite />
 
-            <div className="md:col-span-2">
-              <AutomationCardInteractive />
+            <div className="md:col-span-3">
+              <IntegrationsCardInteractive />
             </div>
-            <IntegrationsCardInteractive />
           </div>
         </div>
       </section>
@@ -1353,8 +1356,8 @@ function AutomationCardInteractive() {
     { title: "Live Agent Workflow", detail: "Multi-agent kernel orchestrates the end-to-end hiring pipeline autonomously." },
     { title: "Resume Intelligence", detail: "Parses bulk resumes, extracting ATS scores, skills, and contact signals." },
     { title: "Candidate Processing", detail: "Matches requirements, generates assignments, and evaluates submissions." },
-    { title: "Human Review & Approval", detail: "HR & hiring managers confirm every candidate before onboarding fires." },
-    { title: "Hiring Automation", detail: "Onboarding and knowledge transfer agents run automatically on approval." },
+    { title: "Human Review & Approval", detail: "HR & hiring managers confirm every candidate before scheduling opens up." },
+    { title: "Hiring Automation", detail: "Interview scheduling, onboarding, and knowledge transfer — each one runs on your command." },
   ];
 
   useEffect(() => {
@@ -1376,7 +1379,7 @@ function AutomationCardInteractive() {
               <Bot className="w-5 h-5" />
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              <PreviewBadge />
+              <WorkingBadge />
               <Link
                 href="/hiring-automation"
                 className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-bold bg-zinc-900 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-all shadow-sm"
@@ -1388,7 +1391,7 @@ function AutomationCardInteractive() {
           </div>
           <h3 className="text-[16px] font-bold text-zinc-900 mb-2">Enterprise Orchestration Layer</h3>
           <p className="text-[13px] text-zinc-600 leading-relaxed mb-5">
-            Autonomous multi-step reasoning, MCP tool selection, human-in-the-loop approvals, and deterministic execution — see it run a full agentic hiring pipeline.
+            Autonomous multi-step reasoning, MCP tool selection, human-in-the-loop approvals, interview scheduling, and deterministic execution — see it run a full agentic hiring pipeline.
           </p>
 
           <div className="p-3.5 bg-amber-50/60 border border-amber-200 rounded-xl text-xs text-zinc-800">

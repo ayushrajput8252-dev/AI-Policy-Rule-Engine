@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -9,7 +10,7 @@ import {
   ArrowUpDown, ChevronLeft, ChevronRight, Sparkles, Send, RotateCcw, Users,
   KeyRound, Laptop2, Building2, ScrollText, Video, CalendarClock, ClipboardCheck,
   Plug, Radio, Filter, GitBranch, PartyPopper, Bot, MailCheck, Star, ArrowUpRight,
-  AlertTriangle,
+  AlertTriangle, Calendar, Clock, Phone, Play, CalendarDays,
 } from "lucide-react";
 import { writeSyncedHires, clearSyncedHires } from "@/lib/hiringSync";
 
@@ -20,10 +21,14 @@ import { writeSyncedHires, clearSyncedHires } from "@/lib/hiringSync";
    → Assignment Generator all call the real backend (/api/v1/hiring/*): actual
    PDF text extraction (PyMuPDF) plus LLM-based structured extraction/scoring
    (Groq-primary, Gemini-fallback — see backend/app/services/hiring_service.py).
-   Bulk-send (MCP email), Onboarding, and Knowledge Transfer stay simulated —
-   there's no SMTP/MCP/Okta/Slack integration wired into this project — but they
-   run on the real parsed candidates, which then hand off via sessionStorage to
-   the existing Onboarding / Knowledge Transfer pages. */
+   Bulk-send (MCP email), Interview Scheduling, Onboarding, and Knowledge
+   Transfer stay simulated — there's no SMTP/MCP/calendar/Okta/Slack
+   integration wired into this project — but they run on the real parsed
+   candidates, which then hand off via sessionStorage to the existing
+   Onboarding / Knowledge Transfer pages. Onboarding and Knowledge Transfer
+   are human-triggered (a "Run Agent" click) rather than auto-chaining, same
+   as the Interview Scheduling step in between — nothing downstream of HR
+   approval fires without an explicit click. */
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -35,6 +40,11 @@ const AVATAR_PALETTE = [
   { bg: "bg-rose-50 border-rose-200", text: "text-rose-600" },
   { bg: "bg-cyan-50 border-cyan-200", text: "text-cyan-600" },
 ];
+
+interface InterviewSlot {
+  date: string;
+  time: string;
+}
 
 interface Candidate {
   id: string;
@@ -55,6 +65,8 @@ interface Candidate {
   mcpStatus: string;
   avatarBg: string;
   avatarText: string;
+  telephonicInterview: InterviewSlot | null;
+  aiInterview: InterviewSlot | null;
 }
 
 function candidateFromParsed(raw: Record<string, unknown>, index: number): Candidate {
@@ -78,6 +90,8 @@ function candidateFromParsed(raw: Record<string, unknown>, index: number): Candi
     mcpStatus: "Pending",
     avatarBg: palette.bg,
     avatarText: palette.text,
+    telephonicInterview: null,
+    aiInterview: null,
   };
 }
 
@@ -89,6 +103,7 @@ const PIPELINE_NODES = [
   { key: "assignment", title: "Assignment Generator", desc: "Drafts a personalized take-home task", icon: ClipboardList },
   { key: "evaluation", title: "Candidate Evaluation", desc: "Scores submissions & ranks candidates", icon: Award },
   { key: "review", title: "HR & Hiring Manager Review", desc: "Human approval gate before onboarding", icon: ShieldCheck },
+  { key: "scheduling", title: "Interview Scheduling", desc: "Books telephonic & AI interview slots", icon: CalendarDays },
   { key: "onboarding", title: "Onboarding Agent", desc: "Provisions accounts & equipment", icon: UserPlus },
   { key: "knowledge", title: "Knowledge Transfer Agent", desc: "Assigns docs, videos & training", icon: BookOpen },
 ] as const;
@@ -125,8 +140,9 @@ Expected completion:
 
 type Stage =
   | "idle" | "parsing" | "spreadsheet" | "generating" | "assignment"
-  | "sending" | "evaluation" | "onboarding" | "knowledge" | "done";
+  | "sending" | "evaluation" | "scheduling" | "onboarding" | "knowledge" | "done";
 type NodeStatus = "pending" | "active" | "done";
+type InterviewType = "telephonic" | "ai";
 
 interface GeneratedAssignment {
   title: string;
@@ -152,6 +168,48 @@ async function withMinDelay<T>(promise: Promise<T>, ms: number): Promise<T> {
   return result;
 }
 
+/* ── Interview scheduling calendar helpers ──
+   Deterministic (no backend, no Math.random) so a candidate's slot grid
+   doesn't reshuffle itself on every re-render. */
+const TIME_SLOTS = [
+  "09:00 AM", "09:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM",
+  "12:00 PM", "01:00 PM", "01:30 PM", "02:00 PM", "02:30 PM", "03:00 PM",
+  "03:30 PM", "04:00 PM", "04:30 PM",
+];
+
+function nextWeekdays(count: number): Date[] {
+  const dates: Date[] = [];
+  const cursor = new Date();
+  cursor.setHours(0, 0, 0, 0);
+  cursor.setDate(cursor.getDate() + 1);
+  while (dates.length < count) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) dates.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+}
+
+function dateKey(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function formatDateLabel(d: Date): string {
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
+function seededHash(input: string): number {
+  let h = 0;
+  for (let i = 0; i < input.length; i++) h = (h * 31 + input.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+/* ~30% of slots read as already booked on someone else's calendar — makes
+   the picker feel like a real shared enterprise calendar, not an empty grid. */
+function isSlotTaken(candidateId: string, dateISO: string, time: string): boolean {
+  return seededHash(`${candidateId}|${dateISO}|${time}`) % 10 < 3;
+}
+
 /* ═══════════════════════════════════════════════════════════
    MAIN PAGE
    ═══════════════════════════════════════════════════════════ */
@@ -169,8 +227,11 @@ export default function HiringAutomationPage() {
   const [assignment, setAssignment] = useState<GeneratedAssignment>(DEFAULT_ASSIGNMENT);
   const [mcpStep, setMcpStep] = useState(0);
   const [approvals, setApprovals] = useState<Record<string, boolean>>({});
+  const [interviewModal, setInterviewModal] = useState<{ candidateId: string; type: InterviewType } | null>(null);
   const [onboardProgress, setOnboardProgress] = useState(0);
+  const [onboardRunning, setOnboardRunning] = useState(false);
   const [ktProgress, setKtProgress] = useState(0);
+  const [ktRunning, setKtRunning] = useState(false);
   const runId = useRef(0);
 
   // Invalidates any in-flight animation chain (runNode/sleep timers) on unmount — otherwise
@@ -340,6 +401,10 @@ export default function HiringAutomationPage() {
 
   const handleConfirm = (id: string) => setApprovals((prev) => ({ ...prev, [id]: true }));
 
+  /* The HR review gate is still automatic once every candidate is individually
+     confirmed (that confirmation IS the human-in-the-loop step). Everything
+     past it — scheduling, onboarding, knowledge transfer — now waits for an
+     explicit click instead of cascading on its own. */
   useEffect(() => {
     if (stage !== "evaluation") return;
     if (candidates.length === 0 || !candidates.every((c) => approvals[c.id])) return;
@@ -351,25 +416,64 @@ export default function HiringAutomationPage() {
         id: c.id, name: c.name, email: c.email || "unknown@example.com", designation: "Backend Engineer",
         ats: c.ats, experience: c.experience, skills: c.skills,
       })));
-      setStage("onboarding");
-      for (let s = 0; s <= ONBOARDING_STEPS.length; s++) {
-        setOnboardProgress(s);
-        await sleep(550);
-        if (myRun !== runId.current) return;
-      }
-      await runNode(7, 800);
-      if (myRun !== runId.current) return;
-      setStage("knowledge");
-      for (let s = 0; s <= KT_STEPS.length; s++) {
-        setKtProgress(s);
-        await sleep(550);
-        if (myRun !== runId.current) return;
-      }
-      await runNode(8, 800);
-      if (myRun !== runId.current) return;
-      setStage("done");
+      setActiveNode(7);
+      setStage("scheduling");
     })();
   }, [approvals, stage, candidates]);
+
+  const handleScheduleInterview = (candidateId: string, type: InterviewType, slot: InterviewSlot) => {
+    setCandidates((prev) => prev.map((c) => (
+      c.id === candidateId ? { ...c, [type === "telephonic" ? "telephonicInterview" : "aiInterview"]: slot } : c
+    )));
+    setInterviewModal(null);
+  };
+
+  const handleContinueToOnboarding = () => {
+    if (stage !== "scheduling") return;
+    setCompletedNodes((prev) => (prev.includes(7) ? prev : [...prev, 7]));
+    setActiveNode(null);
+    setStage("onboarding");
+  };
+
+  const handleRunOnboarding = async () => {
+    if (stage !== "onboarding" || onboardRunning || onboardProgress > 0) return;
+    const myRun = runId.current;
+    setOnboardRunning(true);
+    setActiveNode(8);
+    for (let s = 0; s <= ONBOARDING_STEPS.length; s++) {
+      setOnboardProgress(s);
+      await sleep(550);
+      if (myRun !== runId.current) return;
+    }
+    setCompletedNodes((prev) => (prev.includes(8) ? prev : [...prev, 8]));
+    setActiveNode(null);
+    setOnboardRunning(false);
+  };
+
+  const handleContinueToKnowledge = () => {
+    if (stage !== "onboarding") return;
+    setStage("knowledge");
+  };
+
+  const handleRunKnowledgeTransfer = async () => {
+    if (stage !== "knowledge" || ktRunning || ktProgress > 0) return;
+    const myRun = runId.current;
+    setKtRunning(true);
+    setActiveNode(9);
+    for (let s = 0; s <= KT_STEPS.length; s++) {
+      setKtProgress(s);
+      await sleep(550);
+      if (myRun !== runId.current) return;
+    }
+    setCompletedNodes((prev) => (prev.includes(9) ? prev : [...prev, 9]));
+    setActiveNode(null);
+    setKtRunning(false);
+  };
+
+  const handleFinish = () => {
+    if (stage !== "knowledge") return;
+    setStage("done");
+  };
 
   const handleReset = () => {
     runId.current += 1;
@@ -386,13 +490,16 @@ export default function HiringAutomationPage() {
     setAssignment(DEFAULT_ASSIGNMENT);
     setMcpStep(0);
     setApprovals({});
+    setInterviewModal(null);
     setOnboardProgress(0);
+    setOnboardRunning(false);
     setKtProgress(0);
+    setKtRunning(false);
   };
 
   const stageIndex: Record<Stage, number> = {
     idle: 0, parsing: 1, spreadsheet: 2, generating: 3, assignment: 4,
-    sending: 5, evaluation: 6, onboarding: 7, knowledge: 8, done: 9,
+    sending: 5, evaluation: 6, scheduling: 7, onboarding: 8, knowledge: 9, done: 10,
   };
   const reached = (s: Stage) => stageIndex[stage] >= stageIndex[s];
 
@@ -427,11 +534,11 @@ export default function HiringAutomationPage() {
         <div className="text-center max-w-2xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-zinc-200 bg-zinc-50 mb-4">
             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[11px] font-mono font-bold text-zinc-600">9-AGENT PIPELINE READY</span>
+            <span className="text-[11px] font-mono font-bold text-zinc-600">{PIPELINE_NODES.length}-AGENT PIPELINE READY</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-zinc-900 mb-2">End-to-End Agentic Hiring Workflow</h1>
           <p className="text-sm text-zinc-500 leading-relaxed">
-            Upload resumes and watch autonomous agents parse, match, assign, evaluate, and onboard — with a human approval gate before anything touches a real system.
+            Upload resumes and watch autonomous agents parse, match, assign, evaluate, schedule interviews, and onboard — with a human approval gate before anything touches a real system.
           </p>
         </div>
 
@@ -505,11 +612,32 @@ export default function HiringAutomationPage() {
           )}
         </AnimatePresence>
 
+        {/* INTERVIEW SCHEDULING */}
+        <AnimatePresence>
+          {reached("scheduling") && (
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              <InterviewSchedulingPanel
+                candidates={candidates}
+                locked={stage !== "scheduling"}
+                onOpenModal={(candidateId, type) => setInterviewModal({ candidateId, type })}
+                onContinue={handleContinueToOnboarding}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* ONBOARDING AGENT */}
         <AnimatePresence>
           {reached("onboarding") && (
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              <OnboardingPanel progress={onboardProgress} candidateCount={candidates.length} />
+              <OnboardingPanel
+                progress={onboardProgress}
+                running={onboardRunning}
+                candidateCount={candidates.length}
+                onRun={handleRunOnboarding}
+                onContinue={handleContinueToKnowledge}
+                showContinue={stage === "onboarding"}
+              />
             </motion.div>
           )}
         </AnimatePresence>
@@ -518,7 +646,14 @@ export default function HiringAutomationPage() {
         <AnimatePresence>
           {reached("knowledge") && (
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              <KnowledgeTransferPanel progress={ktProgress} candidateCount={candidates.length} />
+              <KnowledgeTransferPanel
+                progress={ktProgress}
+                running={ktRunning}
+                candidateCount={candidates.length}
+                onRun={handleRunKnowledgeTransfer}
+                onFinish={handleFinish}
+                showFinish={stage === "knowledge"}
+              />
             </motion.div>
           )}
         </AnimatePresence>
@@ -528,6 +663,22 @@ export default function HiringAutomationPage() {
           {stage === "done" && <CompletionBanner onReset={handleReset} candidates={candidates} />}
         </AnimatePresence>
       </main>
+
+      {/* INTERVIEW CALENDAR MODAL */}
+      <AnimatePresence>
+        {interviewModal && (() => {
+          const candidate = candidates.find((c) => c.id === interviewModal.candidateId);
+          if (!candidate) return null;
+          return (
+            <InterviewCalendarModal
+              candidate={candidate}
+              type={interviewModal.type}
+              onClose={() => setInterviewModal(null)}
+              onConfirm={(slot) => handleScheduleInterview(candidate.id, interviewModal.type, slot)}
+            />
+          );
+        })()}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1112,7 +1263,7 @@ function EvaluationTable({
     <div className="rounded-2xl bg-white border border-zinc-200 shadow-sm overflow-hidden">
       <div className="p-5 border-b border-zinc-100">
         <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2"><Award className="w-4 h-4 text-blue-600" />Candidate Evaluation</h3>
-        <p className="text-[11px] text-zinc-500 mt-0.5">Match score is real (requirement-to-resume fit) · this demo doesn&apos;t collect real assignment submissions · confirm each candidate to trigger onboarding</p>
+        <p className="text-[11px] text-zinc-500 mt-0.5">Match score is real (requirement-to-resume fit) · this demo doesn&apos;t collect real assignment submissions · confirm each candidate to unlock interview scheduling</p>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
@@ -1180,31 +1331,279 @@ function EvaluationTable({
 }
 
 /* ═══════════════════════════════════════════════════════════
+   INTERVIEW SCHEDULING
+   ═══════════════════════════════════════════════════════════ */
+
+function InterviewSchedulingPanel({
+  candidates, locked, onOpenModal, onContinue,
+}: {
+  candidates: Candidate[];
+  locked: boolean;
+  onOpenModal: (candidateId: string, type: InterviewType) => void;
+  onContinue: () => void;
+}) {
+  const scheduledCount = candidates.filter((c) => c.telephonicInterview || c.aiInterview).length;
+  return (
+    <div className="rounded-2xl bg-white border border-zinc-200 shadow-sm overflow-hidden">
+      <div className="p-5 border-b border-zinc-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2"><CalendarDays className="w-4 h-4 text-blue-600" />Interview Scheduling</h3>
+          <p className="text-[11px] text-zinc-500 mt-0.5">Book a telephonic screening and/or AI avatar interview slot for each approved candidate before onboarding.</p>
+        </div>
+        <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 shrink-0 whitespace-nowrap">
+          {scheduledCount}/{candidates.length} candidates scheduled
+        </span>
+      </div>
+
+      <div className="divide-y divide-zinc-100">
+        {candidates.map((c) => (
+          <div key={c.id} className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+            <div className="flex items-center gap-2.5 sm:w-52 shrink-0">
+              <div className={`w-9 h-9 rounded-full border flex items-center justify-center text-xs font-bold shrink-0 ${c.avatarBg} ${c.avatarText}`}>{c.name[0]}</div>
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-zinc-900 truncate">{c.name}</div>
+                <div className="text-[10px] text-zinc-500 font-mono truncate">{c.email || "no email extracted"}</div>
+              </div>
+            </div>
+
+            <div className="flex-1 grid sm:grid-cols-2 gap-2.5">
+              <InterviewSlotTile
+                icon={<Phone className="w-3.5 h-3.5" />}
+                label="Telephonic Interview"
+                slot={c.telephonicInterview}
+                disabled={locked}
+                onClick={() => onOpenModal(c.id, "telephonic")}
+              />
+              <InterviewSlotTile
+                icon={<Video className="w-3.5 h-3.5" />}
+                label="AI Interview"
+                slot={c.aiInterview}
+                disabled={locked}
+                onClick={() => onOpenModal(c.id, "ai")}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="p-5 border-t border-zinc-100 flex flex-col sm:flex-row items-center justify-between gap-3 bg-zinc-50/60">
+        <p className="text-[11px] text-zinc-500 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+          <Phone className="w-3 h-3 text-blue-500 shrink-0" /> Telephonic runs on the{" "}
+          <Link href="/telephonic-agent" className="font-bold text-blue-600 hover:underline">Telephonic Agent</Link>
+          <span className="text-zinc-300 px-1">·</span>
+          <Video className="w-3 h-3 text-blue-500 shrink-0" /> AI Interview runs on the{" "}
+          <Link href="/screening-agent" className="font-bold text-blue-600 hover:underline">Screening Agent</Link>
+        </p>
+        <button
+          onClick={onContinue}
+          disabled={locked}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-zinc-900 text-white text-xs font-bold hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm shrink-0"
+        >
+          {locked ? <><CheckCircle2 className="w-3.5 h-3.5" /> Continued to Onboarding</> : <>Continue to Onboarding <ArrowUpRight className="w-3.5 h-3.5" /></>}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function InterviewSlotTile({
+  icon, label, slot, disabled, onClick,
+}: { icon: ReactNode; label: string; slot: InterviewSlot | null; disabled: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`text-left rounded-xl border p-3 transition-all disabled:cursor-not-allowed disabled:opacity-70 ${
+        slot ? "bg-emerald-50/60 border-emerald-200 hover:border-emerald-300" : "bg-zinc-50 border-zinc-200 hover:border-blue-300 hover:bg-blue-50/40"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className={`flex items-center gap-1.5 text-[11px] font-bold ${slot ? "text-emerald-700" : "text-zinc-700"}`}>
+          {icon} {label}
+        </span>
+        {slot ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> : <Calendar className="w-3.5 h-3.5 text-zinc-400 shrink-0" />}
+      </div>
+      {slot ? (
+        <div className="mt-1.5 text-[11px] text-emerald-800 font-mono flex items-center gap-1.5">
+          <CalendarClock className="w-3 h-3 shrink-0" /> {slot.date} · {slot.time}
+        </div>
+      ) : (
+        <div className="mt-1.5 text-[10.5px] text-zinc-400">Click to book a slot</div>
+      )}
+    </button>
+  );
+}
+
+/* ── Calendar/time-slot picker modal — fully client-side and interactive
+   (real Date arithmetic, deterministic "taken" slots), no backend involved.
+   Shared by both interview types via the `type` prop. ── */
+function InterviewCalendarModal({
+  candidate, type, onClose, onConfirm,
+}: { candidate: Candidate; type: InterviewType; onClose: () => void; onConfirm: (slot: InterviewSlot) => void }) {
+  const dates = useMemo(() => nextWeekdays(10), []);
+  const [selectedDate, setSelectedDate] = useState<Date>(dates[0]);
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  const isTelephonic = type === "telephonic";
+  const label = isTelephonic ? "Telephonic Interview" : "AI Interview";
+  const Icon = isTelephonic ? Phone : Video;
+  const existing = isTelephonic ? candidate.telephonicInterview : candidate.aiInterview;
+
+  const handleConfirm = () => {
+    if (!selectedTime) return;
+    onConfirm({ date: formatDateLabel(selectedDate), time: selectedTime });
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      onClick={onClose}
+      className="fixed inset-0 z-50 bg-zinc-900/40 backdrop-blur-sm flex items-center justify-center p-4"
+    >
+      <motion.div
+        initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96, y: 12 }}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white border border-zinc-200 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
+      >
+        <div className="px-5 py-4 border-b border-zinc-100 flex items-center justify-between gap-2 bg-zinc-50/80">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shrink-0">
+              <Icon className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-zinc-900 truncate">Schedule {label}</h3>
+              <p className="text-[11px] text-zinc-500 truncate">with {candidate.name}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 transition-colors shrink-0">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+          {existing && (
+            <div className="text-[11px] px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 flex items-start gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" /> Already booked for {existing.date} · {existing.time} — confirming below will reschedule it.
+            </div>
+          )}
+
+          <div>
+            <div className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-2 flex items-center gap-1.5"><Calendar className="w-3 h-3" /> Select a date</div>
+            <div className="flex gap-1.5 overflow-x-auto pb-1">
+              {dates.map((d) => {
+                const active = dateKey(d) === dateKey(selectedDate);
+                return (
+                  <button
+                    key={dateKey(d)}
+                    onClick={() => { setSelectedDate(d); setSelectedTime(null); }}
+                    className={`shrink-0 w-14 py-2 rounded-xl border text-center transition-all ${
+                      active ? "bg-blue-600 border-blue-600 text-white shadow-sm" : "bg-zinc-50 border-zinc-200 text-zinc-700 hover:border-blue-300 hover:bg-blue-50/50"
+                    }`}
+                  >
+                    <div className={`text-[9px] font-mono uppercase ${active ? "text-blue-100" : "text-zinc-400"}`}>{d.toLocaleDateString("en-US", { weekday: "short" })}</div>
+                    <div className="text-sm font-bold">{d.getDate()}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-2 flex items-center gap-1.5"><Clock className="w-3 h-3" /> Select a time · {formatDateLabel(selectedDate)}</div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {TIME_SLOTS.map((t) => {
+                const taken = isSlotTaken(candidate.id, dateKey(selectedDate), t);
+                const active = selectedTime === t;
+                return (
+                  <button
+                    key={t}
+                    disabled={taken}
+                    onClick={() => setSelectedTime(t)}
+                    className={`text-[11px] font-mono font-bold py-2 rounded-lg border transition-all ${
+                      taken ? "bg-zinc-50 border-zinc-100 text-zinc-300 cursor-not-allowed line-through"
+                        : active ? "bg-blue-600 border-blue-600 text-white shadow-sm"
+                        : "bg-white border-zinc-200 text-zinc-700 hover:border-blue-300 hover:bg-blue-50/50"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="px-5 py-4 border-t border-zinc-100 flex items-center justify-between gap-3 bg-zinc-50/60">
+          <span className="text-[11px] text-zinc-500 font-mono truncate">
+            {selectedTime ? `${formatDateLabel(selectedDate)} · ${selectedTime}` : "No time selected yet"}
+          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={onClose} className="px-4 py-2 rounded-xl text-xs font-bold text-zinc-600 hover:bg-zinc-100 transition-colors">Cancel</button>
+            <button
+              onClick={handleConfirm}
+              disabled={!selectedTime}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" /> Confirm Slot
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
    ONBOARDING AGENT
    ═══════════════════════════════════════════════════════════ */
 
-function OnboardingPanel({ progress, candidateCount }: { progress: number; candidateCount: number }) {
+function OnboardingPanel({
+  progress, running, candidateCount, onRun, onContinue, showContinue,
+}: {
+  progress: number; running: boolean; candidateCount: number;
+  onRun: () => void; onContinue: () => void; showContinue: boolean;
+}) {
   const done = progress >= ONBOARDING_STEPS.length;
+  const notStarted = progress === 0 && !running;
   return (
     <div className="rounded-2xl bg-white border border-zinc-200 p-6 shadow-sm">
       <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <UserPlus className="w-4 h-4 text-blue-600" />
           <h3 className="text-sm font-bold text-zinc-900">Onboarding Agent</h3>
-          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700">AUTO-TRIGGERED</span>
+          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-zinc-100 border border-zinc-200 text-zinc-600">ON YOUR COMMAND</span>
         </div>
-        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
-          done ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-blue-50 border-blue-200 text-blue-700"
-        }`}>
-          {done ? <><CheckCircle2 className="w-3 h-3" /> Completed</> : <><Loader2 className="w-3 h-3 animate-spin" /> Provisioning…</>}
-        </span>
+        {notStarted ? (
+          <button
+            onClick={onRun}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 text-white text-[11px] font-bold hover:bg-blue-700 transition-colors shadow-sm"
+          >
+            <Play className="w-3 h-3 fill-white" /> Run Onboarding Agent
+          </button>
+        ) : (
+          <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+            done ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-blue-50 border-blue-200 text-blue-700"
+          }`}>
+            {done ? <><CheckCircle2 className="w-3 h-3" /> Completed</> : <><Loader2 className="w-3 h-3 animate-spin" /> Provisioning…</>}
+          </span>
+        )}
       </div>
-      <p className="text-[11px] text-zinc-500 mb-4">Handing off {candidateCount} approved hire{candidateCount === 1 ? "" : "s"} to the existing onboarding system.</p>
+      <p className="text-[11px] text-zinc-500 mb-4">
+        {notStarted
+          ? `${candidateCount} approved hire${candidateCount === 1 ? "" : "s"} ready — run the agent to provision accounts & equipment.`
+          : `Handing off ${candidateCount} approved hire${candidateCount === 1 ? "" : "s"} to the existing onboarding system.`}
+      </p>
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         {ONBOARDING_STEPS.map((s, i) => {
           const stepDone = i < progress;
-          const active = i === progress;
+          const active = i === progress && running;
           const Icon = s.icon;
           return (
             <div key={s.label} className={`flex flex-col items-center gap-1.5 px-2 py-3 rounded-xl border text-center transition-all ${
@@ -1221,14 +1620,24 @@ function OnboardingPanel({ progress, candidateCount }: { progress: number; candi
       <AnimatePresence>
         {done && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="overflow-hidden">
-            <div className="flex items-center justify-between mt-4 pt-4 border-t border-zinc-100 flex-wrap gap-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-4 pt-4 border-t border-zinc-100 gap-3">
               <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" /> {candidateCount} employee{candidateCount === 1 ? "" : "s"} created — synced to the Onboarding workspace</span>
-              <Link
-                href="/onboarding"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-zinc-900 text-white text-xs font-bold hover:bg-blue-600 transition-colors shadow-sm"
-              >
-                Open Onboarding Agent <ArrowUpRight className="w-3.5 h-3.5" />
-              </Link>
+              <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                <Link
+                  href="/onboarding"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white border border-zinc-200 text-zinc-700 text-xs font-bold hover:border-blue-300 hover:text-blue-700 transition-colors"
+                >
+                  Open Onboarding Agent <ArrowUpRight className="w-3.5 h-3.5" />
+                </Link>
+                {showContinue && (
+                  <button
+                    onClick={onContinue}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-zinc-900 text-white text-xs font-bold hover:bg-blue-600 transition-colors shadow-sm"
+                  >
+                    Continue to Knowledge Transfer <ArrowUpRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
           </motion.div>
         )}
@@ -1241,24 +1650,42 @@ function OnboardingPanel({ progress, candidateCount }: { progress: number; candi
    KNOWLEDGE TRANSFER AGENT
    ═══════════════════════════════════════════════════════════ */
 
-function KnowledgeTransferPanel({ progress, candidateCount }: { progress: number; candidateCount: number }) {
+function KnowledgeTransferPanel({
+  progress, running, candidateCount, onRun, onFinish, showFinish,
+}: {
+  progress: number; running: boolean; candidateCount: number;
+  onRun: () => void; onFinish: () => void; showFinish: boolean;
+}) {
   const done = progress >= KT_STEPS.length;
-  const running = !done;
+  const notStarted = progress === 0 && !running;
   return (
     <div className="rounded-2xl bg-white border border-zinc-200 p-6 shadow-sm">
       <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <BookOpen className="w-4 h-4 text-blue-600" />
           <h3 className="text-sm font-bold text-zinc-900">Knowledge Transfer Agent</h3>
-          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700">AUTO-TRIGGERED</span>
+          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-zinc-100 border border-zinc-200 text-zinc-600">ON YOUR COMMAND</span>
         </div>
-        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
-          done ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-blue-50 border-blue-200 text-blue-700"
-        }`}>
-          {done ? <><CheckCircle2 className="w-3 h-3" /> Completed</> : <><Loader2 className="w-3 h-3 animate-spin" /> Syncing…</>}
-        </span>
+        {notStarted ? (
+          <button
+            onClick={onRun}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 text-white text-[11px] font-bold hover:bg-blue-700 transition-colors shadow-sm"
+          >
+            <Play className="w-3 h-3 fill-white" /> Run Knowledge Transfer Agent
+          </button>
+        ) : (
+          <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+            done ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-blue-50 border-blue-200 text-blue-700"
+          }`}>
+            {done ? <><CheckCircle2 className="w-3 h-3" /> Completed</> : <><Loader2 className="w-3 h-3 animate-spin" /> Syncing…</>}
+          </span>
+        )}
       </div>
-      <p className="text-[11px] text-zinc-500 mb-4">Assigning onboarding docs, videos & training to {candidateCount} new hire{candidateCount === 1 ? "" : "s"}.</p>
+      <p className="text-[11px] text-zinc-500 mb-4">
+        {notStarted
+          ? `${candidateCount} new hire${candidateCount === 1 ? "" : "s"} ready — run the agent to assign docs, videos & training.`
+          : `Assigning onboarding docs, videos & training to ${candidateCount} new hire${candidateCount === 1 ? "" : "s"}.`}
+      </p>
 
       <div className="flex items-center gap-2 sm:gap-4 mb-4">
         <div className="w-16 h-14 sm:w-20 sm:h-16 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col items-center justify-center gap-1 shrink-0">
@@ -1288,7 +1715,7 @@ function KnowledgeTransferPanel({ progress, candidateCount }: { progress: number
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         {KT_STEPS.map((s, i) => {
           const stepDone = i < progress;
-          const active = i === progress;
+          const active = i === progress && running;
           const Icon = s.icon;
           return (
             <div key={s.label} className={`flex flex-col items-center gap-1.5 px-2 py-3 rounded-xl border text-center transition-all ${
@@ -1305,14 +1732,24 @@ function KnowledgeTransferPanel({ progress, candidateCount }: { progress: number
       <AnimatePresence>
         {done && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="overflow-hidden">
-            <div className="flex items-center justify-between mt-4 pt-4 border-t border-zinc-100 flex-wrap gap-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-4 pt-4 border-t border-zinc-100 gap-3">
               <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" /> Docs, videos & policies assigned as new employees</span>
-              <Link
-                href="/knowledge"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-zinc-900 text-white text-xs font-bold hover:bg-blue-600 transition-colors shadow-sm"
-              >
-                Open Knowledge Transfer <ArrowUpRight className="w-3.5 h-3.5" />
-              </Link>
+              <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                <Link
+                  href="/knowledge"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white border border-zinc-200 text-zinc-700 text-xs font-bold hover:border-blue-300 hover:text-blue-700 transition-colors"
+                >
+                  Open Knowledge Transfer <ArrowUpRight className="w-3.5 h-3.5" />
+                </Link>
+                {showFinish && (
+                  <button
+                    onClick={onFinish}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-zinc-900 text-white text-xs font-bold hover:bg-blue-600 transition-colors shadow-sm"
+                  >
+                    <PartyPopper className="w-3.5 h-3.5 text-amber-400" /> Finish Workflow
+                  </button>
+                )}
+              </div>
             </div>
           </motion.div>
         )}
@@ -1327,9 +1764,11 @@ function KnowledgeTransferPanel({ progress, candidateCount }: { progress: number
 
 function CompletionBanner({ onReset, candidates }: { onReset: () => void; candidates: Candidate[] }) {
   const n = candidates.length;
+  const scheduledCount = candidates.filter((c) => c.telephonicInterview || c.aiInterview).length;
   const stats = [
     { label: "Candidates Onboarded", value: `${n}/${n}` },
     { label: "Assignments Sent", value: `${n}/${n}` },
+    { label: "Interviews Scheduled", value: `${scheduledCount}/${n}` },
     { label: "Knowledge Transfer", value: "100%" },
     { label: "Human Approvals", value: `${n}/${n}` },
   ];
@@ -1345,8 +1784,8 @@ function CompletionBanner({ onReset, candidates }: { onReset: () => void; candid
           <PartyPopper className="w-7 h-7" />
         </div>
         <h3 className="text-xl font-extrabold text-white mb-1.5">Hiring Workflow Complete</h3>
-        <p className="text-xs text-zinc-400 max-w-md mx-auto mb-6">All 9 agents executed end-to-end on real parsed resumes, with a human approval gate before onboarding — {namesText} {n === 1 ? "is" : "are"} fully onboarded.</p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-xl mx-auto mb-6">
+        <p className="text-xs text-zinc-400 max-w-md mx-auto mb-6">All {PIPELINE_NODES.length} agents executed end-to-end on real parsed resumes, with a human approval gate before onboarding — {namesText} {n === 1 ? "is" : "are"} fully onboarded.</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 max-w-2xl mx-auto mb-6">
           {stats.map((s) => (
             <div key={s.label} className="rounded-xl bg-white/5 border border-white/10 p-3">
               <div className="text-lg font-extrabold text-white font-mono">{s.value}</div>
