@@ -167,16 +167,6 @@ export default function LandingPage() {
 
           <div className="hidden lg:flex items-center gap-2.5">
             <a
-              href="https://github.com/ayushrajput8252-dev/AI-Policy-Rule-Engine"
-              target="_blank"
-              rel="noreferrer"
-              title="GitHub Repository"
-              className="p-2 text-zinc-600 hover:text-zinc-900 transition-colors rounded-lg hover:bg-zinc-100"
-            >
-              <GithubIcon className="w-4 h-4" />
-            </a>
-
-            <a
               href="https://www.linkedin.com/in/ayush-singh-aiml/"
               target="_blank"
               rel="noreferrer"
@@ -224,14 +214,6 @@ export default function LandingPage() {
                 </a>
               ))}
               <div className="flex items-center gap-3 pt-2 pb-3 border-t border-zinc-100 mt-2">
-                <a
-                  href="https://github.com/ayushrajput8252-dev/AI-Policy-Rule-Engine"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-1.5 text-xs text-zinc-700 font-medium"
-                >
-                  <GithubIcon className="w-4 h-4" /> GitHub
-                </a>
                 <a
                   href="https://www.linkedin.com/in/ayush-singh-aiml/"
                   target="_blank"
@@ -461,15 +443,6 @@ function SiteFooter() {
               We empower organizations with an AI-driven platform for grounded policy intelligence and scalable, agentic hiring workflows.
             </p>
             <div className="flex items-center gap-2">
-              <a
-                href="https://github.com/ayushrajput8252-dev/AI-Policy-Rule-Engine"
-                target="_blank"
-                rel="noreferrer"
-                title="GitHub Repository"
-                className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
-              >
-                <GithubIcon className="w-4 h-4" />
-              </a>
               <a
                 href="https://www.linkedin.com/in/ayush-singh-aiml/"
                 target="_blank"
