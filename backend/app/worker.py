@@ -29,8 +29,7 @@ def _process_text_blocks(document_id: str, blocks_data: list[dict], db) -> dict:
     from .services.classification import classify_rule, DISCARD_LABELS
     from .services.validation import validate_rule
     from .models import Chunk, Document
-    from concurrent.futures import ThreadPoolExecutor
-    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     MIN_RULE_CONFIDENCE = 70  # confidence is on a 0-100 scale (see canonicalization.py)
 
@@ -50,67 +49,84 @@ def _process_text_blocks(document_id: str, blocks_data: list[dict], db) -> dict:
     db.add_all(db_chunks)
     db.commit()
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        chunk_indexing_future = executor.submit(store_chunks_batch_in_pinecone, chunks)
+    BATCH_SIZE = 10
+    # Bounded to 3 concurrent LLM batch calls — enough to meaningfully cut
+    # ingestion wall time for larger documents, without hammering Groq/Gemini
+    # rate limits (the old sequential loop's time.sleep(0.3) throttle is no
+    # longer needed: concurrent workers naturally stagger their requests, and
+    # generate_json_resilient's retry+circuit-breaker absorb the occasional
+    # 429 this causes).
+    RULE_EXTRACTION_WORKERS = 3
+
+    with ThreadPoolExecutor(max_workers=2) as chunk_executor:
+        chunk_indexing_future = chunk_executor.submit(store_chunks_batch_in_pinecone, chunks)
 
         valid_rules_count = 0
-        BATCH_SIZE = 10
+        batches = [chunks[i : i + BATCH_SIZE] for i in range(0, len(chunks), BATCH_SIZE)]
 
-        for i in range(0, len(chunks), BATCH_SIZE):
-            batch = chunks[i : i + BATCH_SIZE]
-            batch_results = extract_rules_batch(batch)
-            time.sleep(0.3)
+        with ThreadPoolExecutor(max_workers=RULE_EXTRACTION_WORKERS) as extraction_executor:
+            future_to_batch = {
+                extraction_executor.submit(extract_rules_batch, batch): batch for batch in batches
+            }
 
-            for res in batch_results:
-                chunk_idx = res.get("chunk_index")
-                if chunk_idx is not None and 0 <= chunk_idx < len(batch):
-                    c = batch[chunk_idx]
-                else:
-                    c = batch[0] if batch else {}
-
-                if not res.get("is_candidate", True):
-                    continue
-
-                extracted = {
-                    "key_finding": res.get("key_finding", c.get("content", "")[:200]),
-                    "context": res.get("condition") or c.get("content", ""),
-                    "actor": res.get("actor", "N/A"),
-                    "action": res.get("action", "N/A"),
-                    "type": res.get("type", "GUIDELINE"),
-                    "confidence": res.get("confidence", 85)
-                }
-
-                # Quality gate 1: discard non-actionable statement types (facts,
-                # stories, examples, definitions) before they ever hit storage.
-                classification = classify_rule(extracted["key_finding"] or c.get("content", ""))
-                if classification.get("type") in DISCARD_LABELS:
-                    continue
-
-                # Quality gate 2: minimum extraction confidence (0-100 scale).
-                if extracted["confidence"] < MIN_RULE_CONFIDENCE:
-                    continue
-
-                # Quality gate 3: LLM cross-validation of the rule against its
-                # source text. Fail open (keep the rule) if the validator itself
-                # errors out (e.g. both LLM providers down) so an infra hiccup
-                # doesn't wipe out an entire ingestion batch.
+            for future in as_completed(future_to_batch):
+                batch = future_to_batch[future]
                 try:
-                    validation = validate_rule(c.get("content", ""), extracted)
-                    if isinstance(validation, dict) and str(validation.get("status", "")).upper() == "INVALID":
-                        continue
-                except Exception as validation_err:
-                    print(f"[Rule Validation Warning] Skipping validation due to error: {validation_err}")
+                    batch_results = future.result()
+                except Exception as batch_err:
+                    print(f"[Rule Extraction Warning] Batch failed, skipping: {batch_err}")
+                    continue
 
-                canonicalize_and_store_rule(
-                    document_id=document_id,
-                    page=c.get("page"),
-                    section=c.get("section"),
-                    rule_data=extracted,
-                    db_session=db,
-                    bbox=c.get("bbox"),
-                    page_dim=c.get("page_dim")
-                )
-                valid_rules_count += 1
+                for res in batch_results:
+                    chunk_idx = res.get("chunk_index")
+                    if chunk_idx is not None and 0 <= chunk_idx < len(batch):
+                        c = batch[chunk_idx]
+                    else:
+                        c = batch[0] if batch else {}
+
+                    if not res.get("is_candidate", True):
+                        continue
+
+                    extracted = {
+                        "key_finding": res.get("key_finding", c.get("content", "")[:200]),
+                        "context": res.get("condition") or c.get("content", ""),
+                        "actor": res.get("actor", "N/A"),
+                        "action": res.get("action", "N/A"),
+                        "type": res.get("type", "GUIDELINE"),
+                        "confidence": res.get("confidence", 85)
+                    }
+
+                    # Quality gate 1: discard non-actionable statement types (facts,
+                    # stories, examples, definitions) before they ever hit storage.
+                    classification = classify_rule(extracted["key_finding"] or c.get("content", ""))
+                    if classification.get("type") in DISCARD_LABELS:
+                        continue
+
+                    # Quality gate 2: minimum extraction confidence (0-100 scale).
+                    if extracted["confidence"] < MIN_RULE_CONFIDENCE:
+                        continue
+
+                    # Quality gate 3: LLM cross-validation of the rule against its
+                    # source text. Fail open (keep the rule) if the validator itself
+                    # errors out (e.g. both LLM providers down) so an infra hiccup
+                    # doesn't wipe out an entire ingestion batch.
+                    try:
+                        validation = validate_rule(c.get("content", ""), extracted)
+                        if isinstance(validation, dict) and str(validation.get("status", "")).upper() == "INVALID":
+                            continue
+                    except Exception as validation_err:
+                        print(f"[Rule Validation Warning] Skipping validation due to error: {validation_err}")
+
+                    canonicalize_and_store_rule(
+                        document_id=document_id,
+                        page=c.get("page"),
+                        section=c.get("section"),
+                        rule_data=extracted,
+                        db_session=db,
+                        bbox=c.get("bbox"),
+                        page_dim=c.get("page_dim")
+                    )
+                    valid_rules_count += 1
 
         chunk_indexing_future.result()  # ensure chunk indexing completed
 

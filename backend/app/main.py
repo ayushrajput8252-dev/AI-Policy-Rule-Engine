@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 from .config import settings
-from .api import upload, query, rules, audio, fraud, interview, auth, telephonic, hiring, screening, orchestrator
+from .api import upload, query, rules, audio, fraud, interview, auth, telephonic, hiring, screening, orchestrator, mcp
 from .database import engine
 from . import models
 
@@ -56,10 +56,20 @@ app.include_router(telephonic.router, prefix="/api/v1")
 app.include_router(hiring.router, prefix="/api/v1")
 app.include_router(screening.router, prefix="/api/v1")
 app.include_router(orchestrator.router, prefix="/api/v1")
+app.include_router(mcp.router, prefix="/api/v1")
 
 # Mount uploads directory for static file serving
 os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+@app.on_event("startup")
+def _prewarm_local_fallback_retrieval():
+    # Kicks off the local (Pinecone-free) semantic search cache build in a
+    # background thread so it's likely warm by the time a Pinecone outage
+    # actually needs it — see services/local_fallback_retrieval.py.
+    from .services.local_fallback_retrieval import prewarm_caches
+    prewarm_caches()
+
 
 @app.get("/")
 def read_root():
@@ -67,4 +77,5 @@ def read_root():
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
+    from .services.resilience import all_breaker_states
+    return {"status": "ok", "circuit_breakers": all_breaker_states()}

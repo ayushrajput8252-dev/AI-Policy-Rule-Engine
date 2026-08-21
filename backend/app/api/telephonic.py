@@ -13,6 +13,8 @@ from ..config import settings
 from ..database import get_db
 from ..memory import global_memory, orchestrator
 from ..services.telephonic_service import generate_call_evaluation, generate_call_turn
+from ..services.resilience import call_with_resilience, CircuitOpenError
+from ..services.guardrails import check_input, check_output
 
 router = APIRouter(prefix="/telephonic", tags=["telephonic"])
 
@@ -102,17 +104,28 @@ def place_call(payload: PlaceCallRequest, db: Session = Depends(get_db)):
         )
 
     try:
-        try:
-            call = _create_call()
-        except TwilioRestException:
-            raise
-        except Exception:
-            call = _create_call()  # one retry — smooths over the odd transient connection reset talking to Twilio
+        # Circuit breaker + exponential backoff (services/resilience.py) —
+        # retries only transient network failures talking to Twilio;
+        # TwilioRestException (an actual rejection, e.g. trial-account
+        # restrictions) is marked non_retryable since retrying it can't help.
+        # The breaker itself opens after repeated failures of either kind so
+        # a dead Twilio config/outage fails fast instead of being retried on
+        # every single call-placement request.
+        call = call_with_resilience(
+            "twilio", _create_call,
+            max_attempts=3, base_delay=0.4, max_delay=3.0,
+            non_retryable=(TwilioRestException,),
+        )
     except TwilioRestException as e:
         record.status = "failed"
         record.error_message = e.msg
         db.commit()
         raise HTTPException(status_code=502, detail=f"Twilio rejected the call: {e.msg}")
+    except CircuitOpenError as e:
+        record.status = "failed"
+        record.error_message = str(e)
+        db.commit()
+        raise HTTPException(status_code=502, detail=f"Twilio is currently unavailable, please try again shortly: {e}")
     except Exception as e:
         # Network-level failure talking to Twilio (timeout, connection reset) —
         # not a Twilio rejection, but the candidate still doesn't get called,
@@ -189,6 +202,7 @@ async def voice_webhook(call_record_id: str, db: Session = Depends(get_db)):
 
     record.status = "in-progress"
     turn = generate_call_turn([], record.candidate_name, record.role_title, MAX_TURNS)
+    turn["question"] = check_output(turn["question"]).text
     record.transcript = [{"role": "agent", "text": turn["question"]}]
     db.commit()
 
@@ -218,6 +232,14 @@ async def gather_webhook(
         return Response(content=str(vr), media_type="application/xml")
 
     candidate_text = (SpeechResult or "").strip()
+    if candidate_text:
+        input_check = check_input(candidate_text)
+        # Twilio's speech-to-text is low-risk as an injection vector, but
+        # sanitize/cap it before it reaches the turn-generation prompt for
+        # the same reason every other free-text entry point does — a
+        # flagged transcript is treated like an unclear answer (re-ask)
+        # rather than silently passed through.
+        candidate_text = input_check.text if input_check.allowed else ""
     try:
         confidence = float(Confidence) if Confidence not in (None, "") else None
     except (TypeError, ValueError):
@@ -251,6 +273,7 @@ async def gather_webhook(
     transcript.append({"role": "candidate", "text": candidate_text, "confidence": confidence})
 
     turn = generate_call_turn(transcript, record.candidate_name, record.role_title, MAX_TURNS)
+    turn["question"] = check_output(turn["question"]).text
     transcript.append({"role": "agent", "text": turn["question"]})
     record.transcript = transcript
     db.commit()

@@ -1,6 +1,6 @@
 import re
 from langdetect import detect_langs, DetectorFactory
-from .llm_service import generate_json
+from .llm_service import generate_json_resilient as generate_json
 from .reasoning import strip_empty_emphasis
 
 # langdetect is unreliable on short, common-phrasing text — it will happily call

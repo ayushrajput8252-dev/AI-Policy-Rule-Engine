@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ShieldCheck, Mic, Loader2, AlertTriangle, Volume2, MessageSquare,
-  Award, Send, LogOut,
+  Award, Send, LogOut, ScreenShare, Download,
 } from "lucide-react";
 import { useProctoring, type FaceBox, type ProctoringState } from "@/hooks/useProctoring";
 import type {
@@ -100,6 +100,17 @@ export default function InterviewRoom({
   const [inviteEmailError, setInviteEmailError] = useState<string | null>(null);
   const [inviteSending, setInviteSending] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
+
+  // Opt-in screen recording, saved locally only — never uploaded. Off by
+  // default; the browser's own share-picker is the actual consent prompt,
+  // this checkbox just decides whether we ask for it at all.
+  const [screenRecordingEnabled, setScreenRecordingEnabled] = useState(false);
+  const [isRecordingScreen, setIsRecordingScreen] = useState(false);
+  const [screenRecordingBlob, setScreenRecordingBlob] = useState<Blob | null>(null);
+  const [screenRecordingError, setScreenRecordingError] = useState<string | null>(null);
+  const screenRecorderRef = useRef<MediaRecorder | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  const screenChunksRef = useRef<Blob[]>([]);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -221,6 +232,7 @@ export default function InterviewRoom({
       stopProctoring();
       stopVadLoop();
       micStreamRef.current?.getTracks().forEach((t) => t.stop());
+      screenStreamRef.current?.getTracks().forEach((t) => t.stop());
       audioElRef.current?.pause();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -337,6 +349,79 @@ export default function InterviewRoom({
     [roleTitle, jdText, addTurn, speak, runEvaluation],
   );
 
+  /** Opt-in screen recording — a separate getDisplayMedia() stream alongside
+   * the webcam/mic ones, following useProctoring.ts's pattern: its own
+   * try/catch, non-fatal if declined or unsupported so the interview itself
+   * is never blocked by it. Recorded chunks stay in memory only; nothing is
+   * ever sent to the backend. */
+  const startScreenRecording = useCallback(async () => {
+    setScreenRecordingError(null);
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setScreenRecordingError("Screen recording isn't supported in this browser.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      screenStreamRef.current = stream;
+      screenChunksRef.current = [];
+
+      const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+      screenRecorderRef.current = recorder;
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) screenChunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        setScreenRecordingBlob(new Blob(screenChunksRef.current, { type: "video/webm" }));
+        setIsRecordingScreen(false);
+      };
+      // The candidate can stop sharing from the browser's own "Stop sharing"
+      // control at any time — treat that the same as our own stop button
+      // (finalize whatever was captured) rather than leaving state stuck.
+      stream.getVideoTracks()[0]?.addEventListener("ended", () => {
+        if (screenRecorderRef.current && screenRecorderRef.current.state !== "inactive") {
+          screenRecorderRef.current.stop();
+        }
+      });
+
+      recorder.start();
+      setIsRecordingScreen(true);
+    } catch (err) {
+      console.error("Screen recording failed to start", err);
+      setScreenRecordingError(
+        err instanceof DOMException && err.name === "NotAllowedError"
+          ? "Screen-share permission was denied — continuing without a recording."
+          : "Could not start screen recording — continuing without one.",
+      );
+    }
+  }, []);
+
+  const stopScreenRecording = useCallback(() => {
+    if (screenRecorderRef.current && screenRecorderRef.current.state !== "inactive") {
+      screenRecorderRef.current.stop();
+    }
+    screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    screenStreamRef.current = null;
+  }, []);
+
+  const saveScreenRecording = useCallback(() => {
+    if (!screenRecordingBlob) return;
+    const url = URL.createObjectURL(screenRecordingBlob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `interview-recording-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [screenRecordingBlob]);
+
+  // Finalize the screen recording as soon as the interview reaches
+  // "complete" so a Save button can appear immediately, without requiring
+  // the candidate to also click "End Session" first.
+  useEffect(() => {
+    if (phase === "complete") stopScreenRecording();
+  }, [phase, stopScreenRecording]);
+
   const startInterview = useCallback(async () => {
     if (!resumeFile || !roleTitle.trim()) return;
     setPhase("starting");
@@ -345,7 +430,9 @@ export default function InterviewRoom({
     setEvaluation(null);
     emptyAnswerStreakRef.current = 0;
     startedAtRef.current = Date.now();
+    setScreenRecordingBlob(null);
     await startProctoring();
+    if (screenRecordingEnabled) await startScreenRecording();
     try {
       const formData = new FormData();
       formData.append("resume", resumeFile);
@@ -372,7 +459,7 @@ export default function InterviewRoom({
       setErrorMessage("Could not reach the interview agent. Check that the backend is running.");
       setPhase("error");
     }
-  }, [resumeFile, roleTitle, jdText, sessionId, startProctoring, addTurn, speak]);
+  }, [resumeFile, roleTitle, jdText, sessionId, startProctoring, addTurn, speak, screenRecordingEnabled, startScreenRecording]);
 
   /** Hands-free turn: opens the mic the instant we're "listening" and lets
    * voice-activity detection decide when the answer is done. */
@@ -450,6 +537,7 @@ export default function InterviewRoom({
   const stopEverything = useCallback(() => {
     stopProctoring();
     stopVadLoop();
+    stopScreenRecording();
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.onstop = null;
       mediaRecorderRef.current.stop();
@@ -457,7 +545,7 @@ export default function InterviewRoom({
     micStreamRef.current?.getTracks().forEach((t) => t.stop());
     audioElRef.current?.pause();
     setPhase("setup");
-  }, [stopProctoring, stopVadLoop]);
+  }, [stopProctoring, stopVadLoop, stopScreenRecording]);
 
   const handleResumeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
@@ -626,8 +714,29 @@ export default function InterviewRoom({
           </div>
         )}
 
-        <div className="p-4 sm:p-5 text-xs text-zinc-400">
-          Your camera and microphone will be used for a live, proctored interview once you start.
+        <div className="p-4 sm:p-5 flex flex-col gap-3">
+          <p className="text-xs text-zinc-400">
+            Your camera and microphone will be used for a live, proctored interview once you start.
+          </p>
+          <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 cursor-pointer w-fit">
+            <input
+              type="checkbox"
+              checked={screenRecordingEnabled}
+              onChange={(e) => setScreenRecordingEnabled(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-zinc-300 text-blue-600 focus:ring-blue-400"
+            />
+            <ScreenShare className="w-3.5 h-3.5 text-zinc-400" />
+            Record my screen during the interview (optional — saved to your device only, never uploaded)
+          </label>
+          {screenRecordingError && <span className="text-[11px] text-amber-600">{screenRecordingError}</span>}
+          {screenRecordingBlob && (
+            <button
+              onClick={saveScreenRecording}
+              className="inline-flex items-center gap-1.5 w-fit rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
+            >
+              <Download className="w-3.5 h-3.5" /> Save last recording
+            </button>
+          )}
         </div>
 
         <Toast toast={toast} onDismiss={() => setToast(null)} />
@@ -689,6 +798,11 @@ export default function InterviewRoom({
           {isLive && (
             <span className="absolute left-3 top-3 flex items-center gap-1 rounded-md bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" /> LIVE
+            </span>
+          )}
+          {isRecordingScreen && (
+            <span className="absolute left-3 top-9 flex items-center gap-1 rounded-md bg-blue-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+              <ScreenShare className="w-3 h-3" /> Recording screen
             </span>
           )}
           {isLive && proctoring.activeAlert && (
@@ -768,6 +882,14 @@ export default function InterviewRoom({
               <div ref={transcriptEndRef} />
             </div>
             {phase === "complete" && evaluation && <EvaluationCard evaluation={evaluation} />}
+            {phase === "complete" && screenRecordingBlob && (
+              <button
+                onClick={saveScreenRecording}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-blue-400/30 bg-blue-500/10 px-3 py-1.5 text-xs font-semibold text-blue-200 transition hover:bg-blue-500/20"
+              >
+                <Download className="w-3.5 h-3.5" /> Save screen recording
+              </button>
+            )}
           </div>
 
           <BrewShieldPanel state={proctoring} />

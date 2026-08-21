@@ -8,7 +8,7 @@ of anything that only makes sense written down.
 """
 from typing import Any, Dict, List, Optional
 
-from .llm_service import generate_json
+from .llm_service import generate_json_resilient as generate_json
 
 AGENT_NAME = "Ayush"
 

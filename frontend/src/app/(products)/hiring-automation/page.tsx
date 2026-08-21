@@ -67,6 +67,14 @@ interface Candidate {
   avatarText: string;
   telephonicInterview: InterviewSlot | null;
   aiInterview: InterviewSlot | null;
+  // Enterprise Orchestration Layer scores table — populated from
+  // POST /api/v1/orchestrator/candidates/schedule once a slot is booked.
+  // Real when a completed CallRecord / Screening episode already exists for
+  // this candidate, otherwise a stable placeholder (isReal flags say which).
+  telephonicScore: number | null;
+  telephonicScoreIsReal: boolean;
+  aiInterviewScore: number | null;
+  aiInterviewScoreIsReal: boolean;
 }
 
 function candidateFromParsed(raw: Record<string, unknown>, index: number): Candidate {
@@ -92,6 +100,10 @@ function candidateFromParsed(raw: Record<string, unknown>, index: number): Candi
     avatarText: palette.text,
     telephonicInterview: null,
     aiInterview: null,
+    telephonicScore: null,
+    telephonicScoreIsReal: false,
+    aiInterviewScore: null,
+    aiInterviewScoreIsReal: false,
   };
 }
 
@@ -426,6 +438,41 @@ export default function HiringAutomationPage() {
       c.id === candidateId ? { ...c, [type === "telephonic" ? "telephonicInterview" : "aiInterview"]: slot } : c
     )));
     setInterviewModal(null);
+
+    // Enterprise Orchestration Layer: persist the schedule and pull in the
+    // candidate's score (real, if a completed CallRecord/Screening episode
+    // already exists — otherwise a stable placeholder) for the scores table.
+    const candidate = candidates.find((c) => c.id === candidateId);
+    if (!candidate) return;
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/v1/orchestrator/candidates/schedule`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            candidate_id: candidate.id,
+            candidate_name: candidate.name,
+            email: candidate.email,
+            interview_type: type,
+          }),
+        });
+        if (!res.ok) return;
+        const card = await res.json();
+        setCandidates((prev) => prev.map((c) => (
+          c.id === candidateId
+            ? {
+                ...c,
+                telephonicScore: card.telephonic_score ?? c.telephonicScore,
+                telephonicScoreIsReal: card.telephonic_score_is_real ?? c.telephonicScoreIsReal,
+                aiInterviewScore: card.ai_interview_score ?? c.aiInterviewScore,
+                aiInterviewScoreIsReal: card.ai_interview_score_is_real ?? c.aiInterviewScoreIsReal,
+              }
+            : c
+        )));
+      } catch (err) {
+        console.error("Failed to sync candidate scorecard:", err);
+      }
+    })();
   };
 
   const handleContinueToOnboarding = () => {
@@ -622,6 +669,17 @@ export default function HiringAutomationPage() {
                 onOpenModal={(candidateId, type) => setInterviewModal({ candidateId, type })}
                 onContinue={handleContinueToOnboarding}
               />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ENTERPRISE ORCHESTRATION LAYER — candidate scores table, appears
+            once at least one interview has been scheduled and grows/updates
+            from there. */}
+        <AnimatePresence>
+          {reached("scheduling") && candidates.some((c) => c.telephonicInterview || c.aiInterview) && (
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              <CandidateScoresTable candidates={candidates} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -1401,6 +1459,79 @@ function InterviewSchedulingPanel({
         >
           {locked ? <><CheckCircle2 className="w-3.5 h-3.5" /> Continued to Onboarding</> : <>Continue to Onboarding <ArrowUpRight className="w-3.5 h-3.5" /></>}
         </button>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ENTERPRISE ORCHESTRATION LAYER — CANDIDATE SCORES TABLE
+   ═══════════════════════════════════════════════════════════
+   Compact Excel-like table: Candidate Name / Telephonic Screening Score /
+   AI Interview Agent Score. Rows appear as soon as a candidate has at least
+   one interview scheduled, and each score cell fills in independently as
+   that interview type gets scheduled. Scores come from
+   POST /api/v1/orchestrator/candidates/schedule — real when a completed
+   CallRecord (Telephonic Agent) or Screening episode already exists for
+   that candidate, otherwise a stable placeholder (dotted "~" badge marks
+   which is which, so a placeholder is never presented as a real result). */
+function ScoreCell({ score, isReal }: { score: number | null; isReal: boolean }) {
+  if (score === null) return <span className="text-zinc-300 font-mono">—</span>;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-full border ${
+        isReal ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-zinc-100 border-zinc-200 text-zinc-600"
+      }`}
+      title={isReal ? "From a completed interview" : "Placeholder — interview hasn't run yet"}
+    >
+      {!isReal && <span className="text-zinc-400">~</span>}
+      {score}
+    </span>
+  );
+}
+
+function CandidateScoresTable({ candidates }: { candidates: Candidate[] }) {
+  const scheduled = candidates.filter((c) => c.telephonicInterview || c.aiInterview);
+  if (scheduled.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl bg-white border border-zinc-200 shadow-sm overflow-hidden">
+      <div className="p-5 border-b border-zinc-100">
+        <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2">
+          <ClipboardCheck className="w-4 h-4 text-blue-600" />Enterprise Orchestration — Interview Scores
+        </h3>
+        <p className="text-[11px] text-zinc-500 mt-0.5">
+          Updates as each interview is scheduled · <span className="text-zinc-400">~</span> marks a placeholder score standing in until that candidate&apos;s interview actually runs
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-zinc-50 text-zinc-500 border-b border-zinc-200">
+              <th className="px-4 py-2.5 text-left font-bold">Candidate Name</th>
+              <th className="px-3 py-2.5 text-left font-bold">Telephonic Screening Score</th>
+              <th className="px-3 py-2.5 text-left font-bold">AI Interview Agent Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {scheduled.map((c, i) => (
+              <tr key={c.id} className={`border-b border-zinc-100 hover:bg-blue-50/30 transition-colors ${i % 2 === 1 ? "bg-zinc-50/40" : ""}`}>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-7 h-7 rounded-full border flex items-center justify-center text-[10px] font-bold shrink-0 ${c.avatarBg} ${c.avatarText}`}>{c.name[0]}</div>
+                    <span className="font-bold text-zinc-900">{c.name}</span>
+                  </div>
+                </td>
+                <td className="px-3 py-3">
+                  <ScoreCell score={c.telephonicScore} isReal={c.telephonicScoreIsReal} />
+                </td>
+                <td className="px-3 py-3">
+                  <ScoreCell score={c.aiInterviewScore} isReal={c.aiInterviewScoreIsReal} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

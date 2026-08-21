@@ -26,38 +26,38 @@ async def run_scan(
         _save(scan_id, status, {"steps": steps})
 
     try:
-        metadata_step = await asyncio.to_thread(fraud_metadata.check_metadata, file_path, content_type)
-        steps.append(metadata_step)
-        emit_and_save("scanning")
-        yield {"type": "step", "step": metadata_step}
-
-        text, ocr_step = await asyncio.to_thread(fraud_ocr.extract_text, file_path, content_type)
-        steps.append(ocr_step)
-        emit_and_save("scanning")
-        yield {"type": "step", "step": ocr_step}
-
-        arithmetic_step = await asyncio.to_thread(fraud_arithmetic.check_arithmetic, text, ocr_step.get("score"))
-        steps.append(arithmetic_step)
-        emit_and_save("scanning")
-        yield {"type": "step", "step": arithmetic_step}
-
-        ela_step = await asyncio.to_thread(fraud_ela.check_ela, file_path, content_type)
-        steps.append(ela_step)
-        emit_and_save("scanning")
-        yield {"type": "step", "step": ela_step}
-
-        font_step = await asyncio.to_thread(fraud_font.check_fonts, file_path, content_type)
-        steps.append(font_step)
-        emit_and_save("scanning")
-        yield {"type": "step", "step": font_step}
-
-        identity_step, extracted_identity = await asyncio.to_thread(
-            fraud_identity.check_identity, scan_id, text, ip_address, user_agent
+        # Stage 1: metadata, OCR, ELA, and font analysis have no dependency
+        # on each other — run them concurrently instead of one at a time.
+        # (OCR's *output* feeds stage 2, but starting OCR doesn't need
+        # anything from the other three.) This is safe to reorder: the SSE
+        # consumer (api/fraud.py + the frontend) keys each step by its own
+        # `step["key"]`, not by arrival order — only the final "complete"
+        # event, which depends on every step, still has to come last.
+        metadata_step, (text, ocr_step), ela_step, font_step = await asyncio.gather(
+            asyncio.to_thread(fraud_metadata.check_metadata, file_path, content_type),
+            asyncio.to_thread(fraud_ocr.extract_text, file_path, content_type),
+            asyncio.to_thread(fraud_ela.check_ela, file_path, content_type),
+            asyncio.to_thread(fraud_font.check_fonts, file_path, content_type),
         )
+        for step in (metadata_step, ocr_step, ela_step, font_step):
+            steps.append(step)
+        emit_and_save("scanning")
+        for step in (metadata_step, ocr_step, ela_step, font_step):
+            yield {"type": "step", "step": step}
+
+        # Stage 2: arithmetic and identity extraction both only need OCR's
+        # text/score output, not each other's — run concurrently.
+        arithmetic_step, (identity_step, extracted_identity) = await asyncio.gather(
+            asyncio.to_thread(fraud_arithmetic.check_arithmetic, text, ocr_step.get("score")),
+            asyncio.to_thread(fraud_identity.check_identity, scan_id, text, ip_address, user_agent),
+        )
+        steps.append(arithmetic_step)
         steps.append(identity_step)
         emit_and_save("scanning")
+        yield {"type": "step", "step": arithmetic_step}
         yield {"type": "step", "step": identity_step}
 
+        # Stage 3: resume authenticity needs identity's output.
         resume_step = await asyncio.to_thread(
             fraud_resume_authenticity.check_resume_authenticity, scan_id, text, file_path, content_type, extracted_identity
         )
@@ -65,6 +65,7 @@ async def run_scan(
         emit_and_save("scanning")
         yield {"type": "step", "step": resume_step}
 
+        # Stage 4: reasoning needs every prior step's output.
         reasoning_step = await asyncio.to_thread(fraud_reasoning.synthesize, text, steps)
         steps.append(reasoning_step)
         yield {"type": "step", "step": reasoning_step}

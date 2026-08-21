@@ -1,9 +1,15 @@
 import os
 import tempfile
-from typing import Any, Dict, Optional
+import uuid
+from typing import Any, Dict, List, Optional
 
 from .parsing import parse_pdf
-from .screening_llm_service import get_jd_profile, get_resume_profile, generate_question_set
+from .screening_llm_service import (
+    analyze_telephonic_screening,
+    generate_question_set,
+    get_jd_profile,
+    get_resume_profile,
+)
 
 
 def parse_resume_and_generate_questions(
@@ -28,4 +34,56 @@ def parse_resume_and_generate_questions(
         "questions": [
             {"id": f"q{i + 1}", "category": q.category, "text": q.text} for i, q in enumerate(questions)
         ],
+    }
+
+
+def screen_call_transcript(
+    call_id: Optional[str],
+    candidate_name: str,
+    role_title: str,
+    jd_text: Optional[str],
+    transcript: List[Dict[str, str]],
+    db,
+) -> Dict[str, Any]:
+    """Runs the JD-aligned Screening Agent analysis over a finished
+    Telephonic Agent conversation and persists the result — the
+    Screening Agent step of Candidate -> Telephonic Agent -> Conversation
+    -> Response Storage -> Screening Agent -> Screening Result."""
+    from .. import models
+
+    analysis = analyze_telephonic_screening(transcript, role_title, jd_text)
+
+    result = models.ScreeningResult(
+        id=str(uuid.uuid4()),
+        source="telephonic",
+        call_id=call_id,
+        candidate_name=candidate_name,
+        role_title=role_title,
+        jd_text_used=jd_text,
+        jd_match_score=analysis.jd_match_score,
+        verdict=analysis.verdict,
+        strengths=analysis.strengths,
+        gaps=analysis.gaps,
+        summary=analysis.summary,
+    )
+    db.add(result)
+    db.commit()
+    db.refresh(result)
+
+    return _serialize_screening_result(result)
+
+
+def _serialize_screening_result(result) -> Dict[str, Any]:
+    return {
+        "id": result.id,
+        "source": result.source,
+        "call_id": result.call_id,
+        "candidate_name": result.candidate_name,
+        "role_title": result.role_title,
+        "jd_match_score": result.jd_match_score,
+        "verdict": result.verdict,
+        "strengths": result.strengths,
+        "gaps": result.gaps,
+        "summary": result.summary,
+        "created_at": result.created_at.isoformat() if result.created_at else None,
     }

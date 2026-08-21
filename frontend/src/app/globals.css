@@ -353,6 +353,28 @@
   animation: cosmos-rotate 4s linear infinite;
 }
 
+/* ── Agent Latency Animation (AgentLatencyAnimation.tsx) ── */
+@keyframes agentlat-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+@keyframes agentlat-swing-a { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(18deg); } }
+@keyframes agentlat-swing-b { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(-18deg); } }
+@keyframes agentlat-pulse { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
+@keyframes agentlat-flicker { 0%, 100% { transform: scaleY(1); opacity: 1; } 50% { transform: scaleY(1.15); opacity: 0.85; } }
+@keyframes agentlat-jump { 0% { transform: translateY(0); } 40% { transform: translateY(-9px); } 100% { transform: translateY(0); } }
+@keyframes agentlat-pop { 0% { transform: scale(0.4); opacity: 0; } 60% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+/* Slower, smaller-amplitude bob than the running cycle — reads as "idly
+   alert" rather than "mid-sprint" for the typing/listening state. */
+@keyframes agentlat-idle-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
+.agentlat-idle-bob { animation: agentlat-idle-bob 1.6s ease-in-out infinite; }
+.agentlat-bob { animation: agentlat-bob 0.5s ease-in-out infinite; }
+.agentlat-swing-a { animation: agentlat-swing-a 0.4s ease-in-out infinite; transform-origin: 0px 15px; }
+.agentlat-swing-b { animation: agentlat-swing-b 0.4s ease-in-out infinite; transform-origin: 0px 15px; }
+.agentlat-leg-a { animation: agentlat-swing-b 0.4s ease-in-out infinite; transform-origin: 0px 21px; }
+.agentlat-leg-b { animation: agentlat-swing-a 0.4s ease-in-out infinite; transform-origin: 0px 21px; }
+.agentlat-pulse { animation: agentlat-pulse 1s ease-in-out infinite; }
+.agentlat-flicker { animation: agentlat-flicker 0.6s ease-in-out infinite; transform-origin: 0px 8px; }
+.agentlat-jump { animation: agentlat-jump 0.55s ease-out; }
+.agentlat-pop { animation: agentlat-pop 0.5s ease-out; }
+
 /* ── Typing Cursor ── */
 @keyframes cursor-blink {
   0%, 100% { opacity: 1; }

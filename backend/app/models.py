@@ -109,6 +109,53 @@ class ScreeningSession(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+class ScreeningResult(Base):
+    """Screening Agent's JD-aligned analysis of a finished conversation — the
+    last link in Candidate -> Telephonic Agent -> Conversation -> Response
+    Storage -> Screening Agent -> Screening Result. One row per analysis run
+    (re-running keeps history rather than overwriting)."""
+
+    __tablename__ = "screening_results"
+
+    id = Column(String, primary_key=True, index=True)
+    source = Column(String, default="telephonic")  # "telephonic" | "interview" — which conversation this analyzed
+    call_id = Column(String, ForeignKey("call_records.id"), nullable=True, index=True)
+    candidate_name = Column(String, nullable=False)
+    role_title = Column(String, nullable=True)
+    jd_text_used = Column(Text, nullable=True)
+    jd_match_score = Column(Integer, nullable=True)
+    verdict = Column(String, nullable=True)  # "Strong Match" | "Match" | "Consider" | "Not a Fit"
+    strengths = Column(JSON, default=list)
+    gaps = Column(JSON, default=list)
+    summary = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class CandidateScoreCard(Base):
+    """Enterprise Orchestration Layer's per-candidate scorecard — one row per
+    candidate scheduled for interviews, backing the compact scores table on
+    the hiring-automation UI. `telephonic_score`/`ai_interview_score` are
+    populated from the real CallRecord/episodic-memory scoring pipelines
+    when available (see memory/orchestrator.py's schedule_candidate_interview),
+    falling back to a stable placeholder only until that candidate's actual
+    interview has run — `*_is_real` marks which is which so the UI can show
+    an honest "placeholder" badge instead of presenting a guess as fact."""
+
+    __tablename__ = "candidate_score_cards"
+
+    id = Column(String, primary_key=True, index=True)  # candidate_id from the hiring-automation UI
+    candidate_name = Column(String, nullable=False)
+    email = Column(String, nullable=True)
+    telephonic_score = Column(Integer, nullable=True)
+    telephonic_score_is_real = Column(String, default="false")  # "true"|"false" — SQLite has no native bool
+    ai_interview_score = Column(Integer, nullable=True)
+    ai_interview_score_is_real = Column(String, default="false")
+    telephonic_scheduled_at = Column(DateTime(timezone=True), nullable=True)
+    ai_interview_scheduled_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class Role(Base):
     """Shared/global memory — one row per job role, readable by every agent
     (Screening, Telephonic, Fraud) so role expectations stay consistent

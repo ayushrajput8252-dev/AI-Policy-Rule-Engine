@@ -1,5 +1,19 @@
 """Enterprise Orchestration Layer.
 
+candidate score cards
+---------------------
+`schedule_candidate_interview` / `get_candidate_scorecards` back the compact
+"Candidate Name / Telephonic Score / AI Interview Score" table on the
+hiring-automation UI's Interview Scheduling step. Real scores already exist
+in two places once an interview has actually run — `CallRecord` (Telephonic
+Agent, SQLite) and episodic memory (Screening/AI Interview Agent, Postgres,
+keyed by the candidate's email as subject_id — see api/screening.py's
+`orchestrator.start_session("screening", session.email, ...)`) — so
+scheduling looks each of those up first and only falls back to a stable
+placeholder score (seeded by candidate_id, so it doesn't jump around on
+refresh) when nothing real has landed yet. `*_is_real` on the stored row
+tells the frontend which is which.
+
 Previously this was frontend-only marketing copy (an "Orchestrator / MCP
 Router / Approval Gate" graphic on the homepage) with no backend behind it —
 each agent (RAG, Fraud, Screening, Telephonic) ran fully independently, with
@@ -18,7 +32,9 @@ Redis/Postgres/Pinecone/SQLite/networkx individually —
 
 Agents call this instead of touching individual memory modules directly.
 """
+import random
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from . import episodic_memory, global_memory, graph_memory, semantic_memory, working_memory
@@ -158,4 +174,148 @@ def memory_health() -> dict:
         "semantic_memory_pinecone": pinecone_ok,
         "global_memory_sqlite": sqlite_ok,
         "graph_memory_sqlite": sqlite_ok,
+    }
+
+
+def _lookup_real_telephonic_score(db, candidate_name: str) -> Optional[int]:
+    """A completed Screening Agent JD-match analysis (ScreeningResult) is a
+    more meaningful "Telephonic Screening Score" than the raw call-demeanor
+    average, so it's preferred when one exists; otherwise falls back to
+    averaging the raw CallRecord communication/relevance/confidence scores."""
+    from ..models import CallRecord, ScreeningResult
+
+    screening_result = (
+        db.query(ScreeningResult)
+        .filter(ScreeningResult.candidate_name.ilike(candidate_name.strip()))
+        .filter(ScreeningResult.jd_match_score.isnot(None))
+        .order_by(ScreeningResult.created_at.desc())
+        .first()
+    )
+    if screening_result:
+        return screening_result.jd_match_score
+
+    record = (
+        db.query(CallRecord)
+        .filter(CallRecord.candidate_name.ilike(candidate_name.strip()))
+        .filter(CallRecord.communication_score.isnot(None))
+        .order_by(CallRecord.updated_at.desc())
+        .first()
+    )
+    if not record:
+        return None
+    parts = [p for p in (record.communication_score, record.relevance_score, record.confidence_score) if p is not None]
+    if not parts:
+        return None
+    return round(sum(parts) / len(parts))
+
+
+def record_screening_result_for_scorecard(candidate_name: Optional[str], screening_result: dict) -> None:
+    """Called right after a Screening Agent JD-match analysis is persisted
+    (api/screening.py's /from-call/{call_id}) so an already-scheduled
+    candidate's Enterprise Orchestration Layer scorecard picks up the real
+    score immediately, instead of waiting for the next schedule action."""
+    if not candidate_name or screening_result.get("jd_match_score") is None:
+        return
+    from ..database import SessionLocal
+    from ..models import CandidateScoreCard
+
+    db = SessionLocal()
+    try:
+        rows = db.query(CandidateScoreCard).filter(CandidateScoreCard.candidate_name.ilike(candidate_name.strip())).all()
+        for row in rows:
+            row.telephonic_score = screening_result["jd_match_score"]
+            row.telephonic_score_is_real = "true"
+        if rows:
+            db.commit()
+    finally:
+        db.close()
+
+
+def _lookup_real_ai_interview_score(email: Optional[str]) -> Optional[int]:
+    """Most recent finished Screening/AI Interview episode for this candidate's
+    email (episodic memory's subject_id — see api/screening.py's start_session
+    call), preferring its LLM-computed overall_score."""
+    if not email:
+        return None
+    episodes = episodic_memory.get_episodes_for_subject(email, limit=5)
+    for ep in episodes:
+        scores = ep.get("scores") or {}
+        overall = scores.get("overall_score")
+        if overall is not None:
+            return round(overall)
+    return None
+
+
+def _placeholder_score(seed_key: str) -> int:
+    """Stable (not re-randomized on every request) placeholder in a plausible
+    band, so the UI doesn't flicker a different number on every refresh
+    before the real interview has actually happened."""
+    return random.Random(seed_key).randint(62, 91)
+
+
+def schedule_candidate_interview(
+    candidate_id: str, candidate_name: str, email: Optional[str], interview_type: str
+) -> dict:
+    """Upserts this candidate's CandidateScoreCard row when an interview is
+    scheduled from the hiring-automation UI, filling in a real score if one
+    already exists (from a completed CallRecord / Screening episode) or a
+    stable placeholder otherwise. `interview_type` is "telephonic" or "ai"."""
+    from ..database import SessionLocal
+    from ..models import CandidateScoreCard
+
+    db = SessionLocal()
+    try:
+        row = db.get(CandidateScoreCard, candidate_id)
+        if row is None:
+            row = CandidateScoreCard(id=candidate_id, candidate_name=candidate_name, email=email)
+            db.add(row)
+        else:
+            row.candidate_name = candidate_name
+            row.email = email or row.email
+
+        now = datetime.now(timezone.utc)
+        if interview_type == "telephonic":
+            real = _lookup_real_telephonic_score(db, candidate_name)
+            row.telephonic_score = real if real is not None else _placeholder_score(f"tel:{candidate_id}")
+            row.telephonic_score_is_real = "true" if real is not None else "false"
+            row.telephonic_scheduled_at = now
+        elif interview_type == "ai":
+            real = _lookup_real_ai_interview_score(email)
+            row.ai_interview_score = real if real is not None else _placeholder_score(f"ai:{candidate_id}")
+            row.ai_interview_score_is_real = "true" if real is not None else "false"
+            row.ai_interview_scheduled_at = now
+        else:
+            raise ValueError(f"Unknown interview_type: {interview_type!r} (expected 'telephonic' or 'ai')")
+
+        db.commit()
+        db.refresh(row)
+        return _serialize_scorecard(row)
+    finally:
+        db.close()
+
+
+def get_candidate_scorecards() -> list[dict]:
+    """All candidate scorecards, most recently updated first — powers the
+    Enterprise Orchestration Layer's interview scores table."""
+    from ..database import SessionLocal
+    from ..models import CandidateScoreCard
+
+    db = SessionLocal()
+    try:
+        rows = db.query(CandidateScoreCard).order_by(CandidateScoreCard.updated_at.desc()).all()
+        return [_serialize_scorecard(r) for r in rows]
+    finally:
+        db.close()
+
+
+def _serialize_scorecard(row) -> dict:
+    return {
+        "candidate_id": row.id,
+        "candidate_name": row.candidate_name,
+        "email": row.email,
+        "telephonic_score": row.telephonic_score,
+        "telephonic_score_is_real": row.telephonic_score_is_real == "true",
+        "ai_interview_score": row.ai_interview_score,
+        "ai_interview_score_is_real": row.ai_interview_score_is_real == "true",
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }

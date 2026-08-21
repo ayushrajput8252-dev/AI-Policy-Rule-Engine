@@ -15,8 +15,9 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { X, Send, Mic, Square, Volume2, VolumeX, Loader2 } from "lucide-react";
+import { X, Send, Mic, Square, Volume2, VolumeX } from "lucide-react";
 import ChatMarkdown from "../ChatMarkdown";
+import AgentLatencyAnimation from "./AgentLatencyAnimation";
 
 /** Fired by anything on the page (e.g. the hero's floating topic doodles) to open
  *  the assistant pre-loaded with a question — window-level so callers don't need
@@ -109,6 +110,7 @@ export default function AIAssistantWidget({ config = ASSISTANT_CONFIG }: { confi
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [lastQueryFailed, setLastQueryFailed] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [speechOn, setSpeechOn] = useState(false);
@@ -158,6 +160,7 @@ export default function AIAssistantWidget({ config = ASSISTANT_CONFIG }: { confi
     setMessages((prev) => [...prev, { id: `u${Date.now()}`, role: "user", content: query }]);
     setInput("");
     setIsLoading(true);
+    setLastQueryFailed(false);
 
     try {
       const res = await fetch(`${API_URL}/api/v1/query`, {
@@ -179,6 +182,7 @@ export default function AIAssistantWidget({ config = ASSISTANT_CONFIG }: { confi
       setMessages((prev) => [...prev, reply]);
       if (speechOn) speak(reply.content);
     } catch {
+      setLastQueryFailed(true);
       setMessages((prev) => [
         ...prev,
         {
@@ -394,13 +398,11 @@ export default function AIAssistantWidget({ config = ASSISTANT_CONFIG }: { confi
                       </div>
                     </div>
                   ))}
-                  {isLoading && (
-                    <div className="flex justify-start">
-                      <div className="px-3.5 py-2.5 rounded-2xl rounded-bl-md bg-zinc-50 border border-zinc-200 flex items-center gap-2 text-zinc-500 text-xs">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" /> Thinking…
-                      </div>
-                    </div>
-                  )}
+                  <AgentLatencyAnimation
+                    isLoading={isLoading}
+                    didError={lastQueryFailed}
+                    isTyping={!isLoading && input.trim().length > 0 && !isRecording}
+                  />
                   {voiceError && <p className="text-[11px] text-red-500 font-medium text-center">{voiceError}</p>}
                 </div>
               )}

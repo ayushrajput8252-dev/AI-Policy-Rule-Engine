@@ -4,6 +4,7 @@ from .detection import get_embedding_model
 from ..config import settings
 from ..database import SessionLocal
 from ..models import Rule
+from .resilience import call_with_resilience, CircuitOpenError
 
 _pinecone = None
 _index = None
@@ -60,8 +61,13 @@ def store_chunks_batch_in_pinecone(chunks: list[dict]):
             vectors.append({"id": f"chunk_{chunk_id}", "values": vector, "metadata": metadata})
             
         if vectors:
-            index.upsert(vectors=vectors)
+            call_with_resilience(
+                "pinecone_write", index.upsert, vectors=vectors,
+                max_attempts=3, base_delay=0.5, max_delay=4.0,
+            )
             print(f"[Pinecone Indexer]: Indexed {len(vectors)} raw chunks into Pinecone.")
+    except CircuitOpenError as e:
+        print(f"Warning: Pinecone write circuit open, skipping chunk indexing: {e}")
     except Exception as e:
         print(f"Warning: Failed to store chunks in Pinecone: {str(e)}")
 
@@ -113,9 +119,15 @@ def canonicalize_and_store_rule(document_id: str, page: int, section: str, rule_
             import json
             metadata["bbox"] = json.dumps(bbox)
             metadata["page_dim"] = json.dumps(page_dim)
-            
-        index.upsert(vectors=[{"id": f"rule_{rule_id}", "values": vector, "metadata": metadata}])
-        
+
+        call_with_resilience(
+            "pinecone_write", index.upsert,
+            vectors=[{"id": f"rule_{rule_id}", "values": vector, "metadata": metadata}],
+            max_attempts=3, base_delay=0.5, max_delay=4.0,
+        )
+
+    except CircuitOpenError as e:
+        print(f"Warning: Pinecone write circuit open, skipping rule indexing: {e}")
     except Exception as e:
         print(f"Warning: Failed to store rule in Pinecone: {str(e)}")
         

@@ -1,6 +1,6 @@
 import json
 import re
-from .llm_service import generate_json
+from .llm_service import generate_json_resilient as generate_json
 from .web_service import tavily_search
 from ..database import SessionLocal
 from ..models import Chunk

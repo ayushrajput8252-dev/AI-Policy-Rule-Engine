@@ -1,6 +1,6 @@
 import json
 import re
-from .llm_service import generate_json
+from .llm_service import generate_json_resilient as generate_json
 
 def extract_rules_batch(chunks_batch: list[dict], max_retries: int = 4) -> list[dict]:
     """

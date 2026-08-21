@@ -79,6 +79,59 @@ class Settings(BaseSettings):
     # so no second Pinecone index needs to be provisioned.
     PINECONE_MEMORY_NAMESPACE: str = "agent-memory"
 
+    # --- MCP enterprise tool integrations (app/mcp/) ---
+    # Each connector fails soft with a clear "not configured" error (never a
+    # fake response) while its own block below is unset — same convention as
+    # TWILIO_* above. See app/mcp/connectors/ for what each is used for.
+
+    # Slack — bot token from an installed Slack App (OAuth & Permissions >
+    # Bot User OAuth Token). Scopes needed: chat:write, channels:read, channels:history.
+    SLACK_BOT_TOKEN: str = ""
+
+    # Microsoft Teams + SharePoint — one Azure AD app registration (Graph API,
+    # client-credentials/application permissions, admin-consented). Teams
+    # needs ChannelMessage.Send + Team.ReadBasic.All; SharePoint needs
+    # Sites.Read.All (or Sites.ReadWrite.All to upload).
+    MS_GRAPH_TENANT_ID: str = ""
+    MS_GRAPH_CLIENT_ID: str = ""
+    MS_GRAPH_CLIENT_SECRET: str = ""
+
+    # Jira — Atlassian Cloud REST API v3, Basic auth with an account email +
+    # API token (id.atlassian.com/manage-profile/security/api-tokens).
+    JIRA_BASE_URL: str = ""  # e.g. https://your-domain.atlassian.net
+    JIRA_EMAIL: str = ""
+    JIRA_API_TOKEN: str = ""
+
+    # GitHub — a fine-grained personal access token (or GitHub App
+    # installation token) with repo/issues read+write on the target repos.
+    GITHUB_TOKEN: str = ""
+
+    # Salesforce — username-password OAuth2 flow (simplest server-to-server
+    # option; a Connected App with this flow enabled is required). Rotate the
+    # security token whenever the password changes.
+    SALESFORCE_INSTANCE_URL: str = ""  # e.g. https://your-domain.my.salesforce.com
+    SALESFORCE_CLIENT_ID: str = ""
+    SALESFORCE_CLIENT_SECRET: str = ""
+    SALESFORCE_USERNAME: str = ""
+    SALESFORCE_PASSWORD: str = ""
+    SALESFORCE_SECURITY_TOKEN: str = ""
+
+    # SAP — OAuth2 client-credentials against an SAP Cloud (BTP/SuccessFactors/
+    # S/4HANA Cloud) OData service. SAP_BASE_URL is the OData service root;
+    # exact scopes depend on which SAP service is provisioned.
+    SAP_BASE_URL: str = ""
+    SAP_TOKEN_URL: str = ""
+    SAP_CLIENT_ID: str = ""
+    SAP_CLIENT_SECRET: str = ""
+
+    # Google Workspace (Gmail, Drive, Calendar, Docs, Sheets) — a GCP service
+    # account JSON key (paste the full JSON, not a file path) with domain-wide
+    # delegation enabled, impersonating GOOGLE_WORKSPACE_DELEGATED_USER.
+    # Distinct from GOOGLE_CLIENT_ID above, which is only for verifying this
+    # app's own Google Sign-In — this is for calling Workspace APIs as a user.
+    GOOGLE_WORKSPACE_SERVICE_ACCOUNT_JSON: str = ""
+    GOOGLE_WORKSPACE_DELEGATED_USER: str = ""
+
     # Fraud detection pipeline
     FRAUD_ELA_THRESHOLD: float = 35.0
     # Empty by default so pytesseract resolves `tesseract` from PATH, which is

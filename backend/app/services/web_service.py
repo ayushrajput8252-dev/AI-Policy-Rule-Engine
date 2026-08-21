@@ -1,10 +1,35 @@
 import requests
 from bs4 import BeautifulSoup
 from ..config import settings
+from .resilience import call_with_resilience, CircuitOpenError
 
 USER_AGENT = "Mozilla/5.0 (compatible; AgenticFlowBot/1.0; +policy-engine)"
 MIN_BLOCK_CHARS = 400
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
+
+
+def _tavily_search_raw(query: str, max_results: int) -> list[dict]:
+    resp = requests.post(
+        TAVILY_SEARCH_URL,
+        json={
+            "api_key": settings.TAVILY_API_KEY,
+            "query": query,
+            "search_depth": "basic",
+            "max_results": max_results,
+        },
+        timeout=20,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return [
+        {
+            "title": r.get("title", ""),
+            "url": r.get("url", ""),
+            "content": r.get("content", ""),
+        }
+        for r in data.get("results", [])
+        if r.get("content")
+    ]
 
 
 def tavily_search(query: str, max_results: int = 5) -> list[dict]:
@@ -14,31 +39,19 @@ def tavily_search(query: str, max_results: int = 5) -> list[dict]:
     question — e.g. general knowledge or anything outside the uploaded documents.
     Returns a list of {title, url, content} results, or [] if no key is configured
     or the request fails (callers treat that the same as "no results").
+    Circuit-breaker + retry protected so a Tavily outage fails fast instead of
+    stalling every "info missing" answer behind a full timeout.
     """
     if not settings.TAVILY_API_KEY:
         return []
     try:
-        resp = requests.post(
-            TAVILY_SEARCH_URL,
-            json={
-                "api_key": settings.TAVILY_API_KEY,
-                "query": query,
-                "search_depth": "basic",
-                "max_results": max_results,
-            },
-            timeout=20,
+        return call_with_resilience(
+            "tavily", _tavily_search_raw, query, max_results,
+            max_attempts=2, base_delay=0.3, max_delay=2.0,
         )
-        resp.raise_for_status()
-        data = resp.json()
-        return [
-            {
-                "title": r.get("title", ""),
-                "url": r.get("url", ""),
-                "content": r.get("content", ""),
-            }
-            for r in data.get("results", [])
-            if r.get("content")
-        ]
+    except CircuitOpenError as e:
+        print(f"[Tavily Search Warning]: circuit open, {e}")
+        return []
     except Exception as e:
         print(f"[Tavily Search Warning]: {e}")
         return []
@@ -46,7 +59,10 @@ def tavily_search(query: str, max_results: int = 5) -> list[dict]:
 
 def fetch_url_text(url: str) -> dict:
     """Fetches a URL and extracts a clean readable title + body text."""
-    resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=20)
+    resp = call_with_resilience(
+        "web_crawl", requests.get, url, headers={"User-Agent": USER_AGENT}, timeout=20,
+        max_attempts=2, base_delay=0.3, max_delay=2.0,
+    )
     resp.raise_for_status()
 
     content_type = resp.headers.get("content-type", "")

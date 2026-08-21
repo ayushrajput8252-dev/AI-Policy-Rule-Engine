@@ -3,6 +3,8 @@ from concurrent.futures import ThreadPoolExecutor
 from .detection import get_embedding_model
 from .canonicalization import get_pinecone_index
 from .cache import get_cached_embedding, set_cached_embedding
+from .resilience import call_with_resilience, CircuitOpenError
+from .local_fallback_retrieval import local_semantic_search
 
 logger = logging.getLogger(__name__)
 
@@ -19,33 +21,52 @@ def get_query_vector(query: str) -> list[float]:
     set_cached_embedding(query, query_vector)
     return query_vector
 
+def _query_pinecone_raw(vector: list[float], vector_type: str, top_k: int, document_id: str | None) -> list[dict]:
+    index = get_pinecone_index()
+    filter_dict = {}
+    if document_id:
+        filter_dict["document_id"] = {"$eq": document_id}
+    if vector_type:
+        filter_dict["vector_type"] = {"$eq": vector_type}
+
+    query_args = {
+        "vector": vector,
+        "top_k": top_k,
+        "include_metadata": True
+    }
+    if filter_dict:
+        query_args["filter"] = filter_dict
+
+    response = index.query(**query_args)
+
+    matches = []
+    for match in response.matches:
+        matches.append({
+            "id": match.id,
+            "score": match.score,
+            "metadata": match.metadata or {}
+        })
+    return matches
+
+
 def _query_pinecone(vector: list[float], vector_type: str, top_k: int, document_id: str | None) -> list[dict]:
+    """
+    Pinecone read, protected by a circuit breaker + short retry (services/
+    resilience.py). On an open breaker or exhausted retries — e.g. the known
+    free-tier egress-quota 429s — falls back to local_semantic_search() over
+    the same content mirrored in SQLite, instead of silently returning [],
+    which is what used to push every query straight to web search regardless
+    of whether the platform's own indexed content had the answer.
+    """
     try:
-        index = get_pinecone_index()
-        filter_dict = {}
-        if document_id:
-            filter_dict["document_id"] = {"$eq": document_id}
-        if vector_type:
-            filter_dict["vector_type"] = {"$eq": vector_type}
-            
-        query_args = {
-            "vector": vector,
-            "top_k": top_k,
-            "include_metadata": True
-        }
-        if filter_dict:
-            query_args["filter"] = filter_dict
-            
-        response = index.query(**query_args)
-        
-        matches = []
-        for match in response.matches:
-            matches.append({
-                "id": match.id,
-                "score": match.score,
-                "metadata": match.metadata or {}
-            })
-        return matches
+        return call_with_resilience(
+            "pinecone", _query_pinecone_raw, vector, vector_type, top_k, document_id,
+            max_attempts=2, base_delay=0.3, max_delay=1.5,
+        )
+    except CircuitOpenError:
+        logger.warning(
+            "[Retrieval] Pinecone circuit open — using local fallback retrieval (vector_type=%s).", vector_type
+        )
     except Exception as e:
         # Loud, diagnosable failure: a Pinecone outage must not look the same
         # as "no relevant results" in the logs, since callers silently treat
@@ -55,7 +76,10 @@ def _query_pinecone(vector: list[float], vector_type: str, top_k: int, document_
             vector_type, top_k, document_id, type(e).__name__, str(e),
             exc_info=True
         )
-        return []
+
+    if vector_type in ("rule", "chunk"):
+        return local_semantic_search(vector, vector_type, top_k, document_id)
+    return []
 
 def retrieve_rules(query: str, top_k: int = 5, document_id: str | None = None) -> list[dict]:
     query_vector = get_query_vector(query)

@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 from ..services.retrieval import retrieve_rules_and_chunks_parallel
 from ..services.reasoning import generate_answer_with_fallback
 from ..services.cache import get_cached_query, set_cached_query
+from ..services.guardrails import check_input, check_output
 from ..services.multilingual import (
     detect_language,
     get_language_name,
@@ -24,7 +25,19 @@ async def process_query(request: QueryRequest):
         if not raw_query:
             raise HTTPException(status_code=400, detail="Query string cannot be empty.")
 
-        # 0. Redis Query Cache Check
+        # 0a. Input guardrail — length cap, control-char stripping, and a
+        # small prompt-injection phrase blocklist. Regex-only, so this adds
+        # no measurable latency to a normal query.
+        input_check = check_input(raw_query)
+        if not input_check.allowed:
+            return {
+                "answer": "I can't process that request. Please rephrase your question about the platform or its policies.",
+                "sources": [],
+                "retrieval_mode": "blocked",
+            }
+        raw_query = input_check.text
+
+        # 0b. Redis Query Cache Check
         cached_result = get_cached_query(request.document_id, raw_query, request.top_k)
         if cached_result:
             return cached_result
@@ -62,7 +75,12 @@ async def process_query(request: QueryRequest):
         if translated_to_english:
             answer_data["original_query"] = raw_query
             answer_data["translated_query"] = search_query
-            
+
+        # 6b. Output guardrail — redacts anything credential/PII-shaped that
+        # slipped into the generated answer (e.g. from a crawled web result).
+        if answer_data.get("answer"):
+            answer_data["answer"] = check_output(answer_data["answer"]).text
+
         # 7. Write Result to Redis Cache
         set_cached_query(request.document_id, raw_query, answer_data, request.top_k)
         

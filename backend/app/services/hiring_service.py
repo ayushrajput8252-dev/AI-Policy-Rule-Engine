@@ -12,7 +12,7 @@ provider outage degrades the pipeline instead of breaking it.
 import re
 from typing import Any, Dict, List, Optional
 
-from .llm_service import generate_json
+from .llm_service import generate_json_resilient as generate_json
 from .parsing import parse_pdf
 
 EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")

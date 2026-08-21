@@ -24,6 +24,7 @@ from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from ..config import settings
+from .resilience import retry_with_backoff
 
 # ─────────────────────────────────────────────────────────────────────────
 # Structured-output schemas
@@ -62,8 +63,12 @@ class AiTextSignal(BaseModel):
 # Models + fallback-chain construction
 # ─────────────────────────────────────────────────────────────────────────
 
-_GROQ_MODEL = "llama-3.3-70b-versatile"
-_GEMINI_MODELS = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash"]
+# llama-3.3-70b-versatile was removed from Groq's catalog entirely (404
+# model_not_found, confirmed live) — gpt-oss-120b is the current
+# equivalent-tier general-purpose model. gemini-2.0-flash is similarly
+# retired (404, Google's docs point to gemini-3.6-flash as the replacement).
+_GROQ_MODEL = "openai/gpt-oss-120b"
+_GEMINI_MODELS = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-3.6-flash"]
 
 
 def _build_models():
@@ -174,13 +179,13 @@ def extract_identity(text: str) -> ExtractedIdentity:
     # means the caller's own except-block reports it as a distinct "error"
     # step instead of a clean "na" one.
     chain = _structured_chain(IDENTITY_PROMPT, ExtractedIdentity)
-    return chain.invoke({"text": text[:8000]})
+    return retry_with_backoff(chain.invoke, {"text": text[:8000]}, max_attempts=2, base_delay=0.3, max_delay=2.0)
 
 
 def classify_ai_text(text: str) -> AiTextSignal:
     try:
         chain = _structured_chain(AI_TEXT_PROMPT, AiTextSignal)
-        return chain.invoke({"text": text[:8000]})
+        return retry_with_backoff(chain.invoke, {"text": text[:8000]}, max_attempts=2, base_delay=0.3, max_delay=2.0)
     except Exception as e:
         print(f"[Fraud LLM] AI-text classification failed: {e}")
         return _fallback_ai_text_signal()

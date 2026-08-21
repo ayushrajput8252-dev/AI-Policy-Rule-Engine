@@ -1,5 +1,5 @@
 import json
-from .llm_service import generate_json
+from .llm_service import generate_json_resilient as generate_json
 
 def validate_rule(source_text: str, extracted_rule: dict) -> dict:
     """

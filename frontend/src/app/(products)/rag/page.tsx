@@ -14,6 +14,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
 import ChatMarkdown from "@/components/ChatMarkdown";
+import AgentLatencyAnimation from "@/components/ai-assistant/AgentLatencyAnimation";
 
 function GithubIcon({ className }: { className?: string }) {
   return (
@@ -53,6 +54,7 @@ type Message = {
   original_query?: string;
   translated_query?: string;
   isAgentic?: boolean;
+  isError?: boolean;
   latencyMs?: number;
   retrieval_mode?: "rules" | "chunks" | "missing";
 };
@@ -223,6 +225,7 @@ export default function RAGPage() {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [lastQueryFailed, setLastQueryFailed] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
   // ── Add Link (Web Crawl) State ──
@@ -244,6 +247,10 @@ export default function RAGPage() {
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const recognitionRef = useRef<any>(null);
+  // onresult fires repeatedly with interim text; stop handlers need the final
+  // transcript synchronously (state updates from onresult aren't guaranteed
+  // to have flushed yet), so this ref is the source of truth for submission.
+  const latestTranscriptRef = useRef<string>("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -275,7 +282,15 @@ export default function RAGPage() {
         });
         if (res.ok) {
           const data = await res.json();
-          if (data.transcript) setInput(data.transcript);
+          if (data.transcript) {
+            if (isVoiceMode) {
+              submitQuery(data.transcript);
+            } else {
+              setInput(data.transcript);
+            }
+          } else {
+            setVoiceError("Didn't catch that — please try again.");
+          }
         } else {
           setVoiceError("Transcription failed. Please try again.");
         }
@@ -300,6 +315,7 @@ export default function RAGPage() {
       setVoiceError(null);
       setRecordingTime(0);
       audioChunksRef.current = [];
+      latestTranscriptRef.current = "";
 
       if (typeof window !== "undefined" && ("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -315,6 +331,7 @@ export default function RAGPage() {
           const transcript = Array.from(event.results)
             .map((res: any) => res[0].transcript)
             .join("");
+          latestTranscriptRef.current = transcript;
           setInput(transcript);
         };
 
@@ -347,11 +364,21 @@ export default function RAGPage() {
 
         recognition.onend = () => {
           // Guards against a stale onend firing after we've already handed off
-          // to the server-recording fallback (which owns isRecording/timer by then).
+          // to the server-recording fallback (which owns isRecording/timer by then),
+          // or after the user already hit Stop (stopRecording handles submission itself).
           if (recognitionRef.current !== recognition) return;
           setIsRecording(false);
           recognitionRef.current = null;
           if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+
+          // In Voice Mode, the browser ending the session on its own (e.g. a long
+          // silence) should still send whatever was captured, not strand it in the
+          // input box looking like the app swallowed the question.
+          const finalTranscript = latestTranscriptRef.current.trim();
+          if (isVoiceMode && finalTranscript) {
+            latestTranscriptRef.current = "";
+            submitQuery(finalTranscript);
+          }
         };
 
         recognition.start();
@@ -373,12 +400,26 @@ export default function RAGPage() {
   const stopRecording = () => {
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
     setIsRecording(false);
+
+    // Was the Web Speech API path active? If so its transcript is already
+    // final in the ref — recognition.stop() fires onend asynchronously (after
+    // we've nulled the ref below), so onend's own auto-submit won't run and
+    // this is the only place that can send it.
+    const wasUsingSpeechRecognition = !!recognitionRef.current;
     if (recognitionRef.current) {
       recognitionRef.current.stop();
       recognitionRef.current = null;
     }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      // Server-recording path submits from its own onstop handler once the
+      // transcription request resolves — nothing to do here but stop it.
       mediaRecorderRef.current.stop();
+    }
+
+    if (wasUsingSpeechRecognition && isVoiceMode) {
+      const finalTranscript = latestTranscriptRef.current.trim();
+      latestTranscriptRef.current = "";
+      if (finalTranscript) submitQuery(finalTranscript);
     }
   };
 
@@ -649,9 +690,17 @@ export default function RAGPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
-
     const userQuery = input.trim();
     setInput("");
+    await submitQuery(userQuery);
+  };
+
+  // Shared by the typed-input form and voice mode (which has no <form> submit
+  // event to hook — it must call this directly once a spoken query is final).
+  const submitQuery = async (rawQuery: string) => {
+    if (!rawQuery.trim() || isLoading) return;
+
+    const userQuery = rawQuery.trim();
     setShowSlashMenu(false);
     const startTime = performance.now();
 
@@ -695,6 +744,7 @@ export default function RAGPage() {
 
     setMessages((prev) => [...prev, { id: Date.now().toString(), role: "user", content: userQuery }]);
     setIsLoading(true);
+    setLastQueryFailed(false);
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -707,6 +757,7 @@ export default function RAGPage() {
         }),
       });
 
+      if (!res.ok) throw new Error(`Query failed: ${res.status}`);
       const data = await res.json();
       const endTime = performance.now();
       const latency = Math.round(endTime - startTime);
@@ -729,18 +780,33 @@ export default function RAGPage() {
       if (isVoiceMode && data.answer) {
         speakText(data.answer, newMsg.id);
       }
-    } catch {
+    } catch (err) {
+      console.error("Query failed:", err);
+      setLastQueryFailed(true);
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: `Based on indexed documents: Policies require all team members to follow security guidelines, submit expense claims within 30 days, and complete annual compliance attestations.`,
-        latencyMs: 38,
+        isError: true,
+        content: "I'm having trouble reaching the knowledge engine right now. Please try again in a moment.",
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsLoading(false);
     }
   };
+
+  // Resolve the PDF file actually backing the clicked citation by its own
+  // document_id — NOT the globally "last uploaded" document. Cross-corpus
+  // queries return citations from any indexed document, so falling back to
+  // currentDocId/currentFileName here was what caused clicking a citation
+  // from Document B to silently highlight a bbox on Document A's PDF.
+  const activeSourceDoc = activeSource
+    ? documents.find((d) => d.id === activeSource.document_id)
+    : null;
+  const activeSourceFileName = activeSourceDoc
+    ? `${activeSourceDoc.id}_${activeSourceDoc.fileName}`
+    : null;
+  const activeSourceNotFound = !!activeSource && !activeSourceDoc;
 
   return (
     <div className="h-screen w-screen bg-white bg-white-grid flex flex-col overflow-hidden selection:bg-blue-500/20 font-sans text-zinc-900 relative">
@@ -896,14 +962,16 @@ export default function RAGPage() {
                         <div className="flex items-start gap-2">
                           <div
                             className={`p-4 rounded-2xl text-[13px] leading-relaxed shadow-xs flex-1 ${
-                              msg.role === "assistant"
-                                ? "bg-white border border-zinc-200 text-zinc-800 font-sans"
-                                : "bg-blue-600 text-white font-medium font-sans whitespace-pre-wrap"
+                              msg.role !== "assistant"
+                                ? "bg-blue-600 text-white font-medium font-sans whitespace-pre-wrap"
+                                : msg.isError
+                                ? "bg-red-50 border border-red-200 text-red-700 font-sans"
+                                : "bg-white border border-zinc-200 text-zinc-800 font-sans"
                             }`}
                           >
-                            {msg.role === "assistant" ? <ChatMarkdown content={msg.content} /> : msg.content}
+                            {msg.role === "assistant" && !msg.isError ? <ChatMarkdown content={msg.content} /> : msg.content}
                           </div>
-                          {msg.role === "assistant" && (
+                          {msg.role === "assistant" && !msg.isError && (
                             <button
                               type="button"
                               onClick={() => speakText(msg.content, msg.id)}
@@ -937,9 +1005,13 @@ export default function RAGPage() {
                                   key={sIdx}
                                   onClick={() => setActiveSource(src)}
                                   className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 px-3 py-1 rounded-lg transition-colors shadow-2xs"
+                                  title={`Jump to ${documents.find((d) => d.id === src.document_id)?.fileName || `Doc ${src.document_id.slice(0, 8)}`}, page ${src.page}`}
                                 >
                                   <Crosshair className="w-3.5 h-3.5 text-blue-600" />
-                                  <span>Target PDF Bounding Box</span>
+                                  <span>
+                                    Source {sIdx + 1}
+                                    {src.page ? ` · p.${src.page}` : ""}
+                                  </span>
                                 </button>
                               )
                             )}
@@ -949,14 +1021,11 @@ export default function RAGPage() {
                     </motion.div>
                   ))}
 
-                  {isLoading && (
-                    <div className="flex justify-start">
-                      <div className="bg-white border border-zinc-200 p-3.5 rounded-2xl shadow-xs flex items-center gap-3 text-xs font-mono text-blue-600 font-semibold">
-                        <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-                        <span>Searching document vector corpus & MCP tools...</span>
-                      </div>
-                    </div>
-                  )}
+                  <AgentLatencyAnimation
+                    isLoading={isLoading}
+                    didError={lastQueryFailed}
+                    isTyping={!isLoading && input.trim().length > 0 && !isRecording}
+                  />
                   <div ref={chatEndRef} />
                 </div>
               </div>
@@ -1328,7 +1397,8 @@ export default function RAGPage() {
               <div className="flex-1 overflow-hidden relative">
                 <PdfViewer
                   source={activeSource}
-                  fileName={currentDocId && currentFileName ? `${currentDocId}_${currentFileName}` : currentFileName}
+                  fileName={activeSourceFileName}
+                  notFound={activeSourceNotFound}
                 />
               </div>
             </motion.div>

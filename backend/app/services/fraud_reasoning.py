@@ -36,7 +36,7 @@ def synthesize(text: str, step_summaries: list[dict]) -> dict:
     prompt = REASONING_PROMPT.format(signals=json.dumps(signals, indent=2), text=(text or "")[:6000])
 
     try:
-        result = llm_service.generate_json(prompt)
+        result = llm_service.generate_json_resilient(prompt)
         risk_score = max(0, min(100, int(result.get("risk_score", 50))))
         verdict = result.get("verdict") if result.get("verdict") in VALID_VERDICTS else "needs_review"
         explanation = str(result.get("explanation", "")).strip() or "No explanation provided."

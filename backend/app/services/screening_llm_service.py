@@ -20,6 +20,7 @@ from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from ..config import settings
+from .resilience import retry_with_backoff
 
 INTERVIEWER_NAME = "Ayush"
 
@@ -47,6 +48,19 @@ class ScreeningQuestion(BaseModel):
     text: str
 
 
+class TelephonicScreeningAnalysis(BaseModel):
+    """JD-aligned analysis of a completed Telephonic Agent call transcript —
+    distinct from telephonic_service.generate_call_evaluation's generic
+    communication/relevance/confidence scoring, this specifically judges fit
+    against the role's actual job requirements."""
+
+    jd_match_score: int = Field(ge=0, le=100)
+    verdict: Literal["Strong Match", "Match", "Consider", "Not a Fit"]
+    strengths: List[str] = Field(default_factory=list)
+    gaps: List[str] = Field(default_factory=list)
+    summary: str = ""
+
+
 class ScreeningQuestionSet(BaseModel):
     questions: List[ScreeningQuestion]
 
@@ -62,8 +76,12 @@ class ScreeningQuestionSet(BaseModel):
 # Models + fallback-chain construction
 # ─────────────────────────────────────────────────────────────────────────
 
-_GROQ_MODEL = "llama-3.3-70b-versatile"
-_GEMINI_MODELS = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash"]
+# llama-3.3-70b-versatile was removed from Groq's catalog entirely (404
+# model_not_found, confirmed live) — gpt-oss-120b is the current
+# equivalent-tier general-purpose model. gemini-2.0-flash is similarly
+# retired (404, Google's docs point to gemini-3.6-flash as the replacement).
+_GROQ_MODEL = "openai/gpt-oss-120b"
+_GEMINI_MODELS = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-3.6-flash"]
 
 
 def _build_models():
@@ -134,6 +152,28 @@ JD_PROMPT = ChatPromptTemplate.from_messages(
     ]
 )
 
+TELEPHONIC_SCREENING_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "You are a hiring screening analyst. Judge a candidate's phone-screen "
+            "transcript against the ACTUAL job requirements below — not just how "
+            "well they communicated. Base every claim only on what the transcript "
+            "actually shows; never invent qualifications the candidate didn't mention. "
+            "jd_match_score reflects fit against the job description specifically "
+            "(0 = no alignment, 100 = excellent alignment). verdict must be exactly "
+            'one of "Strong Match", "Match", "Consider", "Not a Fit".',
+        ),
+        (
+            "human",
+            "Role: {role_title}\n\nJob description:\n{jd_text}\n\n"
+            "Call transcript:\n{transcript}\n\n"
+            "Score jd_match_score, choose verdict, and list concrete strengths and "
+            "gaps relative to the job description, plus a 2-3 sentence summary.",
+        ),
+    ]
+)
+
 QUESTION_SET_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
@@ -182,6 +222,17 @@ def _fallback_jd_profile() -> JDProfile:
     return JDProfile(key_responsibilities=[], key_requirements=[])
 
 
+def _fallback_telephonic_screening_analysis() -> TelephonicScreeningAnalysis:
+    return TelephonicScreeningAnalysis(
+        jd_match_score=50,
+        verdict="Consider",
+        strengths=[],
+        gaps=[],
+        summary="Automated JD-match analysis is temporarily unavailable — both the "
+        "primary and fallback LLM providers failed. Please review the transcript manually.",
+    )
+
+
 _GENERIC_ROLE_QUESTIONS = [
     "Walk me through your overall experience and what draws you to this role.",
     "What's a technical decision you made recently that you'd stand behind today?",
@@ -222,7 +273,7 @@ def _fallback_question_bank(role_title: str, resume_profile: ResumeProfile) -> L
 def get_resume_profile(resume_text: str) -> ResumeProfile:
     try:
         chain = _structured_chain(RESUME_PROMPT, ResumeProfile)
-        return chain.invoke({"resume_text": resume_text[:8000]})
+        return retry_with_backoff(chain.invoke, {"resume_text": resume_text[:8000]}, max_attempts=2, base_delay=0.3, max_delay=2.0)
     except Exception as e:
         print(f"[Screening LLM] resume profile extraction failed: {e}")
         return _fallback_resume_profile(resume_text)
@@ -231,10 +282,42 @@ def get_resume_profile(resume_text: str) -> ResumeProfile:
 def get_jd_profile(jd_text: str) -> JDProfile:
     try:
         chain = _structured_chain(JD_PROMPT, JDProfile)
-        return chain.invoke({"role_title": "the open role", "jd_text": jd_text[:6000]})
+        return retry_with_backoff(chain.invoke, {"role_title": "the open role", "jd_text": jd_text[:6000]}, max_attempts=2, base_delay=0.3, max_delay=2.0)
     except Exception as e:
         print(f"[Screening LLM] JD profile extraction failed: {e}")
         return _fallback_jd_profile()
+
+
+def analyze_telephonic_screening(
+    transcript: List[dict], role_title: str, jd_text: Optional[str]
+) -> TelephonicScreeningAnalysis:
+    """JD-aligned screening analysis of a finished Telephonic Agent call —
+    the "Screening Agent" step in Candidate -> Telephonic Agent -> Conversation
+    -> Screening Agent -> Screening Result."""
+    formatted = "\n".join(
+        f"{'Agent' if t.get('role') == 'agent' else 'Candidate'}: {t.get('text', '').strip()}"
+        for t in transcript
+    )
+    if not formatted.strip():
+        return TelephonicScreeningAnalysis(
+            jd_match_score=0, verdict="Not a Fit", strengths=[], gaps=[],
+            summary="No candidate responses were recorded in this call.",
+        )
+
+    try:
+        chain = _structured_chain(TELEPHONIC_SCREENING_PROMPT, TelephonicScreeningAnalysis)
+        return retry_with_backoff(
+            chain.invoke,
+            {
+                "role_title": role_title,
+                "jd_text": (jd_text or "No job description provided — assess general fit for the role title.")[:6000],
+                "transcript": formatted[:8000],
+            },
+            max_attempts=2, base_delay=0.3, max_delay=2.0,
+        )
+    except Exception as e:
+        print(f"[Screening LLM] telephonic screening analysis failed: {e}")
+        return _fallback_telephonic_screening_analysis()
 
 
 def _normalize_question_set(
@@ -278,7 +361,8 @@ def generate_question_set(
 
     try:
         chain = _structured_chain(QUESTION_SET_PROMPT, ScreeningQuestionSet)
-        result = chain.invoke(
+        result = retry_with_backoff(
+            chain.invoke,
             {
                 "interviewer_name": INTERVIEWER_NAME,
                 "role_title": role_title,
@@ -289,7 +373,8 @@ def generate_question_set(
                 "projects": ", ".join(resume_profile.projects) or "n/a",
                 "tech_stack": ", ".join(resume_profile.tech_stack) or "n/a",
                 "jd_context": jd_context,
-            }
+            },
+            max_attempts=2, base_delay=0.3, max_delay=2.0,
         )
         questions = result.questions
     except Exception as e:

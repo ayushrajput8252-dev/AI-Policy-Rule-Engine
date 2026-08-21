@@ -83,7 +83,7 @@ def check_arithmetic(text: str, ocr_confidence: float | None = None) -> dict:
         }
 
     try:
-        fields = llm_service.generate_json(EXTRACTION_PROMPT.format(text=text[:6000]))
+        fields = llm_service.generate_json_resilient(EXTRACTION_PROMPT.format(text=text[:6000]))
     except Exception as e:
         return {
             "key": "arithmetic",

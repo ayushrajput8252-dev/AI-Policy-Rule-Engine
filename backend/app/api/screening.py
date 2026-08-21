@@ -11,7 +11,11 @@ from ..config import settings
 from ..database import get_db
 from ..memory import global_memory, orchestrator
 from ..services.email_service import send_invite_email
-from ..services.screening_service import parse_resume_and_generate_questions
+from ..services.screening_service import (
+    _serialize_screening_result,
+    parse_resume_and_generate_questions,
+    screen_call_transcript,
+)
 
 router = APIRouter(prefix="/screening", tags=["screening"])
 
@@ -100,6 +104,60 @@ def invite_candidate(payload: InviteRequest, db: Session = Depends(get_db)):
         interview_link=interview_link,
         message=f"Invite sent to {payload.email}.",
     )
+
+
+@router.post("/from-call/{call_id}")
+def screen_from_call(call_id: str, jd_text: Optional[str] = Form(None), db: Session = Depends(get_db)):
+    """Screening Agent step of Candidate -> Telephonic Agent -> Conversation
+    -> Response Storage -> Screening Agent -> Screening Result: runs a
+    JD-aligned analysis over a finished Telephonic Agent call and persists
+    the result, so it's available to the Enterprise Orchestration Layer.
+
+    jd_text is optional — if omitted, falls back to the matching Role's
+    stored jd_text (global_memory, populated whenever a screening/telephonic
+    session names that role), then to a generic role-title-only assessment
+    if neither is available.
+    """
+    call = db.query(models.CallRecord).filter(models.CallRecord.id == call_id).first()
+    if not call:
+        raise HTTPException(status_code=404, detail=f"No call record found for call_id={call_id!r}")
+    if not call.transcript:
+        raise HTTPException(status_code=400, detail="This call has no transcript yet — it may still be in progress.")
+
+    resolved_jd_text = jd_text
+    if not resolved_jd_text:
+        role = global_memory.get_role(call.role_title) if call.role_title else None
+        resolved_jd_text = (role or {}).get("jd_text")
+
+    result = screen_call_transcript(
+        call_id=call.id,
+        candidate_name=call.candidate_name or "Unknown Candidate",
+        role_title=call.role_title or "the open role",
+        jd_text=resolved_jd_text,
+        transcript=call.transcript,
+        db=db,
+    )
+
+    # Enterprise Orchestration Layer: the JD-matched screening result is a
+    # more meaningful "Telephonic Screening Score" than the raw call-demeanor
+    # average, so fold it into that candidate's scorecard when one exists.
+    orchestrator.record_screening_result_for_scorecard(call.candidate_name, result)
+
+    return result
+
+
+@router.get("/result/by-call/{call_id}")
+def get_latest_screening_result_for_call(call_id: str, db: Session = Depends(get_db)):
+    """Most recent Screening Result for a given Telephonic Agent call, if one has been run."""
+    result = (
+        db.query(models.ScreeningResult)
+        .filter(models.ScreeningResult.call_id == call_id)
+        .order_by(models.ScreeningResult.created_at.desc())
+        .first()
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="No screening result has been generated for this call yet.")
+    return _serialize_screening_result(result)
 
 
 @router.get("/session/{session_id}")

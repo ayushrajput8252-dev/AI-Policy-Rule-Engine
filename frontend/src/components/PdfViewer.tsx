@@ -10,7 +10,15 @@ type Source = {
   page_dim?: number[];
 };
 
-export default function PdfViewer({ source, fileName }: { source: Source; fileName: string | null }) {
+export default function PdfViewer({
+  source,
+  fileName,
+  notFound,
+}: {
+  source: Source;
+  fileName: string | null;
+  notFound?: boolean;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number>(450);
 
@@ -127,7 +135,17 @@ export default function PdfViewer({ source, fileName }: { source: Source; fileNa
         ) : (
           <div className="p-8 text-center font-mono text-xs text-amber-400 bg-amber-950/40 m-4 rounded-xl border border-amber-800/60 flex flex-col items-center justify-center h-full">
             <AlertTriangle className="w-6 h-6 mx-auto mb-2 text-amber-400" />
-            <span>SESSION PDF FILE NOT FOUND ON BACKEND SERVER</span>
+            {notFound ? (
+              <>
+                <span>SOURCE DOCUMENT NOT IN THIS SESSION</span>
+                <p className="text-[10px] text-amber-400/70 mt-1 max-w-xs normal-case">
+                  This citation points at a document ({source.document_id.slice(0, 8)}…) that
+                  isn't loaded in this browser session. Re-upload it to inspect the bounding box.
+                </p>
+              </>
+            ) : (
+              <span>SESSION PDF FILE NOT FOUND ON BACKEND SERVER</span>
+            )}
           </div>
         )}
       </div>

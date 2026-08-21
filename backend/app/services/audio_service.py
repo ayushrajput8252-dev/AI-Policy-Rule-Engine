@@ -3,6 +3,7 @@ import io
 import wave
 import contextlib
 import math
+import threading
 from typing import List, Dict, Any, Optional
 
 ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".webm", ".wma"}
@@ -12,6 +13,13 @@ MAX_AUDIO_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
 # concurrent interviews/calls would each load their own copy if this were
 # constructed inside transcribe_audio() per request.
 _whisper_model = None
+# faster-whisper's WhisperModel isn't documented as thread-safe for
+# concurrent .transcribe() calls on one instance — now that uploads/turns can
+# run in parallel (Phase B), serialize access to the shared model instead of
+# risking corrupted/interleaved decode state. Transcription is CPU-bound
+# anyway, so this doesn't sacrifice real parallelism, just prevents unsafe
+# concurrent use of one model object.
+_whisper_lock = threading.Lock()
 
 
 def _get_whisper_model():
@@ -79,27 +87,33 @@ def transcribe_audio(file_path: str) -> List[Dict[str, Any]]:
     # 1. Try faster-whisper
     try:
         model = _get_whisper_model()
-        # language="en" pins the language explicitly — auto-detection is
-        # unreliable on short/noisy clips and can pick the wrong language entirely.
-        raw_segments, info = model.transcribe(target_path, beam_size=5, vad_filter=True, language="en")
+        # Serialize access to the shared model instance — see _whisper_lock
+        # comment above. Held across both the transcribe() call and the
+        # segment-generator iteration below, since that's where the actual
+        # decode work happens (transcribe() itself just returns a generator).
+        with _whisper_lock:
+            # language="en" pins the language explicitly — auto-detection is
+            # unreliable on short/noisy clips and can pick the wrong language entirely.
+            raw_segments, info = model.transcribe(target_path, beam_size=5, vad_filter=True, language="en")
 
-        for s in raw_segments:
-            text = s.text.strip()
-            if not text:
-                continue
-            # Whisper hallucinates text during silence/noise; no_speech_prob and
-            # avg_logprob (both on faster-whisper segment objects) flag those
-            # low-confidence segments so they don't pollute the transcript.
-            no_speech_prob = getattr(s, "no_speech_prob", 0.0) or 0.0
-            avg_logprob = getattr(s, "avg_logprob", 0.0) or 0.0
-            if no_speech_prob > 0.6 or avg_logprob < -1.0:
-                continue
-            segments_list.append({
-                "start": round(s.start, 2),
-                "end": round(s.end, 2),
-                "text": text
-            })
-        print(f"[Audio Pipeline] Faster-Whisper transcribed {len(segments_list)} segments. Detected language: {info.language}")
+            for s in raw_segments:
+                text = s.text.strip()
+                if not text:
+                    continue
+                # Whisper hallucinates text during silence/noise; no_speech_prob and
+                # avg_logprob (both on faster-whisper segment objects) flag those
+                # low-confidence segments so they don't pollute the transcript.
+                no_speech_prob = getattr(s, "no_speech_prob", 0.0) or 0.0
+                avg_logprob = getattr(s, "avg_logprob", 0.0) or 0.0
+                if no_speech_prob > 0.6 or avg_logprob < -1.0:
+                    continue
+                segments_list.append({
+                    "start": round(s.start, 2),
+                    "end": round(s.end, 2),
+                    "text": text
+                })
+            detected_language = info.language
+        print(f"[Audio Pipeline] Faster-Whisper transcribed {len(segments_list)} segments. Detected language: {detected_language}")
         # faster-whisper ran cleanly here — an empty result means it heard no
         # speech (or only low-confidence noise), which is a real answer, not
         # an engine failure. Returning it now (even empty) avoids falling
