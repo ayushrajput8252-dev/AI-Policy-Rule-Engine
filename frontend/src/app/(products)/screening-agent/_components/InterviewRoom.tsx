@@ -692,8 +692,8 @@ export default function InterviewRoom({
             </span>
           )}
           {isLive && proctoring.activeAlert && (
-            <div className="absolute inset-x-0 top-1/2 mx-auto w-fit -translate-y-1/2 animate-pulse rounded-lg bg-red-600/95 px-4 py-2 text-center text-sm font-semibold text-white shadow-lg">
-              ⚠ {proctoring.activeAlert}
+            <div className="absolute inset-x-0 top-1/2 mx-auto flex w-fit -translate-y-1/2 items-center gap-1.5 animate-pulse rounded-lg bg-red-600/95 px-4 py-2 text-center text-sm font-semibold text-white shadow-lg">
+              <AlertTriangle className="w-4 h-4 shrink-0" /> {proctoring.activeAlert}
             </div>
           )}
           <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/70 to-transparent px-3 py-2 text-xs font-medium text-white">

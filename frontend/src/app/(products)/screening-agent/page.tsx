@@ -26,7 +26,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   ArrowLeft, ArrowRight, Sparkles, ShieldCheck, Video, Mic,
-  Bot, FileText, Award, Radio,
+  Bot, FileText, Award, Radio, Check,
 } from "lucide-react";
 import { askAssistant } from "@/components/ai-assistant/AIAssistantWidget";
 import InterviewRoom from "./_components/InterviewRoom";
@@ -244,7 +244,9 @@ function ReportsSection() {
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400 mb-2">Matching Skills</p>
             <div className="flex flex-wrap gap-2">
               {["Python", "FastAPI", "Redis"].map((s) => (
-                <span key={s} className="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-600">✓ {s}</span>
+                <span key={s} className="inline-flex items-center gap-1 rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-600">
+                  <Check className="w-3 h-3" /> {s}
+                </span>
               ))}
               {["Kubernetes", "GraphQL"].map((s) => (
                 <span key={s} className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-400 line-through">{s}</span>

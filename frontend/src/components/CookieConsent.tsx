@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { X } from "lucide-react";
+import { X, Cookie } from "lucide-react";
 
 const STORAGE_KEY = "agenticflow:cookie-consent";
 const REOPEN_EVENT = "agenticflow:reopen-cookie-consent";
@@ -40,8 +40,8 @@ export default function CookieConsent() {
           className="fixed bottom-4 left-4 right-4 sm:left-6 sm:right-auto sm:max-w-lg z-50"
         >
           <div className="flex items-center gap-4 rounded-2xl bg-white border border-zinc-200 shadow-xl p-4">
-            <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-xl shrink-0">
-              🍪
+            <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+              <Cookie className="w-5 h-5 text-amber-600" />
             </div>
             <p className="text-[13px] text-zinc-600 leading-snug flex-1">
               We use cookies to enhance your browsing experience and analyze our traffic. By clicking &quot;Accept&quot; you consent to our{" "}
