@@ -218,3 +218,19 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Runtime data — these regenerate from app usage and shouldn't be versioned
+backend/policy_engine.db
+policy_engine.db
+backend/uploads/
+
+# Node
+node_modules/
+.next/
+
+# Mediapipe WASM/JS runtime assets — byte-identical copies of
+# node_modules/@mediapipe/tasks-vision/wasm, restored by
+# `npm run postinstall` (see frontend/scripts/copy-mediapipe-wasm.js).
+# The .task model file is NOT covered by this — it has no npm source,
+# so it stays committed.
+frontend/public/mediapipe/wasm/
