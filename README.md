@@ -4,7 +4,9 @@
 
 ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat-square&logo=fastapi) ![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat-square&logo=next.js) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white) ![Pinecone](https://img.shields.io/badge/Pinecone-000000?style=flat-square&logo=pinecone) ![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat-square&logo=redis&logoColor=white)
 
-**[Live Demo](https://ai-policy-rule-engine.vercel.app)** · [Core Features](#core-features) · [How It Works](#how-it-works) · [Engineering Notes](#engineering-notes) · [Memory Architecture](#memory-architecture)
+**[Live Demo](https://ai-policy-rule-engine.vercel.app)** · [Getting Started](#getting-started) · [Core Features](#core-features) · [How It Works](#how-it-works) · [Engineering Notes](#engineering-notes) · [Honest Status](#honest-status) · [Memory Architecture](#memory-architecture)
+
+> The demo runs against real infra, not stubs — including a live LLM, vector DB, and cost model. That also means it inherits real infra's bad days; see [Honest Status](#honest-status) for exactly what's live right now before you judge it on a broken call.
 
 ![AgenticFlow AI](hero.png)
 
@@ -16,6 +18,21 @@ Two products sharing one reasoning core:
 2. **An agentic hiring platform.** A 9-agent pipeline takes a resume from upload to onboarded employee: parsing → ATS scoring → requirement matching → AI-drafted assignment → voice + avatar interview → human approval → provisioned accounts → knowledge transfer. Nothing touches a real system without a human clicking approve.
 
 Same orchestration kernel underneath both: parse intent, select the right tool, gate on human approval, execute deterministically, log everything.
+
+## Getting started
+
+Requires Docker. From the monorepo root (this app is one of three under `apps/`):
+
+```bash
+cp apps/AI-Policy-Rule-Engine/.env.example apps/AI-Policy-Rule-Engine/.env
+# fill in GEMINI_API_KEY at minimum — everything else below is optional
+docker compose up redis postgres policy-backend policy-frontend --build
+```
+
+- Frontend → [http://localhost:3000](http://localhost:3000)
+- Backend → [http://localhost:8000/health](http://localhost:8000/health) · orchestrator tier status → `/api/v1/orchestrator/health`
+
+Every other credential in `.env.example` — Pinecone, Twilio, SMTP, Google OAuth — is optional and **fails open**: unset it and that specific capability (vector search, outbound calls, invite emails) degrades gracefully instead of crashing the app, logged rather than silent. Same convention the memory tiers use, see [Memory Architecture](#memory-architecture).
 
 ## Core Features
 
@@ -38,6 +55,8 @@ Same orchestration kernel underneath both: parse intent, select the right tool, 
 - **Enterprise Orchestration Layer** (`backend/app/memory/orchestrator.py`, `POST/GET /api/v1/orchestrator/*`) — the shared session lifecycle behind Screening and Telephonic: opens a working-memory session, feeds it question/answer/sentiment as the conversation happens, and on end folds it into episodic + semantic memory — see [Memory Architecture](#memory-architecture) below. Intent parsing / MCP tool routing / an enforced approval gate are not part of this layer yet.
 - **Track Insights** — auto-generated executive digests: automations run, hours saved, docs indexed, cost saved.
 - **Live ROI calculator** — a real cost model, not marketing copy — computes manual-vs-automated screening cost from the same per-unit pricing that bills usage, so the numbers can't drift from reality.
+
+  ![Live ROI calculator computing a cost estimate from real per-unit pricing](image1.png)
 
 ### 🔐 Trust & Infra
 - **Zero-trust surface** — RBAC, audit logs, activity monitoring, backup/DR, secure uploads.
@@ -62,6 +81,12 @@ The parts that make this more than a wrapper around an LLM API:
 - **Citations carry geometry, not just text.** Each rule keeps its page number and bounding box, so the UI can highlight the *exact* source sentence in the original PDF.
 - **A deterministic, resumable agent pipeline.** The hiring workflow is a real state machine (upload → parse → match → generate → evaluate → approve → onboard → transfer knowledge) with in-flight animation state that's invalidated on unmount, not a chain of hopeful `setTimeout`s.
 - **Human approval is a hard gate, not a toast notification.** No downstream agent (onboarding, knowledge transfer, email dispatch) fires until HR explicitly confirms — enforced in the state machine, not just in the UI copy.
+
+## Honest status
+
+Every claim in this README is checked against a running system, not asserted from memory — dated audit passes live in [`docs/`](docs/), each one re-verifying the previous pass's claims against real Redis/Postgres/Pinecone containers instead of trusting the code (or the last audit) at a glance. When an audit found the docs claiming something the code didn't do — an 85%-confidence gate that was actually 70% — the doc got corrected, not the finding suppressed.
+
+**Latest pass ([2026-08-21](docs/platform-status-audit-2026-08-21.md)):** roughly **78% of the five subsystems are real and working end-to-end** — RAG, Fraud Detection, Telephonic Agent, Screening Agent, and the Enterprise Orchestration Layer above. The rest isn't hidden, it's scoped honestly in the audit table: what's real, what's illustrative UI, and what's still wired to nothing. Every open gap this pass turned out to be **operational, not missing code** — a dead ngrok tunnel blocking live Telephonic calls, an expired Groq key running "dual-provider fallback" on Gemini alone, a missing `ffmpeg` binary, and a Pinecone free-tier account currently past its egress quota (writes still succeed; reads 429 until it resets). None of that is a placeholder — it's one credential rotation, one tunnel restart, or one plan upgrade away from resolved, and the audit says so plainly instead of rounding up.
 
 ## Memory architecture
 
