@@ -28,6 +28,11 @@ const LOOKING_AWAY_GRACE_MS = 2500; // spec: flag "looking away" after >2-3s
 const MULTI_FACE_DEBOUNCE_MS = 1500;
 const RE_FLAG_INTERVAL_MS = 4000; // don't spam the same sustained flag every frame
 const DETECT_FPS = 8;
+// After this many detectForVideo() calls fail in a row (~1.25s at DETECT_FPS),
+// stop retrying silently and surface a friendly error instead of spinning
+// forever — a lost/never-created GL context (see hasWebGLSupport below) fails
+// identically on every frame, not just the first.
+const MAX_CONSECUTIVE_DETECT_FAILURES = 10;
 
 // Ambient background noise: a sustained noise floor above this level (e.g. a
 // TV, other conversations in the room) gets flagged after a grace period so
@@ -122,6 +127,26 @@ function silenceMediapipeInfoLogs() {
 // — instead of a catchable rejection at setup time. CPU (XNNPACK) doesn't
 // need a GPU context at all and is plenty fast at this hook's 8fps/1-model
 // detection rate, so use it unconditionally rather than probing for GPU.
+// The vision runtime creates a WebGL context for its internal image/texture
+// handling regardless of the inference delegate (confirmed: the installed
+// @mediapipe/tasks-vision bundle calls canvas.getContext("webgl"/"webgl2")
+// unconditionally, not just under delegate: "GPU") — so an environment with
+// no WebGL at all (hardware acceleration disabled, some VMs/headless
+// browsers, browser flags) will fail the same way CPU delegate was meant to
+// avoid, just deeper inside detectForVideo() instead of at setup. Checking
+// this upfront lets start() fail fast with a friendly message rather than
+// letting the first detection frame throw "Cannot read properties of
+// undefined (reading 'activeTexture')".
+function hasWebGLSupport(): boolean {
+  if (typeof document === "undefined") return false;
+  try {
+    const canvas = document.createElement("canvas");
+    return !!(canvas.getContext("webgl2") || canvas.getContext("webgl"));
+  } catch {
+    return false;
+  }
+}
+
 function getLandmarker(): Promise<FaceLandmarker> {
   if (!landmarkerPromise) {
     silenceMediapipeInfoLogs();
@@ -191,6 +216,7 @@ export function useProctoring() {
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
   const lastDetectAtRef = useRef(0);
+  const consecutiveDetectFailuresRef = useRef(0);
   const noFaceSinceRef = useRef<number | null>(null);
   const lookingAwaySinceRef = useRef<number | null>(null);
   const lastMultiFaceFlagRef = useRef(0);
@@ -252,6 +278,14 @@ export function useProctoring() {
   }, []);
 
   const detectLoop = useCallback(() => {
+    // Detection has already failed MAX_CONSECUTIVE_DETECT_FAILURES times in a
+    // row and the error state below has been set — stop scheduling further
+    // frames instead of retrying forever against a context that isn't coming
+    // back (e.g. a lost/never-created GL context).
+    if (consecutiveDetectFailuresRef.current >= MAX_CONSECUTIVE_DETECT_FAILURES) {
+      return;
+    }
+
     const video = videoRef.current;
     if (!video || video.readyState < 2) {
       rafRef.current = requestAnimationFrame(detectLoop);
@@ -269,6 +303,7 @@ export function useProctoring() {
       .then((landmarker) => {
         if (!videoRef.current) return;
         const result = landmarker.detectForVideo(video, now);
+        consecutiveDetectFailuresRef.current = 0;
         const faces = result.faceLandmarks ?? [];
         const wallClock = Date.now();
 
@@ -354,6 +389,15 @@ export function useProctoring() {
       })
       .catch((err) => {
         console.error("Face landmark detection failed", err);
+        consecutiveDetectFailuresRef.current += 1;
+        if (consecutiveDetectFailuresRef.current >= MAX_CONSECUTIVE_DETECT_FAILURES && mountedRef.current) {
+          setState((prev) => ({
+            ...prev,
+            status: "error",
+            errorMessage:
+              "Camera analysis temporarily unavailable. Please check that your camera is enabled and try again.",
+          }));
+        }
       });
 
     rafRef.current = requestAnimationFrame(detectLoop);
@@ -484,6 +528,18 @@ export function useProctoring() {
       return;
     }
 
+    if (!hasWebGLSupport()) {
+      stream.getTracks().forEach((t) => t.stop());
+      setState((prev) => ({
+        ...prev,
+        status: "error",
+        errorMessage:
+          "Camera analysis temporarily unavailable. Please check that your camera is enabled and try again.",
+      }));
+      return;
+    }
+
+    consecutiveDetectFailuresRef.current = 0;
     try {
       await getLandmarker();
     } catch (err) {
