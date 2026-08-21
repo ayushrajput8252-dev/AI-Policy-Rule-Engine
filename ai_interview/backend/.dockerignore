@@ -1,6 +1,0 @@
-__pycache__/
-*.pyc
-.venv/
-venv/
-demo_requests.jsonl
-*.log
