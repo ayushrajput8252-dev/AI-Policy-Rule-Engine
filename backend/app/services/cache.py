@@ -1,20 +1,31 @@
 import json
 import hashlib
+import time
 import redis
 from ..config import settings
 
 _redis_client = None
+_last_failure_at = 0.0
+RETRY_COOLDOWN_SECONDS = 30
 
 def get_redis_client():
-    global _redis_client
-    if _redis_client is None:
+    """Returns a connected Redis client, or None if Redis isn't reachable.
+
+    A failed connection is cached for RETRY_COOLDOWN_SECONDS (not
+    permanently) — otherwise a long-running process that started before
+    Redis came up (e.g. `docker compose up redis` after the backend was
+    already running) would stay disabled until restart, even once Redis is
+    actually reachable."""
+    global _redis_client, _last_failure_at
+    if _redis_client is None and (time.monotonic() - _last_failure_at) > RETRY_COOLDOWN_SECONDS:
         try:
-            _redis_client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=2)
-            _redis_client.ping()
+            client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=2)
+            client.ping()
+            _redis_client = client
         except Exception as e:
             print(f"[Redis Cache Warning]: Connection failed, cache disabled. ({str(e)})")
-            _redis_client = False
-    return _redis_client if _redis_client else None
+            _last_failure_at = time.monotonic()
+    return _redis_client
 
 def _hash_key(text: str) -> str:
     return hashlib.md5(text.encode("utf-8")).hexdigest()

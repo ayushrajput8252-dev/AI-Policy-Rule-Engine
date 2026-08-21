@@ -50,10 +50,34 @@ class Settings(BaseSettings):
     FRONTEND_BASE_URL: str = "http://localhost:3000"
 
     DATABASE_URL: str = "sqlite:///./policy_engine.db"
-    
+
     REDIS_URL: str = "redis://localhost:6379/0"
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"
+
+    # --- Agent memory architecture (app/memory/) ---
+    # Episodic memory (one row per finished agent session: screening interview,
+    # telephonic call, ...). Separate Postgres database, not the primary SQLite
+    # DB above — SQLite already serves as this platform's shared/global memory
+    # (documents/rules/roles/SOPs), Postgres is for the higher write-volume,
+    # structured session history. Falls back cleanly (session just isn't
+    # persisted, logged not raised) if this Postgres isn't reachable, same
+    # fail-open convention as REDIS_URL / services/cache.py.
+    # Port 5433, not the standard 5432 — docker-compose.yml publishes the
+    # postgres container there too, since 5432 was already occupied by
+    # another Postgres instance on the host during development.
+    EPISODIC_DATABASE_URL: str = "postgresql+psycopg2://policy:policy@localhost:5433/policy_episodic"
+
+    # Working/short-term memory: how long a session's live state (current
+    # question, running transcript, latest sentiment) survives in Redis with
+    # no activity before it's treated as abandoned.
+    WORKING_MEMORY_TTL_SECONDS: int = 1800
+
+    # Semantic/long-term memory: Pinecone namespace used for agent-extracted
+    # facts, kept separate from the default namespace (policy rules/chunks
+    # indexed by services/canonicalization.py) inside the SAME index/project
+    # so no second Pinecone index needs to be provisioned.
+    PINECONE_MEMORY_NAMESPACE: str = "agent-memory"
 
     # Fraud detection pipeline
     FRAUD_ELA_THRESHOLD: float = 35.0

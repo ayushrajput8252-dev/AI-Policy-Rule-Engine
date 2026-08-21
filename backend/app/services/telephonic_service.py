@@ -21,7 +21,9 @@ This is a real, live phone call and your words are read aloud by text-to-speech,
 - Probe their interest in the role, relevant experience, and fit based on what they actually say — follow up on specifics instead of reading a fixed script.
 - After the candidate has answered {max_turns} questions, thank them for their time, let them know next steps will follow by email, and set is_final=true instead of asking a new question.
 
-Return ONLY a JSON object with this exact shape: {{"question": "<the next thing to say out loud to the candidate>", "is_final": <true|false>}}"""
+Also read the candidate's most recent answer (if any) for tone — genuinely enthusiastic/positive, neutral/matter-of-fact, or hesitant/negative — since this feeds the call's live sentiment tracking.
+
+Return ONLY a JSON object with this exact shape: {{"question": "<the next thing to say out loud to the candidate>", "is_final": <true|false>, "candidate_sentiment": "<positive|neutral|negative>"}}"""
 
 CALL_EVALUATION_SYSTEM_INSTRUCTION = """You are {name}, an AI voice screening agent who just finished a live phone screening call on behalf of AgenticFlow AI. Evaluate the candidate honestly based ONLY on what they actually said in the call transcript below — never invent details that aren't there.
 
@@ -77,6 +79,8 @@ def generate_call_turn(
         result = {"question": FALLBACK_QUESTION, "is_final": candidate_turns >= max_turns}
 
     result.setdefault("is_final", candidate_turns >= max_turns)
+    if result.get("candidate_sentiment") not in ("positive", "neutral", "negative"):
+        result["candidate_sentiment"] = "neutral"
     return result
 
 

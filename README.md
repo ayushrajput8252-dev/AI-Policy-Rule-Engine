@@ -4,7 +4,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat-square&logo=fastapi) ![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat-square&logo=next.js) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white) ![Pinecone](https://img.shields.io/badge/Pinecone-000000?style=flat-square&logo=pinecone) ![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat-square&logo=redis&logoColor=white)
 
-**[Live Demo](https://ai-policy-rule-engine.vercel.app)** · [Core Features](#core-features) · [How It Works](#how-it-works) · [Engineering Notes](#engineering-notes)
+**[Live Demo](https://ai-policy-rule-engine.vercel.app)** · [Core Features](#core-features) · [How It Works](#how-it-works) · [Engineering Notes](#engineering-notes) · [Memory Architecture](#memory-architecture)
 
 ![AgenticFlow AI](hero.png)
 
@@ -22,7 +22,7 @@ Same orchestration kernel underneath both: parse intent, select the right tool, 
 ### 🧠 Policy & Knowledge Intelligence
 - **Dual-tier RAG reasoning** — answers from structured, validated rules first, falls back to raw document chunks only when rules don't cover it, and admits "not found" instead of fabricating an answer.
 - **Grounded citations** — every answer links back to the exact page and bounding box in the source PDF, rendered next to the answer.
-- **Self-validating extraction** — every extracted rule gets a confidence score; anything under 85% is discarded before it ever reaches the database.
+- **Self-validating extraction** — every extracted rule gets a confidence score; anything under 70% is discarded before it ever reaches the database (`MIN_RULE_CONFIDENCE` in `backend/app/worker.py`).
 - **Multilingual retrieval** — non-English queries are translated for retrieval so vector search quality never degrades, then answered back in the original language.
 - **Interactive knowledge graph** — traces how a departing employee's projects, PRs, and tech stack connect, for whoever backfills them.
 
@@ -35,7 +35,7 @@ Same orchestration kernel underneath both: parse intent, select the right tool, 
 
 ### 🏢 Enterprise Operations
 - **One-click onboarding** — provisions accounts, repo access, and equipment automatically across HR / Manager / Employee RBAC portals.
-- **Enterprise Orchestration Layer** — the multi-agent kernel: intent parsing → MCP tool selection → approval gate → deterministic, idempotent execution.
+- **Enterprise Orchestration Layer** (`backend/app/memory/orchestrator.py`, `POST/GET /api/v1/orchestrator/*`) — the shared session lifecycle behind Screening and Telephonic: opens a working-memory session, feeds it question/answer/sentiment as the conversation happens, and on end folds it into episodic + semantic memory — see [Memory Architecture](#memory-architecture) below. Intent parsing / MCP tool routing / an enforced approval gate are not part of this layer yet.
 - **Track Insights** — auto-generated executive digests: automations run, hours saved, docs indexed, cost saved.
 - **Live ROI calculator** — a real cost model, not marketing copy — computes manual-vs-automated screening cost from the same per-unit pricing that bills usage, so the numbers can't drift from reality.
 
@@ -57,11 +57,27 @@ The hiring pipeline runs the same shape of process on a different input — a re
 
 The parts that make this more than a wrapper around an LLM API:
 
-- **Confidence-gated extraction, not confident-sounding extraction.** Rules under an 85% confidence threshold never reach the database — the system would rather say nothing than say something wrong.
+- **Confidence-gated extraction, not confident-sounding extraction.** Rules under a 70% confidence threshold never reach the database — the system would rather say nothing than say something wrong. (Rows ingested before this gate was tightened may still carry lower scores; the gate only filters new extractions.)
 - **Provider-agnostic reasoning.** Groq/Grok is primary; Gemini is a transparent fallback. A rate limit or outage on one provider doesn't degrade the product.
 - **Citations carry geometry, not just text.** Each rule keeps its page number and bounding box, so the UI can highlight the *exact* source sentence in the original PDF.
 - **A deterministic, resumable agent pipeline.** The hiring workflow is a real state machine (upload → parse → match → generate → evaluate → approve → onboard → transfer knowledge) with in-flight animation state that's invalidated on unmount, not a chain of hopeful `setTimeout`s.
 - **Human approval is a hard gate, not a toast notification.** No downstream agent (onboarding, knowledge transfer, email dispatch) fires until HR explicitly confirms — enforced in the state machine, not just in the UI copy.
+
+## Memory architecture
+
+Five tiers, each backed by whichever store actually fits its access pattern, all wired together by `backend/app/memory/orchestrator.py`:
+
+| Tier | Store | What it holds | Lifecycle |
+|---|---|---|---|
+| Working / short-term | Redis (`memory/working_memory.py`) | Current session's live state: current question, running transcript, latest sentiment | TTL'd (`WORKING_MEMORY_TTL_SECONDS`); deleted the moment a session ends |
+| Episodic | Postgres (`memory/episodic_memory.py`) | One row per finished session — what was asked, what was answered, scores, timestamps | Written once at session end, kept indefinitely, queryable by subject (candidate email/phone) |
+| Semantic / long-term | Pinecone, `agent-memory` namespace (`memory/semantic_memory.py`) | Facts extracted from sessions, embedded, retrievable by meaning from any agent | Written at session end; separate namespace from the policy-rules RAG index so the two never mix |
+| Shared / global | SQLite, same DB as the policy engine (`memory/global_memory.py`) | Roles, JDs, company policy (the existing `Rule` table), onboarding SOPs | Read-mostly, updated as roles/SOPs change |
+| Graph-structured | SQLite + networkx (`memory/graph_memory.py`) | Relationships — candidate↔role, and whatever else gets added (team, project) | Nodes/edges persisted per write, loaded into an in-memory graph per query |
+
+Currently wired end-to-end into the Telephonic Agent (`backend/app/api/telephonic.py`) and the Screening Agent (`backend/app/api/screening.py` + `interview.py`) — both start a session on first contact, stream turns through working memory, and fold the result into episodic + semantic memory when the call/interview ends. RAG and Fraud Detection can read from it (`GET /api/v1/orchestrator/context/{subject_id}`) but don't yet write to it.
+
+`GET /api/v1/orchestrator/health` reports live reachability of all five tiers — useful for confirming Redis/Postgres/Pinecone/SQLite are actually up rather than silently degrading (every tier fails open, same convention as the existing Redis query cache).
 
 ## Tech stack
 
@@ -70,7 +86,7 @@ The parts that make this more than a wrapper around an LLM API:
 | Frontend | Next.js 16 (React 19), TypeScript, Tailwind CSS v4, Framer Motion, shadcn/ui, react-pdf |
 | Backend | FastAPI, SQLAlchemy, Pydantic |
 | AI / Retrieval | Groq/Grok + Gemini (fallback), Pinecone, Sentence-Transformers |
-| Infra | Redis (caching), Celery (async task scaffolding), SQLite/PostgreSQL |
+| Infra | Redis (caching + working memory), Celery (async task scaffolding), SQLite (primary DB + shared/graph memory), PostgreSQL (episodic memory) |
 
 ## Author
 

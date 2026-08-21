@@ -109,6 +109,65 @@ class ScreeningSession(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+class Role(Base):
+    """Shared/global memory — one row per job role, readable by every agent
+    (Screening, Telephonic, Fraud) so role expectations stay consistent
+    across products instead of each agent guessing at role_title free text."""
+
+    __tablename__ = "roles"
+
+    id = Column(String, primary_key=True, index=True)
+    title = Column(String, index=True, unique=True)
+    department = Column(String, nullable=True)
+    jd_text = Column(Text, nullable=True)
+    must_have_skills = Column(JSON, default=list)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class OnboardingSOP(Base):
+    """Shared/global memory — company onboarding SOPs/policies keyed by topic,
+    e.g. 'equipment', 'accounts', 'first_week'. Distinct from the ingested
+    Document/Rule corpus (compliance policy text) — these are short,
+    structured operational steps agents quote directly rather than retrieve."""
+
+    __tablename__ = "onboarding_sops"
+
+    id = Column(String, primary_key=True, index=True)
+    topic = Column(String, index=True)
+    title = Column(String)
+    steps = Column(JSON, default=list)  # list[str]
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class GraphNode(Base):
+    """Graph-structured memory — one row per entity (candidate, role, team,
+    project, agent session). Persisted so the in-memory networkx graph built
+    by app/memory/graph_memory.py survives process restarts."""
+
+    __tablename__ = "graph_nodes"
+
+    id = Column(String, primary_key=True, index=True)  # stable entity key, e.g. "candidate:jane@x.com"
+    type = Column(String, index=True)  # "candidate" | "role" | "team" | "project" | "session"
+    label = Column(String)
+    properties = Column(JSON, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class GraphEdge(Base):
+    """Graph-structured memory — directed relationship between two GraphNode
+    rows, e.g. candidate --SCREENED_FOR--> role, candidate --MEMBER_OF--> team."""
+
+    __tablename__ = "graph_edges"
+
+    id = Column(String, primary_key=True, index=True)
+    source_id = Column(String, ForeignKey("graph_nodes.id"), index=True)
+    target_id = Column(String, ForeignKey("graph_nodes.id"), index=True)
+    relation = Column(String, index=True)  # "SCREENED_FOR" | "MEMBER_OF" | "WORKED_ON" | ...
+    properties = Column(JSON, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class Rule(Base):
     __tablename__ = "rules"
 

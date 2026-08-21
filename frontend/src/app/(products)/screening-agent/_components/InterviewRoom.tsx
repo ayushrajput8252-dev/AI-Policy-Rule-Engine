@@ -273,6 +273,7 @@ export default function InterviewRoom({
           body: JSON.stringify({
             history: history.map((t) => ({ role: t.role, text: t.text })),
             role_title: roleTitle || DEFAULT_ROLE,
+            session_id: sessionId,
           }),
         });
         if (!res.ok) throw new Error(`Evaluation request failed (${res.status})`);
@@ -283,7 +284,7 @@ export default function InterviewRoom({
       }
       setPhase("complete");
     },
-    [roleTitle],
+    [roleTitle, sessionId],
   );
 
   /** Advances to the next question (ack + question spoken together), or

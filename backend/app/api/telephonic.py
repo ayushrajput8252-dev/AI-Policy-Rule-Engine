@@ -11,6 +11,7 @@ from twilio.twiml.voice_response import Gather, VoiceResponse
 from .. import models
 from ..config import settings
 from ..database import get_db
+from ..memory import global_memory, orchestrator
 from ..services.telephonic_service import generate_call_evaluation, generate_call_turn
 
 router = APIRouter(prefix="/telephonic", tags=["telephonic"])
@@ -66,6 +67,10 @@ def place_call(payload: PlaceCallRequest, db: Session = Depends(get_db)):
             ),
         )
     client = _twilio_client()
+
+    # Shared/global memory: same convention as api/screening.py — every real
+    # call that names a role grows the Role table from actual usage.
+    global_memory.upsert_role((payload.role_title or "the open role").strip())
 
     record = models.CallRecord(
         id=str(uuid.uuid4()),
@@ -187,6 +192,12 @@ async def voice_webhook(call_record_id: str, db: Session = Depends(get_db)):
     record.transcript = [{"role": "agent", "text": turn["question"]}]
     db.commit()
 
+    # Orchestration layer: opens this call's working-memory session (Redis) so
+    # the live question/transcript/sentiment are tracked from the first line,
+    # and registers the candidate<->role relationship in graph memory.
+    orchestrator.start_session("telephonic", record.to_number, record.role_title, session_id=record.id)
+    orchestrator.record_turn(record.id, question=turn["question"])
+
     return Response(content=_gather_twiml(record, turn["question"]), media_type="application/xml")
 
 
@@ -244,6 +255,11 @@ async def gather_webhook(
     record.transcript = transcript
     db.commit()
 
+    # Orchestration layer: feed the candidate's answer (with the sentiment the
+    # LLM just read off it) and the agent's next question into working memory.
+    orchestrator.record_turn(record.id, answer=candidate_text, sentiment=turn.get("candidate_sentiment"))
+    orchestrator.record_turn(record.id, question=turn["question"])
+
     if turn.get("is_final"):
         vr = VoiceResponse()
         vr.say(turn["question"])
@@ -289,4 +305,20 @@ async def status_webhook(
                 record.evaluation_summary = evaluation.get("summary")
 
         db.commit()
+
+        # Orchestration layer: any terminal Twilio status ends this call's
+        # working-memory session — folding it into episodic memory (Postgres)
+        # and semantic memory (Pinecone), then clearing Redis — not just
+        # "completed", so a no-answer/busy/failed call doesn't leak a
+        # working-memory key that would otherwise just sit until its TTL.
+        if CallStatus in ("completed", "no-answer", "busy", "failed", "canceled"):
+            orchestrator.end_session(
+                record.id,
+                scores={
+                    "communication_score": record.communication_score,
+                    "relevance_score": record.relevance_score,
+                    "confidence_score": record.confidence_score,
+                },
+                summary=record.evaluation_summary,
+            )
     return Response(status_code=204)

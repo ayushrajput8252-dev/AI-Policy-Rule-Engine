@@ -9,6 +9,7 @@ transformers
 pinecone
 sqlalchemy
 alembic
+psycopg2-binary
 celery
 redis
 python-dotenv

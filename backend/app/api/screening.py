@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..config import settings
 from ..database import get_db
+from ..memory import global_memory, orchestrator
 from ..services.email_service import send_invite_email
 from ..services.screening_service import parse_resume_and_generate_questions
 
@@ -34,11 +35,22 @@ async def start_screening(
     if not role_title.strip():
         raise HTTPException(status_code=400, detail="Role title is required.")
 
+    # Shared/global memory: every real screening session that names a role
+    # grows the Role table, so it's populated from actual usage rather than
+    # needing to be seeded by hand.
+    global_memory.upsert_role(role_title.strip(), jd_text=jd_text or "")
+
     if session_id:
         session = db.query(models.ScreeningSession).filter(models.ScreeningSession.id == session_id).first()
         if session:
             session.status = "in_progress"
             db.commit()
+            # Orchestration layer: opens this interview's working-memory
+            # session (Redis) keyed by the candidate's email, and registers
+            # candidate<->role in graph memory — mirrors the Telephonic Agent's
+            # wiring in api/telephonic.py so both conversational agents feed
+            # the same memory tiers.
+            orchestrator.start_session("screening", session.email, session.role_title, session_id=session_id)
 
     return parse_resume_and_generate_questions(content, role_title.strip(), jd_text or None)
 
