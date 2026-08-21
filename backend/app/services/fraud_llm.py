@@ -157,10 +157,6 @@ AI_TEXT_PROMPT = ChatPromptTemplate.from_messages(
 # ─────────────────────────────────────────────────────────────────────────
 
 
-def _fallback_identity() -> ExtractedIdentity:
-    return ExtractedIdentity()
-
-
 def _fallback_ai_text_signal() -> AiTextSignal:
     return AiTextSignal(ai_generated_likelihood=50, reasons=["AI-text classifier unavailable (LLM call failed) — treated as neutral/unknown, not counted as evidence."])
 
@@ -171,12 +167,14 @@ def _fallback_ai_text_signal() -> AiTextSignal:
 
 
 def extract_identity(text: str) -> ExtractedIdentity:
-    try:
-        chain = _structured_chain(IDENTITY_PROMPT, ExtractedIdentity)
-        return chain.invoke({"text": text[:8000]})
-    except Exception as e:
-        print(f"[Fraud LLM] identity extraction failed: {e}")
-        return _fallback_identity()
+    # Deliberately does NOT swallow the failure into a blank ExtractedIdentity()
+    # here — that made a genuine LLM outage indistinguishable from a document
+    # that simply has no name/contact/identity fields (both looked like an
+    # all-None result to fraud_identity.check_identity). Letting this raise
+    # means the caller's own except-block reports it as a distinct "error"
+    # step instead of a clean "na" one.
+    chain = _structured_chain(IDENTITY_PROMPT, ExtractedIdentity)
+    return chain.invoke({"text": text[:8000]})
 
 
 def classify_ai_text(text: str) -> AiTextSignal:

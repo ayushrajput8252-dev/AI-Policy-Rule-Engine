@@ -8,6 +8,20 @@ from typing import List, Dict, Any, Optional
 ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".webm", ".wma"}
 MAX_AUDIO_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
 
+# Process-wide singleton: loading "base" from disk takes real time, and
+# concurrent interviews/calls would each load their own copy if this were
+# constructed inside transcribe_audio() per request.
+_whisper_model = None
+
+
+def _get_whisper_model():
+    global _whisper_model
+    if _whisper_model is None:
+        from faster_whisper import WhisperModel
+        print("[Audio Pipeline] Loading Faster-Whisper model (base, CPU) — one-time process load...")
+        _whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
+    return _whisper_model
+
 def validate_audio_format(file_path: str) -> Dict[str, Any]:
     """
     Validates audio file extension and size.
@@ -64,11 +78,7 @@ def transcribe_audio(file_path: str) -> List[Dict[str, Any]]:
     
     # 1. Try faster-whisper
     try:
-        from faster_whisper import WhisperModel
-        print("[Audio Pipeline] Loading Faster-Whisper model (base, CPU)...")
-        # "base" trades a little speed for materially better accuracy than "tiny",
-        # which was misreading short mic clips and even mis-detecting the spoken language.
-        model = WhisperModel("base", device="cpu", compute_type="int8")
+        model = _get_whisper_model()
         # language="en" pins the language explicitly — auto-detection is
         # unreliable on short/noisy clips and can pick the wrong language entirely.
         raw_segments, info = model.transcribe(target_path, beam_size=5, vad_filter=True, language="en")
@@ -90,8 +100,13 @@ def transcribe_audio(file_path: str) -> List[Dict[str, Any]]:
                 "text": text
             })
         print(f"[Audio Pipeline] Faster-Whisper transcribed {len(segments_list)} segments. Detected language: {info.language}")
-        if segments_list:
-            return segments_list
+        # faster-whisper ran cleanly here — an empty result means it heard no
+        # speech (or only low-confidence noise), which is a real answer, not
+        # an engine failure. Returning it now (even empty) avoids falling
+        # through to the ffmpeg-dependent HF fallback below, which would
+        # itself fail on a silent/short clip and turn a clean "no speech"
+        # into a raw 500.
+        return segments_list
     except Exception as fw_err:
         print(f"[Audio Pipeline Warning] Faster-Whisper failed or not available: {fw_err}. Trying HuggingFace / Fallback...")
 

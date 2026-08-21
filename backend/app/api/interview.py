@@ -18,6 +18,7 @@ class InterviewTurnRequest(BaseModel):
     history: List[InterviewTurnIn] = []
     role_title: str = "the open role"
     jd_text: Optional[str] = None
+    resume_context: Optional[str] = None
     max_turns: int = 5
 
 
@@ -35,7 +36,9 @@ async def interview_turn(request: InterviewTurnRequest):
     """
     try:
         history = [t.model_dump() for t in request.history]
-        return generate_next_turn(history, request.role_title, request.jd_text, request.max_turns)
+        return generate_next_turn(
+            history, request.role_title, request.jd_text, request.max_turns, request.resume_context
+        )
     except Exception as e:
         print(f"[Interview Turn API Error] {e}")
         raise HTTPException(status_code=500, detail=str(e))

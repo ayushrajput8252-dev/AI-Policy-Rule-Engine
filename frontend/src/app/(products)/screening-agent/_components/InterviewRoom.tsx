@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { useProctoring, type FaceBox, type ProctoringState } from "@/hooks/useProctoring";
 import type {
-  EvaluationResult, InterviewPhase, ScreeningQuestionOut, ScreeningStartResponse, TranscriptTurn,
+  EvaluationResult, InterviewPhase, ResumeProfileOut, ScreeningStartResponse, TranscriptTurn,
 } from "./types";
 import { Toast, type ToastState } from "./Toast";
 
@@ -23,12 +23,24 @@ const VAD_SILENCE_STOP_MS = 1300;
 const VAD_NO_SPEECH_TIMEOUT_MS = 12000;
 const VAD_MAX_RECORD_MS = 45000;
 
-const ACK_PHRASES = [
-  "Got it, thanks — let's move to the next question.",
-  "Thanks for sharing that. Next up —",
-  "Appreciate the detail — here's the next one.",
-  "Noted, thank you. Moving on —",
-];
+// How many candidate answers the adaptive interview loop (POST
+// /interview/turn) asks for before wrapping up — mirrors the backend's
+// own max_turns default and drives the "Question X of N" display.
+const MAX_CANDIDATE_TURNS = 6;
+
+/** Compact resume summary handed to the per-turn LLM so follow-up questions
+ * stay grounded in what's actually on the candidate's resume, not just the
+ * role/JD — without re-sending the full raw resume text every turn. */
+function buildResumeContext(profile: ResumeProfileOut): string {
+  const parts: string[] = [];
+  if (profile.candidate_name) parts.push(`Name: ${profile.candidate_name}`);
+  if (profile.skills?.length) parts.push(`Skills: ${profile.skills.join(", ")}`);
+  if (profile.past_roles?.length) parts.push(`Past roles: ${profile.past_roles.join("; ")}`);
+  if (profile.projects?.length) parts.push(`Projects: ${profile.projects.join("; ")}`);
+  if (profile.tech_stack?.length) parts.push(`Tech stack: ${profile.tech_stack.join(", ")}`);
+  if (profile.resume_highlight) parts.push(`Highlight: ${profile.resume_highlight}`);
+  return parts.join("\n");
+}
 
 /** One retry after a short backoff — smooths over a transient network blip
  * instead of failing the whole turn on the first failed request. */
@@ -81,9 +93,7 @@ export default function InterviewRoom({
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [candidateName, setCandidateName] = useState<string | null>(null);
-
-  const [questions, setQuestions] = useState<ScreeningQuestionOut[]>([]);
-  const [questionIndex, setQuestionIndex] = useState(0);
+  const resumeContextRef = useRef<string>("");
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -287,24 +297,44 @@ export default function InterviewRoom({
     [roleTitle, sessionId],
   );
 
-  /** Advances to the next question (ack + question spoken together), or
-   * triggers the final evaluation once all 11 have been asked. */
+  /** Asks the LLM for the interviewer's next line given the real conversation
+   * so far (POST /interview/turn) — this is what makes the interview
+   * genuinely adaptive: the candidate's actual answer shapes what's asked
+   * next, instead of stepping through a fixed pre-generated question list. */
   const advanceToNextQuestion = useCallback(
     async (history: TranscriptTurn[]) => {
-      const nextIndex = questionIndex + 1;
-      if (nextIndex >= questions.length) {
-        await runEvaluation(history);
-        return;
+      setPhase("thinking");
+      try {
+        const res = await fetchWithRetry(`${API_URL}/api/v1/interview/turn`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            history: history.map((t) => ({ role: t.role, text: t.text })),
+            role_title: roleTitle || DEFAULT_ROLE,
+            jd_text: jdText || undefined,
+            resume_context: resumeContextRef.current || undefined,
+            max_turns: MAX_CANDIDATE_TURNS,
+          }),
+        });
+        if (!res.ok) throw new Error(`Interview turn request failed (${res.status})`);
+        const data = (await res.json()) as { question: string; is_final: boolean };
+
+        const turn = addTurn("interviewer", data.question);
+        await speak(data.question);
+        void turn;
+
+        if (data.is_final) {
+          await runEvaluation([...history, turn]);
+        } else {
+          setPhase("listening");
+        }
+      } catch (err) {
+        console.error("Failed to get next interview turn", err);
+        setErrorMessage("Could not reach the interview agent for the next question — please try answering again.");
+        setPhase("listening");
       }
-      setQuestionIndex(nextIndex);
-      const ack = ACK_PHRASES[nextIndex % ACK_PHRASES.length];
-      const nextQuestion = questions[nextIndex];
-      const turn = addTurn("interviewer", nextQuestion.text);
-      await speak(`${ack} ${nextQuestion.text}`);
-      void turn;
-      setPhase("listening");
     },
-    [questionIndex, questions, addTurn, speak, runEvaluation],
+    [roleTitle, jdText, addTurn, speak, runEvaluation],
   );
 
   const startInterview = useCallback(async () => {
@@ -313,7 +343,6 @@ export default function InterviewRoom({
     setErrorMessage(null);
     setTranscript([]);
     setEvaluation(null);
-    setQuestionIndex(0);
     emptyAnswerStreakRef.current = 0;
     startedAtRef.current = Date.now();
     await startProctoring();
@@ -330,8 +359,8 @@ export default function InterviewRoom({
 
       if (!data.questions || data.questions.length === 0) throw new Error("No questions returned");
 
-      setQuestions(data.questions);
       setCandidateName(data.resume_profile?.candidate_name || null);
+      resumeContextRef.current = data.resume_profile ? buildResumeContext(data.resume_profile) : "";
 
       const greeting = data.questions[0];
       const turn = addTurn("interviewer", greeting.text);
@@ -428,8 +457,6 @@ export default function InterviewRoom({
     micStreamRef.current?.getTracks().forEach((t) => t.stop());
     audioElRef.current?.pause();
     setPhase("setup");
-    setQuestions([]);
-    setQuestionIndex(0);
   }, [stopProctoring, stopVadLoop]);
 
   const handleResumeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -487,7 +514,7 @@ export default function InterviewRoom({
   const isLive = proctoring.status === "live";
   const canEditSetup = phase === "setup";
   const canStart = Boolean(roleTitle.trim() && resumeFile);
-  const totalQuestions = questions.length || 11;
+  const candidateTurnsSoFar = transcript.filter((t) => t.role === "candidate").length;
 
   if (canEditSetup) {
     return (
@@ -616,7 +643,9 @@ export default function InterviewRoom({
           <div className="min-w-0">
             <div className="text-sm font-bold truncate">{roleTitle || DEFAULT_ROLE}</div>
             <div className="text-[11px] text-zinc-400 font-mono">
-              {questions.length > 0 ? `Question ${Math.min(questionIndex + 1, totalQuestions)} of ${totalQuestions}` : "Connecting…"}
+              {transcript.length > 0
+                ? `Question ${Math.min(candidateTurnsSoFar + 1, MAX_CANDIDATE_TURNS)} of ${MAX_CANDIDATE_TURNS}`
+                : "Connecting…"}
             </div>
           </div>
         </div>

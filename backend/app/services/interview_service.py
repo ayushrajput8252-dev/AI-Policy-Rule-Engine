@@ -20,7 +20,7 @@ Conduct a natural, adaptive interview:
 - Keep each line concise (1-3 sentences), conversational, and professional.
 - After the candidate has answered {max_turns} questions, wrap up: thank them for their time and set is_final=true with a short closing line instead of a new question.
 
-{jd_context}
+{resume_context}{jd_context}
 Return ONLY a JSON object with this exact shape: {{"question": "<the next thing to say to the candidate>", "is_final": <true|false>}}"""
 
 EVALUATION_SYSTEM_INSTRUCTION = """You are {name}, the AI interviewer for AgenticFlow AI's Screening Agent. The screening interview below has just ended. Evaluate the candidate honestly based ONLY on what they actually said in the transcript below — never invent details that aren't there.
@@ -52,6 +52,7 @@ def generate_next_turn(
     role_title: str = "the open role",
     jd_text: Optional[str] = None,
     max_turns: int = 5,
+    resume_context: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Given the conversation so far, asks the LLM for the interviewer's next
@@ -59,9 +60,11 @@ def generate_next_turn(
     """
     candidate_turns = sum(1 for t in history if t.get("role") == "candidate")
     jd_context = f"The role's job description:\n{jd_text.strip()}\n" if jd_text else ""
+    resume_ctx = f"The candidate's resume summary:\n{resume_context.strip()}\n" if resume_context else ""
 
     system_instruction = TURN_SYSTEM_INSTRUCTION.format(
-        name=INTERVIEWER_NAME, role_title=role_title, max_turns=max_turns, jd_context=jd_context
+        name=INTERVIEWER_NAME, role_title=role_title, max_turns=max_turns,
+        jd_context=jd_context, resume_context=resume_ctx,
     )
 
     if not history:

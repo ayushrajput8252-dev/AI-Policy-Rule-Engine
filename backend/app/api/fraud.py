@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import uuid
@@ -88,8 +89,31 @@ async def stream_scan(scan_id: str, request: Request, db: Session = Depends(get_
     ip_address = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
 
+    # The scan itself runs as an independent task on the event loop, not
+    # inside the SSE generator directly — if the browser disconnects mid-scan
+    # (tab close, refresh, network blip), Starlette tears down event_stream()
+    # below, but this task keeps running and still persists a final
+    # complete/error result. Previously the two were the same coroutine, so a
+    # client disconnect threw GeneratorExit into run_scan mid-step and
+    # silently orphaned the row in "scanning" forever — confirmed live: two
+    # historical scans in the DB were stuck exactly this way with no
+    # reconciliation job to clean them up.
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def _drive_scan():
+        try:
+            async for event in run_scan(scan_id, file_path, content_type, ip_address, user_agent):
+                await queue.put(event)
+        finally:
+            await queue.put(None)
+
+    asyncio.create_task(_drive_scan())
+
     async def event_stream():
-        async for event in run_scan(scan_id, file_path, content_type, ip_address, user_agent):
+        while True:
+            event = await queue.get()
+            if event is None:
+                break
             yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(

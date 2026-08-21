@@ -76,7 +76,12 @@ async def run_scan(
             "key_concerns": reasoning_step.get("key_concerns", []),
             "steps": steps,
         }
-        emit_and_save("complete")
+        # Persist the top-level verdict alongside the steps — emit_and_save
+        # only ever wrote {"steps": steps}, so a client re-fetching a
+        # completed scan via GET /fraud/scan/{id} (instead of replaying the
+        # SSE stream) previously had no top-level risk_score/verdict/
+        # explanation to read, only the same fields nested in steps[-1].
+        _save(scan_id, "complete", overall)
         yield {"type": "complete", "overall": overall}
 
     except Exception as e:
