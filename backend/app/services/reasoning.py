@@ -1,4 +1,5 @@
 import json
+import re
 from .llm_service import generate_json
 from .web_service import tavily_search
 from ..database import SessionLocal
@@ -10,6 +11,19 @@ def _is_truthy(val) -> bool:
     if isinstance(val, str):
         return val.strip().lower() in ("true", "1", "yes")
     return bool(val)
+
+# The LLM occasionally emits a markdown bold wrapper around a field that
+# resolves to nothing (e.g. an empty citation title), leaving a bare "****" or
+# "**  **" in the answer text. Real markdown can never contain zero-width bold
+# emphasis (CommonMark requires non-whitespace content between "**" pairs), so
+# collapsing only "**" pairs that have nothing but whitespace between them is
+# safe — the immediate-reappearance requirement means it can never match into
+# legitimate "**bold text**" content. Scoped to "**"/"__" only (not single
+# "*"/"_", which also appear in list markers and would be ambiguous).
+_EMPTY_BOLD_RE = re.compile(r"(\*\*|__)(\s*)\1")
+
+def strip_empty_emphasis(text: str) -> str:
+    return _EMPTY_BOLD_RE.sub(lambda m: m.group(2), text)
 
 def generate_answer_with_fallback(query: str, retrieved_rules: list[dict], retrieved_chunks: list[dict]) -> dict:
     """
@@ -70,7 +84,7 @@ def generate_answer_with_fallback(query: str, retrieved_rules: list[dict], retri
             res_rules = generate_json(prompt_rules)
             if isinstance(res_rules, dict):
                 has_info = _is_truthy(res_rules.get("has_info"))
-                answer = res_rules.get("answer", "").strip()
+                answer = strip_empty_emphasis(res_rules.get("answer", "").strip())
                 if has_info and answer and "required info missing" not in answer.lower():
                     return {
                         "answer": answer,
@@ -156,7 +170,7 @@ def generate_answer_with_fallback(query: str, retrieved_rules: list[dict], retri
             res_chunks = generate_json(prompt_chunks)
             if isinstance(res_chunks, dict):
                 has_info = _is_truthy(res_chunks.get("has_info"))
-                answer = res_chunks.get("answer", "").strip()
+                answer = strip_empty_emphasis(res_chunks.get("answer", "").strip())
                 if has_info and answer and "required info missing" not in answer.lower():
                     return {
                         "answer": answer,
@@ -203,7 +217,7 @@ def generate_answer_with_fallback(query: str, retrieved_rules: list[dict], retri
             res_web = generate_json(prompt_web)
             if isinstance(res_web, dict):
                 has_info = _is_truthy(res_web.get("has_info"))
-                answer = res_web.get("answer", "").strip()
+                answer = strip_empty_emphasis(res_web.get("answer", "").strip())
                 if has_info and answer:
                     return {
                         "answer": answer,

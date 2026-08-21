@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { X, Send, Mic, Square, Volume2, VolumeX, Loader2 } from "lucide-react";
+import ChatMarkdown from "../ChatMarkdown";
 
 /** Fired by anything on the page (e.g. the hero's floating topic doodles) to open
  *  the assistant pre-loaded with a question — window-level so callers don't need
@@ -37,7 +38,7 @@ export interface AIAssistantConfig {
 export const ASSISTANT_CONFIG: AIAssistantConfig = {
   name: "AgenticFlow AI",
   subtitle: "Enterprise AI Assistant",
-  greeting: "Hi 👋",
+  greeting: "Hi there",
   intro: "I'm your AgenticFlow AI assistant — ask me about HR policy or the platform itself.",
   closingPrompt: "How can I help you today?",
   speakCta: "Speak with AI",
@@ -375,14 +376,18 @@ export default function AIAssistantWidget({ config = ASSISTANT_CONFIG }: { confi
                             : "bg-zinc-50 border border-zinc-200 text-zinc-800 rounded-bl-md"
                         }`}
                       >
-                        <p className="whitespace-pre-wrap">{m.content}</p>
+                        {m.role === "assistant" && !m.isError ? (
+                          <ChatMarkdown content={m.content} />
+                        ) : (
+                          <p className="whitespace-pre-wrap">{m.content}</p>
+                        )}
                         {m.role === "assistant" && !m.isError && (
                           <div className="flex items-center gap-2 mt-1.5">
                             {typeof m.sourceCount === "number" && m.sourceCount > 0 && (
                               <span className="text-[10px] font-mono text-zinc-400">{m.sourceCount} source{m.sourceCount === 1 ? "" : "s"}</span>
                             )}
-                            <button onClick={() => speak(m.content)} className="text-[10px] font-mono text-zinc-400 hover:text-blue-600 transition-colors">
-                              🔊 Listen
+                            <button onClick={() => speak(m.content)} className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-400 hover:text-blue-600 transition-colors">
+                              <Volume2 className="w-3 h-3" /> Listen
                             </button>
                           </div>
                         )}

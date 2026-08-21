@@ -1,6 +1,7 @@
 import re
 from langdetect import detect_langs, DetectorFactory
 from .llm_service import generate_json
+from .reasoning import strip_empty_emphasis
 
 # langdetect is unreliable on short, common-phrasing text — it will happily call
 # "What company documents are available?" Catalan. Below this confidence, trust
@@ -120,8 +121,8 @@ def translate_from_english(text: str, target_lang: str) -> str:
     try:
         res = generate_json(prompt)
         if isinstance(res, dict) and "translated_text" in res and res["translated_text"]:
-            return res["translated_text"].strip()
+            return strip_empty_emphasis(res["translated_text"].strip())
     except Exception as e:
         print(f"[Multilingual Service] Translation from English failed: {e}")
-    
+
     return text  # Return original English if translation fails

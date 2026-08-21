@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
+import ChatMarkdown from "@/components/ChatMarkdown";
 
 function GithubIcon({ className }: { className?: string }) {
   return (
@@ -894,13 +895,13 @@ export default function RAGPage() {
 
                         <div className="flex items-start gap-2">
                           <div
-                            className={`p-4 rounded-2xl text-[13px] leading-relaxed shadow-xs whitespace-pre-wrap flex-1 ${
+                            className={`p-4 rounded-2xl text-[13px] leading-relaxed shadow-xs flex-1 ${
                               msg.role === "assistant"
                                 ? "bg-white border border-zinc-200 text-zinc-800 font-sans"
-                                : "bg-blue-600 text-white font-medium font-sans"
+                                : "bg-blue-600 text-white font-medium font-sans whitespace-pre-wrap"
                             }`}
                           >
-                            {msg.content}
+                            {msg.role === "assistant" ? <ChatMarkdown content={msg.content} /> : msg.content}
                           </div>
                           {msg.role === "assistant" && (
                             <button
