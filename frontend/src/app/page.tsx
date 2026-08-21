@@ -8,13 +8,13 @@ import { reopenCookieConsent } from "@/components/CookieConsent";
 import {
   Database, UserPlus, Brain, Bot, BarChart3, Shield,
   ArrowRight, Menu, X, Zap, Users, Globe, CheckCircle2,
-  Sparkles, Search, FileText, Cpu, Play, ArrowUpRight, Radio, Terminal, Pause, SkipForward,
+  Sparkles, Search, FileText, Cpu, Play, ArrowUpRight, Radio, Pause, SkipForward,
   MessageSquare, Layers, Server, Cloud, Plug, Share2, CheckSquare,
   Wallet, CalendarCheck, FileCheck,
   FolderOpen,
   Phone, Video, Minus, Plus, ShieldCheck, BadgeCheck, Lock, Calculator,
   Scale, UserCheck, ClipboardX, ShieldAlert, MousePointer2,
-  Award, Mail, ClipboardList, Target, Crown, FileSearch,
+  Award, Mail, ClipboardList, Target, Crown, FileSearch, ChevronDown,
 } from "lucide-react";
 
 /* ── Inline GitHub Icon ── */
@@ -987,60 +987,70 @@ function FeaturedBadge() {
   );
 }
 
-/* ── 1. CLEAN LIGHT AGENT TRACE LOG BOX (BLENDED WITH UI) ── */
+/* ── 1. AGENT TRACE — plain-language walkthrough of what the agent is doing,
+   with the underlying technical detail tucked behind an optional disclosure
+   rather than shown by default. ── */
 function HeroAgentMatrixDynamic() {
   const [activeStep, setActiveStep] = useState(1);
   const [isPaused, setIsPaused] = useState(false);
+  const [justCompleted, setJustCompleted] = useState(false);
+  const [showTechnical, setShowTechnical] = useState(false);
 
   const steps = [
     {
       num: 1,
-      name: "Employee Webhook Request",
-      sub: "Slack / Teams Event Listener",
+      name: "Request Received",
+      sub: "Understanding your request",
       icon: <Users className="w-3.5 h-3.5 text-blue-600" />,
-      log: "> [0.012s] Incoming webhook payload parsed: user='@ayush', event='POLICY_QUERY'",
+      detail: "Incoming request parsed and queued for handling.",
     },
     {
       num: 2,
-      name: "AI Reasoning Agent Kernel",
-      sub: "Claude 3.5 Sonnet / GPT-4o DAG",
+      name: "Understanding Intent",
+      sub: "Identifying what you need and determining the best way to help",
       icon: <Bot className="w-3.5 h-3.5 text-blue-600" />,
-      log: "> [0.084s] Intent classified: EXPOSE_POLICY_RULES. Spawning RAG retriever agent...",
+      detail: "Intent classified; retrieval plan selected.",
     },
     {
       num: 3,
-      name: "Advanced Vector RAG Engine",
-      sub: "Qdrant HNSW + Hybrid Rerank",
+      name: "Finding Relevant Information",
+      sub: "Searching your organization's connected knowledge",
       icon: <Database className="w-3.5 h-3.5 text-blue-600" />,
-      log: "> [0.142s] HNSW vector search score=0.984. 4 chunks passed confidence threshold (>92%).",
+      detail: "Vector search returned 4 passages above the confidence threshold.",
     },
     {
       num: 4,
-      name: "Enterprise Knowledge Mesh",
-      sub: "SharePoint & Notion Graph",
+      name: "Checking Context",
+      sub: "Reviewing relevant company information and previous context",
       icon: <Brain className="w-3.5 h-3.5 text-blue-600" />,
-      log: "> [0.188s] Linked document bounding box citation: Page 2 [120, 40, 300, 80].",
+      detail: "Cross-referenced source document, page 2, for citation accuracy.",
     },
     {
       num: 5,
-      name: "MCP Tool Orchestrator",
-      sub: "Dispatched GitHub & Jira APIs",
+      name: "Taking Action",
+      sub: "Using connected tools to complete the task",
       icon: <Globe className="w-3.5 h-3.5 text-blue-600" />,
-      log: "> [0.220s] MCP Tool Dispatches: [GitHub.issue_create, Jira.assign_ticket].",
+      detail: "Dispatched to connected tools (e.g. GitHub, Jira) as needed.",
     },
     {
       num: 6,
-      name: "Deterministic Dispatcher",
-      sub: "Idempotent Transaction Signed",
+      name: "Final Review",
+      sub: "Checking the result before responding",
       icon: <Zap className="w-3.5 h-3.5 text-blue-600" />,
-      log: "> [0.248s] Idempotent transaction token 0x9f32 signed. Audit Log verified. Status: 200 OK",
+      detail: "Response validated and signed off before returning to the user.",
     },
   ];
 
   useEffect(() => {
     if (isPaused) return;
     const iv = setInterval(() => {
-      setActiveStep((prev) => (prev % steps.length) + 1);
+      setActiveStep((prev) => {
+        if (prev === steps.length) {
+          setJustCompleted(true);
+          window.setTimeout(() => setJustCompleted(false), 1500);
+        }
+        return (prev % steps.length) + 1;
+      });
     }, 2200);
     return () => clearInterval(iv);
   }, [isPaused, steps.length]);
@@ -1049,10 +1059,10 @@ function HeroAgentMatrixDynamic() {
 
   return (
     <div className="rounded-2xl bg-white border border-zinc-200 p-6 shadow-xl relative overflow-hidden">
-      <div className="flex items-center justify-between border-b border-zinc-200 pb-3 mb-4 font-mono text-xs">
+      <div className="flex items-center justify-between border-b border-zinc-200 pb-3 mb-4 text-xs">
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping" />
-          <span className="font-bold text-zinc-900 uppercase">Step-by-Step Agent Trace</span>
+          <span className="font-bold text-zinc-900">Agent Trace</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -1094,19 +1104,19 @@ function HeroAgentMatrixDynamic() {
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className={`w-6 h-6 rounded-lg font-mono text-[10px] font-bold flex items-center justify-center shrink-0 ${isCurrent ? "bg-blue-600 text-white" : isDone ? "bg-emerald-100 text-emerald-700" : "bg-zinc-200 text-zinc-600"}`}>
-                    {s.num}
+                  <div className={`w-6 h-6 rounded-lg text-[10px] font-bold flex items-center justify-center shrink-0 ${isCurrent ? "bg-blue-600 text-white" : isDone ? "bg-emerald-100 text-emerald-700" : "bg-zinc-200 text-zinc-600"}`}>
+                    {isDone ? <CheckCircle2 className="w-3.5 h-3.5" /> : s.num}
                   </div>
                   <div>
                     <div className={`text-xs font-bold ${isCurrent ? "text-blue-900" : "text-zinc-800"}`}>
                       {s.name}
                     </div>
-                    <div className="text-[10px] text-zinc-500 font-mono">{s.sub}</div>
+                    <div className="text-[10px] text-zinc-500">{s.sub}</div>
                   </div>
                 </div>
 
-                <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${isCurrent ? "bg-blue-600 text-white border-blue-600 animate-pulse" : isDone ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-zinc-100 text-zinc-500 border-zinc-200"}`}>
-                  {isCurrent ? "EXECUTING..." : isDone ? "PASSED ✓" : "QUEUED"}
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${isCurrent ? "bg-blue-600 text-white border-blue-600 animate-pulse" : isDone ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-zinc-100 text-zinc-500 border-zinc-200"}`}>
+                  {isCurrent ? "In progress" : isDone ? "Completed" : "Waiting"}
                 </span>
               </div>
             </div>
@@ -1114,24 +1124,53 @@ function HeroAgentMatrixDynamic() {
         })}
       </div>
 
-      {/* Clean Blended Light Terminal Log Ticker */}
-      <div className="mt-4 p-3.5 rounded-xl bg-blue-50/70 border border-blue-200/90 text-blue-950 font-mono text-[11px] shadow-xs space-y-1">
-        <div className="flex items-center justify-between text-[10px] text-blue-700 border-b border-blue-200/80 pb-1.5 mb-1 font-bold">
-          <span className="flex items-center gap-1.5 text-blue-800">
-            <Terminal className="w-3.5 h-3.5 text-blue-600" /> LIVE TRACE LOG
-          </span>
-          <span className="px-1.5 py-0.5 rounded bg-blue-100 border border-blue-300">STEP {activeStep} / 6</span>
-        </div>
+      {/* Plain-language result, with the technical trace tucked behind an optional disclosure */}
+      <div className="mt-4 rounded-xl bg-blue-50/70 border border-blue-200/90 text-blue-950 text-[11px] shadow-xs overflow-hidden">
         <AnimatePresence mode="wait">
-          <motion.div
-            key={currentStep.num}
-            initial={{ opacity: 0, y: 2 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -2 }}
-            className="text-blue-950 font-semibold leading-relaxed"
-          >
-            {currentStep.log}
-          </motion.div>
+          {justCompleted ? (
+            <motion.div
+              key="completed"
+              initial={{ opacity: 0, y: 2 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -2 }}
+              className="flex items-center gap-2 p-3.5 font-semibold text-blue-950"
+            >
+              <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+              Task completed — your request was processed successfully.
+            </motion.div>
+          ) : (
+            <motion.div
+              key={currentStep.num}
+              initial={{ opacity: 0, y: 2 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -2 }}
+              className="p-3.5 font-semibold leading-relaxed"
+            >
+              {currentStep.sub}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <button
+          onClick={() => setShowTechnical((v) => !v)}
+          className="w-full flex items-center justify-between px-3.5 py-1.5 border-t border-blue-200/70 text-[10px] font-medium text-blue-700 hover:bg-blue-100/50 transition-colors"
+        >
+          Technical details
+          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showTechnical ? "rotate-180" : ""}`} />
+        </button>
+        <AnimatePresence initial={false}>
+          {showTechnical && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="px-3.5 pb-3 pt-1 font-mono text-[10px] text-blue-800/80 border-t border-blue-200/50">
+                {currentStep.detail}
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
       </div>
     </div>
