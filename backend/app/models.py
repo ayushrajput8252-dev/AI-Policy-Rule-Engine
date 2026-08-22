@@ -120,14 +120,19 @@ class ScreeningResult(Base):
     id = Column(String, primary_key=True, index=True)
     source = Column(String, default="telephonic")  # "telephonic" | "interview" — which conversation this analyzed
     call_id = Column(String, ForeignKey("call_records.id"), nullable=True, index=True)
+    session_id = Column(String, ForeignKey("screening_sessions.id"), nullable=True, index=True)  # set when source="interview"
     candidate_name = Column(String, nullable=False)
     role_title = Column(String, nullable=True)
     jd_text_used = Column(Text, nullable=True)
     jd_match_score = Column(Integer, nullable=True)
-    verdict = Column(String, nullable=True)  # "Strong Match" | "Match" | "Consider" | "Not a Fit"
+    verdict = Column(String, nullable=True)  # "Strong Match" | "Match" | "Consider" | "Not a Fit" (telephonic) or "Strong Hire" | "Hire" | "Lean Hire" | "No Hire" (interview)
     strengths = Column(JSON, default=list)
     gaps = Column(JSON, default=list)
     summary = Column(Text, nullable=True)
+    # Extra structured fields specific to the interview-report shape (sub-scores,
+    # matched/missing skills, timing, proctoring) that don't fit the telephonic
+    # path's flatter schema — kept as JSON rather than N more nullable columns.
+    details = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 

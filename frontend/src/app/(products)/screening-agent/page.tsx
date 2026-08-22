@@ -26,7 +26,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   ArrowLeft, ArrowRight, Sparkles, ShieldCheck, Video, Mic,
-  Bot, FileText, Award, Radio, Check,
+  Bot, Award, Radio, Target, ListChecks, Lightbulb, Gauge,
 } from "lucide-react";
 import { askAssistant } from "@/components/ai-assistant/AIAssistantWidget";
 import InterviewRoom from "./_components/InterviewRoom";
@@ -67,8 +67,8 @@ export default function ScreeningAgentPage() {
 
       <footer className="border-t border-zinc-200 bg-white py-10">
         <div className="max-w-6xl mx-auto px-6 text-center text-[12px] text-zinc-500 font-mono">
-          AgenticFlow AI · Screening Agent — the live interview above is real (camera, proctoring, Groq, transcription).
-          Sections below the demo use illustrative sample data.
+          AgenticFlow AI · Screening Agent — the live interview above is real (camera, proctoring, Groq, transcription),
+          and its report is generated from your actual answers. Only the &ldquo;Create in Minutes&rdquo; step below is a mockup.
         </div>
       </footer>
     </div>
@@ -196,101 +196,72 @@ function CreateInMinutesSection() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   REPORTS — illustrative sample output (matches reference design)
+   REPORTS — what the real report (generated after your live
+   interview above) actually contains. No sample candidate, no
+   fake numbers — every field here is a real field the backend
+   returns once your interview finishes.
    ═══════════════════════════════════════════════════════════ */
 
-function Bar({ label, value }: { label: string; value: number }) {
-  const color = value >= 70 ? "#22c55e" : value >= 45 ? "#eab308" : "#ef4444";
-  return (
-    <div>
-      <div className="mb-1 flex items-center justify-between text-sm">
-        <span className="text-zinc-600">{label}</span>
-        <span className="font-semibold text-zinc-700">{value}%</span>
-      </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-100">
-        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${value}%`, backgroundColor: color }} />
-      </div>
-    </div>
-  );
-}
-
 function ReportsSection() {
+  const reportContents = [
+    {
+      icon: Gauge,
+      title: "Scored & recommended",
+      desc: "Communication, relevance, and confidence sub-scores roll up into one overall score and a clear recommendation — Strong Hire through No Hire.",
+    },
+    {
+      icon: Target,
+      title: "Matched vs. missing skills",
+      desc: "Skills you actually demonstrated during the interview, checked against your resume and the role's JD — and which relevant ones never came up.",
+    },
+    {
+      icon: ListChecks,
+      title: "Strengths & areas to improve",
+      desc: "Specific, grounded bullet points tied to what you actually said — not generic filler.",
+    },
+    {
+      icon: Lightbulb,
+      title: "A key takeaway & next step",
+      desc: "One sentence a hiring manager can act on immediately, plus a concrete suggested next step.",
+    },
+  ];
   return (
     <section className="py-20 border-t border-zinc-200/80 bg-gradient-to-b from-white to-blue-50/40">
-      <div className="max-w-6xl mx-auto px-6 text-center">
-        <IllustrativeBadge />
-        <h2 className="text-2xl font-extrabold text-zinc-900 sm:text-3xl mt-4">Detailed Interview Reports</h2>
-        <p className="mt-1 text-zinc-500">Performance, integrity, and skill insights presented in one place.</p>
+      <div className="max-w-4xl mx-auto px-6 text-center">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-widest text-blue-600 font-semibold px-3 py-1.5 rounded-full bg-blue-50 border border-blue-200">
+          <Award className="w-3 h-3" /> Generated from your real interview
+        </span>
+        <h2 className="text-2xl font-extrabold text-zinc-900 sm:text-3xl mt-4">Your Detailed Interview Report</h2>
+        <p className="mt-1 text-zinc-500">
+          The moment you finish the live demo above, {INTERVIEWER_NAME} scores your actual transcript and hands you this —
+          not a preview, the real thing.
+        </p>
       </div>
 
-      <div className="mx-auto mt-10 grid max-w-6xl grid-cols-1 gap-4 text-left lg:grid-cols-[0.85fr_1fr_1fr] px-6">
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-600">JD</div>
-              <div>
-                <p className="font-bold text-zinc-800">Sample Candidate</p>
-                <p className="text-xs text-zinc-400">sample@example.com</p>
+      <div className="mx-auto mt-10 grid max-w-4xl grid-cols-1 gap-4 text-left sm:grid-cols-2 px-6">
+        {reportContents.map((item) => {
+          const Icon = item.icon;
+          return (
+            <div key={item.title} className="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
+              <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 mb-3">
+                <Icon className="w-4 h-4" />
               </div>
+              <h3 className="text-sm font-bold text-zinc-900 mb-1">{item.title}</h3>
+              <p className="text-[12.5px] text-zinc-500 leading-relaxed">{item.desc}</p>
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <StatCard label="Status" value="Completed" valueClass="text-green-600" />
-            <StatCard label="Time Taken" value="18:20 min" />
-            <StatCard label="Questions" value="11" />
-            <StatCard label="Proctor Flags" value="2" valueClass="text-red-500" />
-          </div>
-          <div className="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400 mb-2">Matching Skills</p>
-            <div className="flex flex-wrap gap-2">
-              {["Python", "FastAPI", "Redis"].map((s) => (
-                <span key={s} className="inline-flex items-center gap-1 rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-600">
-                  <Check className="w-3 h-3" /> {s}
-                </span>
-              ))}
-              {["Kubernetes", "GraphQL"].map((s) => (
-                <span key={s} className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-400 line-through">{s}</span>
-              ))}
-            </div>
-          </div>
-        </div>
+          );
+        })}
+      </div>
 
-        <div className="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Key Metrics</p>
-          <div className="mt-4 space-y-4">
-            <Bar label="Communication" value={75} />
-            <Bar label="Relevance" value={90} />
-            <Bar label="Confidence" value={85} />
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-5">
-          <p className="text-xs font-bold uppercase tracking-wide text-amber-600">Key Point</p>
-          <p className="mt-1 text-sm text-zinc-600">
-            The candidate answered clearly and stayed on-topic, with room to go deeper on system-design tradeoffs.
-          </p>
-          <p className="mt-4 text-xs font-bold uppercase tracking-wide text-zinc-500">Suggestion</p>
-          <p className="mt-1 text-sm text-zinc-600">Good fit for the role — recommend a technical round follow-up.</p>
-        </div>
+      <div className="max-w-4xl mx-auto px-6 mt-8 text-center">
+        <a
+          href="#live-demo"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all"
+        >
+          Get your report — try the live demo <ArrowRight className="w-3.5 h-3.5" />
+        </a>
       </div>
     </section>
-  );
-}
-
-function StatCard({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
-  return (
-    <div className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
-      <p className="text-xs text-zinc-400">{label}</p>
-      <p className={`mt-1 text-lg font-bold text-zinc-700 ${valueClass ?? ""}`}>{value}</p>
-    </div>
-  );
-}
-
-function IllustrativeBadge() {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-widest text-zinc-500 font-semibold px-3 py-1.5 rounded-full bg-zinc-100 border border-zinc-200">
-      <FileText className="w-3 h-3" /> Illustrative sample — not live data
-    </span>
   );
 }
 

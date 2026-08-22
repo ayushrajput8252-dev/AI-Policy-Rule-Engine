@@ -23,20 +23,79 @@ Conduct a natural, adaptive interview:
 {resume_context}{jd_context}
 Return ONLY a JSON object with this exact shape: {{"question": "<the next thing to say to the candidate>", "is_final": <true|false>}}"""
 
-EVALUATION_SYSTEM_INSTRUCTION = """You are {name}, the AI interviewer for AgenticFlow AI's Screening Agent. The screening interview below has just ended. Evaluate the candidate honestly based ONLY on what they actually said in the transcript below — never invent details that aren't there.
+EVALUATION_SYSTEM_INSTRUCTION = """You are {name}, the AI interviewer for AgenticFlow AI's Screening Agent. The screening interview below has just ended. Evaluate the candidate honestly based ONLY on what they actually said in the transcript below — never invent details that aren't there, and never credit a skill the candidate didn't actually demonstrate or claim.
 
+Role being screened for: {role_title}
+{jd_context}{skills_context}
 Return ONLY a JSON object with this exact shape:
-{{"communication_score": <0-100 integer>, "relevance_score": <0-100 integer>, "confidence_score": <0-100 integer>, "summary": "<2-3 sentence honest summary>", "strengths": "<1-2 sentences>", "areas_for_improvement": "<1-2 sentences>"}}"""
+{{
+  "communication_score": <0-100 integer>,
+  "relevance_score": <0-100 integer>,
+  "confidence_score": <0-100 integer>,
+  "recommendation": <one of "Strong Hire", "Hire", "Lean Hire", "No Hire">,
+  "summary": "<2-3 sentence honest overall summary of how the interview went>",
+  "strengths": ["<specific strength grounded in something the candidate actually said>", "..."],
+  "areas_for_improvement": ["<specific, actionable area to improve>", "..."],
+  "matched_skills": ["<skill relevant to the role the candidate actually demonstrated or credibly discussed>", "..."],
+  "missing_skills": ["<skill relevant to the role that was never evidenced, or was clearly weak>", "..."],
+  "key_takeaway": "<the single most important one-sentence insight a hiring manager needs>",
+  "suggested_next_step": "<one concrete, actionable next step, e.g. 'Advance to a technical round focused on system design'>"
+}}
+Keep strengths and areas_for_improvement to 2-4 items each, and matched_skills/missing_skills to at most 6 items each. Every list item must be a short, specific, standalone sentence or phrase — no filler."""
 
 FALLBACK_QUESTION = "Could you tell me more about a recent project you're proud of?"
 FALLBACK_EVALUATION = {
     "communication_score": None,
     "relevance_score": None,
     "confidence_score": None,
+    "overall_score": None,
+    "recommendation": "Review Needed",
     "summary": "Automated evaluation is temporarily unavailable — both the primary and fallback LLM providers failed. Please review the transcript manually.",
-    "strengths": "",
-    "areas_for_improvement": "",
+    "strengths": [],
+    "areas_for_improvement": [],
+    "matched_skills": [],
+    "missing_skills": [],
+    "key_takeaway": "Automated scoring failed for this session — review the transcript manually before making a decision.",
+    "suggested_next_step": "Manually review the transcript above and score the candidate directly.",
 }
+
+_VALID_RECOMMENDATIONS = {"Strong Hire", "Hire", "Lean Hire", "No Hire"}
+
+
+def _coerce_recommendation(value: Any, overall_score: int) -> str:
+    """Trusts the LLM's own verdict when it's one of the known labels;
+    otherwise derives a safe default from the computed overall_score so the
+    report always carries a recommendation even if the model's field was
+    missing or off-schema."""
+    if isinstance(value, str) and value.strip() in _VALID_RECOMMENDATIONS:
+        return value.strip()
+    if overall_score >= 85:
+        return "Strong Hire"
+    if overall_score >= 70:
+        return "Hire"
+    if overall_score >= 50:
+        return "Lean Hire"
+    return "No Hire"
+
+
+def _coerce_string_list(value: Any, max_items: int) -> List[str]:
+    """Defensively normalizes an LLM-returned field into a clean list of
+    short strings — the model may return a single string, omit the field, or
+    include empty/duplicate entries."""
+    if isinstance(value, str):
+        value = [value] if value.strip() else []
+    if not isinstance(value, list):
+        return []
+    seen: set = set()
+    deduped: List[str] = []
+    for item in value:
+        text = str(item).strip()
+        key = text.lower()
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(text)
+    return deduped[:max_items]
 
 
 def _format_history(history: List[Dict[str, str]]) -> str:
@@ -94,13 +153,27 @@ def generate_next_turn(
     return result
 
 
-def generate_evaluation(history: List[Dict[str, str]], role_title: str = "the open role") -> Dict[str, Any]:
-    """Produces a scored evaluation of the whole interview transcript."""
+def generate_evaluation(
+    history: List[Dict[str, str]],
+    role_title: str = "the open role",
+    jd_text: Optional[str] = None,
+    resume_skills: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Produces a detailed, actionable scored evaluation of the whole
+    interview transcript — sub-scores, an overall recommendation, grounded
+    strengths/areas for improvement, and matched/missing skills relative to
+    the role's JD and the candidate's own resume."""
     if not any(t.get("role") == "candidate" for t in history):
         return {**FALLBACK_EVALUATION, "summary": "No candidate responses were recorded."}
 
-    system_instruction = EVALUATION_SYSTEM_INSTRUCTION.format(name=INTERVIEWER_NAME)
-    prompt = f"Role: {role_title}\n\nFull transcript:\n{_format_history(history)}"
+    jd_context = f"\nThe role's job description:\n{jd_text.strip()}\n" if jd_text else ""
+    skills_context = (
+        f"\nSkills the candidate's resume claims: {', '.join(resume_skills)}\n" if resume_skills else ""
+    )
+    system_instruction = EVALUATION_SYSTEM_INSTRUCTION.format(
+        name=INTERVIEWER_NAME, role_title=role_title, jd_context=jd_context, skills_context=skills_context,
+    )
+    prompt = f"Full transcript:\n{_format_history(history)}"
 
     try:
         result = generate_json(prompt, system_instruction)
@@ -123,4 +196,13 @@ def generate_evaluation(history: List[Dict[str, str]], role_title: str = "the op
         + 0.3 * result["communication_score"]
         + 0.2 * result["confidence_score"]
     )
+
+    result["recommendation"] = _coerce_recommendation(result.get("recommendation"), result["overall_score"])
+    result["summary"] = str(result.get("summary") or "").strip() or "No summary was generated."
+    result["strengths"] = _coerce_string_list(result.get("strengths"), max_items=4)
+    result["areas_for_improvement"] = _coerce_string_list(result.get("areas_for_improvement"), max_items=4)
+    result["matched_skills"] = _coerce_string_list(result.get("matched_skills"), max_items=6)
+    result["missing_skills"] = _coerce_string_list(result.get("missing_skills"), max_items=6)
+    result["key_takeaway"] = str(result.get("key_takeaway") or "").strip()
+    result["suggested_next_step"] = str(result.get("suggested_next_step") or "").strip()
     return result

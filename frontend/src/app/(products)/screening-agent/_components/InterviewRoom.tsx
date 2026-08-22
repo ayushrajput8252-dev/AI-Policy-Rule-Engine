@@ -4,13 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ShieldCheck, Mic, Loader2, AlertTriangle, Volume2, MessageSquare,
-  Award, Send, LogOut, ScreenShare, Download,
+  Send, LogOut, ScreenShare, Download,
 } from "lucide-react";
 import { useProctoring, type FaceBox, type ProctoringState } from "@/hooks/useProctoring";
 import type {
   EvaluationResult, InterviewPhase, ResumeProfileOut, ScreeningStartResponse, TranscriptTurn,
 } from "./types";
 import { Toast, type ToastState } from "./Toast";
+import InterviewReport from "./InterviewReport";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const INTERVIEWER_NAME = "Ayush";
@@ -42,22 +43,34 @@ function buildResumeContext(profile: ResumeProfileOut): string {
   return parts.join("\n");
 }
 
-/** One retry after a short backoff — smooths over a transient network blip
- * instead of failing the whole turn on the first failed request. */
-async function fetchWithRetry(input: string, init?: RequestInit, retries = 1): Promise<Response> {
+/** One retry after a short backoff, plus a hard client-side timeout — a
+ * request that just hangs (dead connection, an LLM call that never returns)
+ * used to leave the UI stuck on "Processing…" forever, since fetch() has no
+ * default timeout of its own. Each call site picks a timeout that fits what
+ * it's waiting on (a quick DB write vs. an LLM-backed evaluation). */
+async function fetchWithRetry(
+  input: string,
+  init?: RequestInit,
+  retries = 1,
+  timeoutMs = 20000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(input, init);
+    const res = await fetch(input, { ...init, signal: controller.signal });
     if (!res.ok && res.status >= 500 && retries > 0) {
       await new Promise((resolve) => setTimeout(resolve, 1200));
-      return fetchWithRetry(input, init, retries - 1);
+      return fetchWithRetry(input, init, retries - 1, timeoutMs);
     }
     return res;
   } catch (err) {
     if (retries > 0) {
       await new Promise((resolve) => setTimeout(resolve, 1200));
-      return fetchWithRetry(input, init, retries - 1);
+      return fetchWithRetry(input, init, retries - 1, timeoutMs);
     }
     throw err;
+  } finally {
+    window.clearTimeout(timeoutId);
   }
 }
 
@@ -69,6 +82,7 @@ export interface InterviewRoomProps {
   initialRoleTitle?: string;
   initialJdText?: string;
   sessionId?: string;
+  email?: string;
   roleFieldsLocked?: boolean;
 }
 
@@ -76,6 +90,7 @@ export default function InterviewRoom({
   initialRoleTitle = DEFAULT_ROLE,
   initialJdText = "",
   sessionId,
+  email,
   roleFieldsLocked = false,
 }: InterviewRoomProps) {
   const {
@@ -94,6 +109,7 @@ export default function InterviewRoom({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [candidateName, setCandidateName] = useState<string | null>(null);
   const resumeContextRef = useRef<string>("");
+  const resumeSkillsRef = useRef<string[]>([]);
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -289,24 +305,43 @@ export default function InterviewRoom({
     async (history: TranscriptTurn[]) => {
       setPhase("evaluating");
       try {
-        const res = await fetchWithRetry(`${API_URL}/api/v1/interview/evaluate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            history: history.map((t) => ({ role: t.role, text: t.text })),
-            role_title: roleTitle || DEFAULT_ROLE,
-            session_id: sessionId,
-          }),
-        });
+        const res = await fetchWithRetry(
+          `${API_URL}/api/v1/interview/evaluate`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              history: history.map((t) => ({ role: t.role, text: t.text })),
+              role_title: roleTitle || DEFAULT_ROLE,
+              session_id: sessionId,
+              jd_text: jdText || undefined,
+              resume_skills: resumeSkillsRef.current,
+              candidate_name: candidateName || undefined,
+              email: email || undefined,
+              // Real, client-observed facts folded into the same report —
+              // no reason to make the LLM guess at timing or proctoring.
+              time_taken_sec: startedAtRef.current ? Math.round((Date.now() - startedAtRef.current) / 1000) : null,
+              question_count: history.filter((t) => t.role === "candidate").length,
+              proctor_flags_count: proctoring.flags.length,
+              integrity_score: proctoring.integrityScore,
+            }),
+          },
+          1,
+          45000, // evaluation runs a full-transcript LLM call plus memory writes — give it real headroom
+        );
         if (!res.ok) throw new Error(`Evaluation request failed (${res.status})`);
         setEvaluation(await res.json());
       } catch (err) {
         console.error("Evaluation failed", err);
-        setErrorMessage("Could not generate the final evaluation. The transcript above is still complete.");
+        setErrorMessage(
+          err instanceof DOMException && err.name === "AbortError"
+            ? "The final report took too long to generate. The transcript above is still complete — please try reloading in a moment."
+            : "Could not generate the final evaluation. The transcript above is still complete.",
+        );
       }
       setPhase("complete");
     },
-    [roleTitle, sessionId],
+    [roleTitle, jdText, sessionId, candidateName, email, proctoring.flags.length, proctoring.integrityScore],
   );
 
   /** Asks the LLM for the interviewer's next line given the real conversation
@@ -317,17 +352,22 @@ export default function InterviewRoom({
     async (history: TranscriptTurn[]) => {
       setPhase("thinking");
       try {
-        const res = await fetchWithRetry(`${API_URL}/api/v1/interview/turn`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            history: history.map((t) => ({ role: t.role, text: t.text })),
-            role_title: roleTitle || DEFAULT_ROLE,
-            jd_text: jdText || undefined,
-            resume_context: resumeContextRef.current || undefined,
-            max_turns: MAX_CANDIDATE_TURNS,
-          }),
-        });
+        const res = await fetchWithRetry(
+          `${API_URL}/api/v1/interview/turn`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              history: history.map((t) => ({ role: t.role, text: t.text })),
+              role_title: roleTitle || DEFAULT_ROLE,
+              jd_text: jdText || undefined,
+              resume_context: resumeContextRef.current || undefined,
+              max_turns: MAX_CANDIDATE_TURNS,
+            }),
+          },
+          1,
+          25000,
+        );
         if (!res.ok) throw new Error(`Interview turn request failed (${res.status})`);
         const data = (await res.json()) as { question: string; is_final: boolean };
 
@@ -428,6 +468,7 @@ export default function InterviewRoom({
     setErrorMessage(null);
     setTranscript([]);
     setEvaluation(null);
+    resumeSkillsRef.current = [];
     emptyAnswerStreakRef.current = 0;
     startedAtRef.current = Date.now();
     setScreenRecordingBlob(null);
@@ -440,7 +481,7 @@ export default function InterviewRoom({
       formData.append("jd_text", jdText || "");
       if (sessionId) formData.append("session_id", sessionId);
 
-      const res = await fetchWithRetry(`${API_URL}/api/v1/screening/start`, { method: "POST", body: formData });
+      const res = await fetchWithRetry(`${API_URL}/api/v1/screening/start`, { method: "POST", body: formData }, 1, 30000);
       if (!res.ok) throw new Error(`Screening start failed (${res.status})`);
       const data = (await res.json()) as ScreeningStartResponse;
 
@@ -448,6 +489,7 @@ export default function InterviewRoom({
 
       setCandidateName(data.resume_profile?.candidate_name || null);
       resumeContextRef.current = data.resume_profile ? buildResumeContext(data.resume_profile) : "";
+      resumeSkillsRef.current = data.resume_profile?.skills || [];
 
       const greeting = data.questions[0];
       const turn = addTurn("interviewer", greeting.text);
@@ -485,7 +527,7 @@ export default function InterviewRoom({
           const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
           const formData = new FormData();
           formData.append("file", blob, "answer.webm");
-          const res = await fetchWithRetry(`${API_URL}/api/v1/transcribe`, { method: "POST", body: formData });
+          const res = await fetchWithRetry(`${API_URL}/api/v1/transcribe`, { method: "POST", body: formData }, 1, 25000);
           if (!res.ok) throw new Error(`Transcription failed (${res.status})`);
           const data = await res.json();
           const candidateText: string = (data.transcript || "").trim();
@@ -881,7 +923,12 @@ export default function InterviewRoom({
               </AnimatePresence>
               <div ref={transcriptEndRef} />
             </div>
-            {phase === "complete" && evaluation && <EvaluationCard evaluation={evaluation} />}
+            {phase === "evaluating" && <ReportGeneratingSkeleton />}
+            {phase === "complete" && evaluation && (
+              <div className="mt-3">
+                <InterviewReport evaluation={evaluation} />
+              </div>
+            )}
             {phase === "complete" && screenRecordingBlob && (
               <button
                 onClick={saveScreenRecording}
@@ -1030,35 +1077,35 @@ function MicStatusIndicator({
   );
 }
 
-function EvaluationCard({ evaluation }: { evaluation: EvaluationResult }) {
+const REPORT_GENERATING_MESSAGES = [
+  "Reviewing your answers…",
+  "Scoring communication & relevance…",
+  "Comparing skills against the role…",
+  "Preparing your detailed report…",
+];
+
+/** Shown in place of the report while /interview/evaluate is in flight — a
+ * blank "Processing" spinner for up to 45s (the eval call's own timeout)
+ * reads as broken; a rotating status at least shows real progress stages. */
+function ReportGeneratingSkeleton() {
+  const [messageIndex, setMessageIndex] = useState(0);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setMessageIndex((i) => (i + 1) % REPORT_GENERATING_MESSAGES.length);
+    }, 2500);
+    return () => window.clearInterval(id);
+  }, []);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="mt-3 rounded-xl border border-amber-400/20 bg-amber-400/10 p-3"
+      className="mt-3 rounded-xl border border-blue-400/20 bg-blue-400/10 p-4 flex items-center gap-3"
     >
-      <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-amber-300 mb-2">
-        <Award className="w-3.5 h-3.5" /> Interview Complete — Live Evaluation
-      </div>
-      <div className="grid grid-cols-3 gap-2 mb-2">
-        <ScoreChip label="Communication" value={evaluation.communication_score} />
-        <ScoreChip label="Relevance" value={evaluation.relevance_score} />
-        <ScoreChip label="Confidence" value={evaluation.confidence_score} />
-      </div>
-      <p className="text-[11.5px] text-zinc-200 leading-relaxed">{evaluation.summary}</p>
+      <Loader2 className="w-4 h-4 shrink-0 animate-spin text-blue-300" />
+      <span className="text-[12px] font-medium text-blue-100">{REPORT_GENERATING_MESSAGES[messageIndex]}</span>
     </motion.div>
-  );
-}
-
-function ScoreChip({ label, value }: { label: string; value: number | null }) {
-  return (
-    <div className="rounded-lg bg-white/10 border border-white/10 px-2 py-1.5 text-center">
-      <div className="text-[10px] text-zinc-400">{label}</div>
-      <div className="text-sm font-extrabold text-blue-300 font-mono">
-        {value ?? "—"}
-        {value !== null && "%"}
-      </div>
-    </div>
   );
 }
 

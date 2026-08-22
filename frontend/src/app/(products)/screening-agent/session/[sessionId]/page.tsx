@@ -4,6 +4,8 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, ArrowLeft, Loader2, Video } from "lucide-react";
 import InterviewRoom from "../../_components/InterviewRoom";
+import InterviewReport from "../../_components/InterviewReport";
+import type { EvaluationResult } from "../../_components/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -20,6 +22,11 @@ export default function ScreeningSessionPage({ params }: { params: Promise<{ ses
   const [session, setSession] = useState<SessionData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Once an interview finishes, GET /interview/report/{id} persists — reused
+  // here so reloading (or revisiting) this link shows the real completed
+  // report instead of dropping the candidate back into a fresh setup screen.
+  const [completedReport, setCompletedReport] = useState<EvaluationResult | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,7 +38,22 @@ export default function ScreeningSessionPage({ params }: { params: Promise<{ ses
           throw new Error(data?.detail || "This interview link is invalid or has expired.");
         }
         const data = (await res.json()) as SessionData;
-        if (!cancelled) setSession(data);
+        if (cancelled) return;
+        setSession(data);
+
+        if (data.status === "completed") {
+          try {
+            const reportRes = await fetch(`${API_URL}/api/v1/interview/report/${sessionId}`);
+            if (reportRes.ok) {
+              const report = (await reportRes.json()) as EvaluationResult;
+              if (!cancelled) setCompletedReport(report);
+            } else if (!cancelled) {
+              setReportError("This interview is complete, but the detailed report couldn't be loaded.");
+            }
+          } catch {
+            if (!cancelled) setReportError("This interview is complete, but the detailed report couldn't be loaded.");
+          }
+        }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Could not load this interview link.");
       } finally {
@@ -75,7 +97,29 @@ export default function ScreeningSessionPage({ params }: { params: Promise<{ ses
           </div>
         )}
 
-        {!loading && !error && session && (
+        {!loading && !error && session && session.status === "completed" && (
+          <>
+            <div className="max-w-2xl mx-auto text-center mb-10">
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-zinc-900 mb-2">
+                Your interview for {session.role_title} is complete
+              </h1>
+              <p className="text-zinc-500 text-sm">
+                Thanks for taking the time to interview — here&rsquo;s your report from that session.
+              </p>
+            </div>
+            <div className="max-w-3xl mx-auto">
+              {completedReport ? (
+                <InterviewReport evaluation={completedReport} />
+              ) : (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-700">
+                  {reportError || "Loading your report…"}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {!loading && !error && session && session.status !== "completed" && (
           <>
             <div className="max-w-2xl mx-auto text-center mb-10">
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-zinc-900 mb-2">
@@ -90,6 +134,7 @@ export default function ScreeningSessionPage({ params }: { params: Promise<{ ses
               initialRoleTitle={session.role_title}
               initialJdText={session.jd_text || ""}
               sessionId={session.session_id}
+              email={session.email}
               roleFieldsLocked
             />
           </>

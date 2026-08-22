@@ -1,8 +1,13 @@
+import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
+from .. import models
+from ..database import get_db
 from ..memory import orchestrator
 from ..services.interview_service import generate_evaluation, generate_next_turn
 from ..services.guardrails import check_input, check_output
@@ -47,6 +52,44 @@ class InterviewEvaluationRequest(BaseModel):
     history: List[InterviewTurnIn]
     role_title: str = "the open role"
     session_id: Optional[str] = None
+    jd_text: Optional[str] = None
+    resume_skills: List[str] = []
+    candidate_name: Optional[str] = None
+    email: Optional[str] = None
+    # Client-observed facts the LLM can't know on its own — how long the
+    # interview took and what BrewShield proctoring saw — folded into the
+    # persisted report alongside the LLM-scored fields.
+    time_taken_sec: Optional[int] = None
+    question_count: Optional[int] = None
+    proctor_flags_count: Optional[int] = None
+    integrity_score: Optional[int] = None
+
+
+def _serialize_interview_report(result: models.ScreeningResult) -> dict:
+    details = result.details or {}
+    return {
+        "session_id": result.session_id,
+        "candidate_name": result.candidate_name,
+        "role_title": result.role_title,
+        "communication_score": details.get("communication_score"),
+        "relevance_score": details.get("relevance_score"),
+        "confidence_score": details.get("confidence_score"),
+        "overall_score": result.jd_match_score,
+        "recommendation": result.verdict,
+        "summary": result.summary,
+        "strengths": result.strengths or [],
+        "areas_for_improvement": result.gaps or [],
+        "matched_skills": details.get("matched_skills", []),
+        "missing_skills": details.get("missing_skills", []),
+        "key_takeaway": details.get("key_takeaway"),
+        "suggested_next_step": details.get("suggested_next_step"),
+        "time_taken_sec": details.get("time_taken_sec"),
+        "question_count": details.get("question_count"),
+        "proctor_flags_count": details.get("proctor_flags_count"),
+        "integrity_score": details.get("integrity_score"),
+        "report_id": result.id,
+        "created_at": result.created_at.isoformat() if result.created_at else None,
+    }
 
 
 @router.post("/interview/turn")
@@ -57,8 +100,13 @@ async def interview_turn(request: InterviewTurnRequest):
     """
     try:
         history = _sanitize_history([t.model_dump() for t in request.history])
-        result = generate_next_turn(
-            history, request.role_title, request.jd_text, request.max_turns, request.resume_context
+        # generate_next_turn() makes a blocking network call to the LLM
+        # provider (urllib, not httpx) — running it inline in this async def
+        # would stall the whole event loop, delaying every other in-flight
+        # request (other candidates' turns, transcribe, tts...) for as long
+        # as the LLM call takes. run_in_threadpool moves it off the loop.
+        result = await run_in_threadpool(
+            generate_next_turn, history, request.role_title, request.jd_text, request.max_turns, request.resume_context
         )
         if result.get("question"):
             result["question"] = check_output(result["question"]).text
@@ -69,23 +117,46 @@ async def interview_turn(request: InterviewTurnRequest):
 
 
 @router.post("/interview/evaluate")
-async def interview_evaluate(request: InterviewEvaluationRequest):
-    """Scores the full transcript once the interview has ended."""
+async def interview_evaluate(request: InterviewEvaluationRequest, db: Session = Depends(get_db)):
+    """Scores the full transcript once the interview has ended and returns a
+    detailed, actionable report (sub-scores, recommendation, grounded
+    strengths/gaps, matched/missing skills, a key takeaway and a concrete
+    next step). When a session_id is present (invite-link interviews), the
+    report is persisted so it survives a page reload and can be fetched
+    again later via GET /interview/report/{session_id}."""
     try:
         history = _sanitize_history([t.model_dump() for t in request.history])
-        evaluation = generate_evaluation(history, request.role_title)
+        evaluation = await run_in_threadpool(
+            generate_evaluation, history, request.role_title, request.jd_text, request.resume_skills or None,
+        )
+
         if evaluation.get("summary"):
             evaluation["summary"] = check_output(evaluation["summary"]).text
+        if evaluation.get("key_takeaway"):
+            evaluation["key_takeaway"] = check_output(evaluation["key_takeaway"]).text
+        if evaluation.get("suggested_next_step"):
+            evaluation["suggested_next_step"] = check_output(evaluation["suggested_next_step"]).text
+        evaluation["strengths"] = [check_output(s).text for s in evaluation.get("strengths", [])]
+        evaluation["areas_for_improvement"] = [check_output(s).text for s in evaluation.get("areas_for_improvement", [])]
+
+        evaluation["time_taken_sec"] = request.time_taken_sec
+        evaluation["question_count"] = request.question_count
+        evaluation["proctor_flags_count"] = request.proctor_flags_count
+        evaluation["integrity_score"] = request.integrity_score
 
         if request.session_id:
+            session = db.query(models.ScreeningSession).filter(models.ScreeningSession.id == request.session_id).first()
+
             # Orchestration layer: fold the full transcript this endpoint
             # already received into episodic memory (Postgres) + semantic
             # memory (Pinecone), and clear this session's working memory.
             # transcript_override is used because the live interview UI
             # (InterviewRoom.tsx) drives Q&A client-side rather than through
-            # /orchestrator/session/turn per exchange.
+            # /orchestrator/session/turn per exchange. Also network-bound —
+            # same threadpool reasoning as generate_next_turn above.
             transcript = [{"role": "agent" if t["role"] == "interviewer" else "candidate", "text": t["text"]} for t in history]
-            orchestrator.end_session(
+            await run_in_threadpool(
+                orchestrator.end_session,
                 request.session_id,
                 scores={
                     "communication_score": evaluation.get("communication_score"),
@@ -97,7 +168,59 @@ async def interview_evaluate(request: InterviewEvaluationRequest):
                 transcript_override=transcript,
             )
 
+            result = models.ScreeningResult(
+                id=str(uuid.uuid4()),
+                source="interview",
+                session_id=request.session_id,
+                call_id=None,
+                candidate_name=request.candidate_name or (session.email if session else "Candidate"),
+                role_title=request.role_title,
+                jd_text_used=request.jd_text,
+                jd_match_score=evaluation.get("overall_score"),
+                verdict=evaluation.get("recommendation"),
+                strengths=evaluation.get("strengths", []),
+                gaps=evaluation.get("areas_for_improvement", []),
+                summary=evaluation.get("summary"),
+                details={
+                    "communication_score": evaluation.get("communication_score"),
+                    "relevance_score": evaluation.get("relevance_score"),
+                    "confidence_score": evaluation.get("confidence_score"),
+                    "matched_skills": evaluation.get("matched_skills", []),
+                    "missing_skills": evaluation.get("missing_skills", []),
+                    "key_takeaway": evaluation.get("key_takeaway"),
+                    "suggested_next_step": evaluation.get("suggested_next_step"),
+                    "time_taken_sec": request.time_taken_sec,
+                    "question_count": request.question_count,
+                    "proctor_flags_count": request.proctor_flags_count,
+                    "integrity_score": request.integrity_score,
+                    "email": request.email or (session.email if session else None),
+                },
+            )
+            db.add(result)
+            if session:
+                session.status = "completed"
+            db.commit()
+            db.refresh(result)
+            evaluation["report_id"] = result.id
+
         return evaluation
     except Exception as e:
         print(f"[Interview Evaluate API Error] {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/interview/report/{session_id}")
+def get_interview_report(session_id: str, db: Session = Depends(get_db)):
+    """Fetches the persisted detailed report for a completed invite-link
+    interview — lets a candidate reload their interview link, or HR review a
+    finished interview, without needing the transcript to still be sitting
+    in the browser's React state."""
+    result = (
+        db.query(models.ScreeningResult)
+        .filter(models.ScreeningResult.session_id == session_id, models.ScreeningResult.source == "interview")
+        .order_by(models.ScreeningResult.created_at.desc())
+        .first()
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="No report has been generated for this interview session yet.")
+    return _serialize_interview_report(result)
