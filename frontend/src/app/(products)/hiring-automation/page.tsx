@@ -411,16 +411,27 @@ export default function HiringAutomationPage() {
     setStage("evaluation");
   };
 
-  const handleConfirm = (id: string) => setApprovals((prev) => ({ ...prev, [id]: true }));
-
-  /* The HR review gate is still automatic once every candidate is individually
-     confirmed (that confirmation IS the human-in-the-loop step). Everything
-     past it — scheduling, onboarding, knowledge transfer — now waits for an
-     explicit click instead of cascading on its own. */
-  useEffect(() => {
-    if (stage !== "evaluation") return;
-    if (candidates.length === 0 || !candidates.every((c) => approvals[c.id])) return;
-    const myRun = runId.current;
+  /* Evaluation → Scheduling used to advance automatically the instant every
+     candidate's approvals[] flipped true — a reactive useEffect watching
+     that condition. That meant confirming the last candidate silently
+     cascaded straight into the next stage with no user action tying the two
+     together (and, since this effect never bumped runId like its sibling
+     async chains, an overlapping re-fire could even queue the cascade
+     twice). Now the human has to explicitly pick which candidates to send
+     ("confirm candidate 1, 2, or any subset") and click Send — that single
+     click both records the approvals AND, only once it's the send that
+     completes approval for every candidate, advances to Interview
+     Scheduling. Nothing happens on its own anymore. */
+  const handleSendForApproval = (ids: string[]) => {
+    if (ids.length === 0 || stage !== "evaluation") return;
+    const myRun = ++runId.current;
+    setApprovals((prev) => {
+      const next = { ...prev };
+      ids.forEach((id) => { next[id] = true; });
+      return next;
+    });
+    const allApproved = candidates.every((c) => ids.includes(c.id) || approvals[c.id]);
+    if (!allApproved) return;
     (async () => {
       await runNode(6, 900);
       if (myRun !== runId.current) return;
@@ -431,7 +442,7 @@ export default function HiringAutomationPage() {
       setActiveNode(7);
       setStage("scheduling");
     })();
-  }, [approvals, stage, candidates]);
+  };
 
   const handleScheduleInterview = (candidateId: string, type: InterviewType, slot: InterviewSlot) => {
     setCandidates((prev) => prev.map((c) => (
@@ -454,6 +465,8 @@ export default function HiringAutomationPage() {
             candidate_name: candidate.name,
             email: candidate.email,
             interview_type: type,
+            slot_date: slot.date,
+            slot_time: slot.time,
           }),
         });
         if (!res.ok) return;
@@ -654,7 +667,7 @@ export default function HiringAutomationPage() {
         <AnimatePresence>
           {reached("evaluation") && (
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              <EvaluationTable candidates={candidates} approvals={approvals} onConfirm={handleConfirm} />
+              <EvaluationTable candidates={candidates} approvals={approvals} onSend={handleSendForApproval} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -1315,19 +1328,51 @@ function McpSendPanel({ step, candidates }: { step: number; candidates: Candidat
    ═══════════════════════════════════════════════════════════ */
 
 function EvaluationTable({
-  candidates, approvals, onConfirm,
-}: { candidates: Candidate[]; approvals: Record<string, boolean>; onConfirm: (id: string) => void }) {
+  candidates, approvals, onSend,
+}: { candidates: Candidate[]; approvals: Record<string, boolean>; onSend: (ids: string[]) => void }) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const pendingIds = candidates.filter((c) => !approvals[c.id]).map((c) => c.id);
+  const allPendingSelected = pendingIds.length > 0 && pendingIds.every((id) => selected.includes(id));
+
+  const toggleSelectAll = () => setSelected(allPendingSelected ? [] : pendingIds);
+  const toggleSelect = (id: string) => setSelected((sel) => (sel.includes(id) ? sel.filter((s) => s !== id) : [...sel, id]));
+
+  const handleSendClick = () => {
+    if (selected.length === 0) return;
+    onSend(selected);
+    setSelected([]);
+  };
+
   return (
     <div className="rounded-2xl bg-white border border-zinc-200 shadow-sm overflow-hidden">
-      <div className="p-5 border-b border-zinc-100">
-        <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2"><Award className="w-4 h-4 text-blue-600" />Candidate Evaluation</h3>
-        <p className="text-[11px] text-zinc-500 mt-0.5">Match score is real (requirement-to-resume fit) · this demo doesn&apos;t collect real assignment submissions · confirm each candidate to unlock interview scheduling</p>
+      <div className="p-5 border-b border-zinc-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2"><Award className="w-4 h-4 text-blue-600" />Candidate Evaluation</h3>
+          <p className="text-[11px] text-zinc-500 mt-0.5">Match score is real (requirement-to-resume fit) · this demo doesn&apos;t collect real assignment submissions · select candidates and click Send to confirm them — interview scheduling unlocks once every candidate has been sent</p>
+        </div>
+        <button
+          onClick={handleSendClick}
+          disabled={selected.length === 0}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm shrink-0"
+        >
+          <Send className="w-3.5 h-3.5" /> Send{selected.length > 0 ? ` (${selected.length})` : ""}
+        </button>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
             <tr className="bg-zinc-50 text-zinc-500 border-b border-zinc-200">
-              <th className="px-4 py-2.5 text-left font-bold">Candidate</th>
+              <th className="px-4 py-2.5 text-left">
+                <input
+                  type="checkbox"
+                  checked={allPendingSelected}
+                  disabled={pendingIds.length === 0}
+                  onChange={toggleSelectAll}
+                  className="w-3.5 h-3.5 rounded border-zinc-300 accent-blue-600 disabled:opacity-40"
+                  aria-label="Select all pending candidates"
+                />
+              </th>
+              <th className="px-3 py-2.5 text-left font-bold">Candidate</th>
               <th className="px-3 py-2.5 text-left font-bold">ATS</th>
               <th className="px-3 py-2.5 text-left font-bold">Match Score</th>
               <th className="px-3 py-2.5 text-left font-bold">Email Status</th>
@@ -1342,6 +1387,16 @@ function EvaluationTable({
               return (
                 <tr key={c.id} className={`border-b border-zinc-100 hover:bg-blue-50/30 transition-colors ${i % 2 === 1 ? "bg-zinc-50/40" : ""}`}>
                   <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(c.id)}
+                      disabled={approved}
+                      onChange={() => toggleSelect(c.id)}
+                      className="w-3.5 h-3.5 rounded border-zinc-300 accent-blue-600 disabled:opacity-40"
+                      aria-label={`Select ${c.name}`}
+                    />
+                  </td>
+                  <td className="px-3 py-3">
                     <div className="flex items-center gap-2.5">
                       <div className={`w-7 h-7 rounded-full border flex items-center justify-center text-[10px] font-bold shrink-0 ${c.avatarBg} ${c.avatarText}`}>{c.name[0]}</div>
                       <span className="font-bold text-zinc-900">{c.name}</span>
@@ -1368,15 +1423,13 @@ function EvaluationTable({
                     </span>
                   </td>
                   <td className="px-3 py-3">
-                    <button
-                      onClick={() => onConfirm(c.id)}
-                      disabled={approved}
-                      className={`text-[10px] font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 ${
-                        approved ? "bg-emerald-50 border border-emerald-200 text-emerald-700 cursor-default" : "bg-blue-600 text-white hover:bg-blue-700"
+                    <span
+                      className={`text-[10px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 w-fit ${
+                        approved ? "bg-emerald-50 border border-emerald-200 text-emerald-700" : "bg-zinc-100 border border-zinc-200 text-zinc-500"
                       }`}
                     >
-                      {approved ? <><CheckCircle2 className="w-3 h-3" /> Approved</> : "Confirm"}
-                    </button>
+                      {approved ? <><CheckCircle2 className="w-3 h-3" /> Approved</> : "Pending"}
+                    </span>
                   </td>
                 </tr>
               );

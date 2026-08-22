@@ -7,7 +7,7 @@ import {
   ArrowLeft, ArrowRight, Upload, FileText, Image as ImageIcon, ShieldAlert, ScanSearch,
   Calculator, Layers, Type, Brain, CheckCircle2, XCircle, AlertTriangle,
   MinusCircle, Loader2, RotateCcw, X, Sparkles, ShieldCheck, Zap, Radio, FileScan,
-  Fingerprint, FileSearch, Camera,
+  Fingerprint, FileSearch, Camera, ScanFace, CreditCard, IdCard, Landmark,
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -72,10 +72,34 @@ const STEP_META = [
     blurb: "Flags an unusually high number of distinct fonts/sizes in the body text — a common side-effect of manual edits.",
   },
   {
+    key: "photo_forensics",
+    title: "Photo Splice / Face Region Consistency",
+    icon: ScanFace,
+    blurb: "Recompresses the image and looks for a spatially contiguous region with elevated recompression error — the signature of a pasted/composited region (a swapped face, a copy-pasted photo). A regional-consistency heuristic, not a neural deepfake classifier.",
+  },
+  {
     key: "identity",
     title: "Duplicate Identity Scan",
     icon: Fingerprint,
     blurb: "Blocks by phone/email/name key against every prior submission, then an ensemble of a Random Forest and a small neural net scores name variants, DOB, device signal, IP, and bank account — matches cluster into an identity graph.",
+  },
+  {
+    key: "pan",
+    title: "PAN Card Validation",
+    icon: CreditCard,
+    blurb: "Validates the PAN format (5 letters + 4 digits + 1 letter) and its 4th-character holder-type code, and flags multiple conflicting PAN numbers in the same document.",
+  },
+  {
+    key: "aadhaar",
+    title: "Aadhaar Card Validation",
+    icon: IdCard,
+    blurb: "Verifies any Aadhaar-shaped 12-digit number against UIDAI's own Verhoeff checksum algorithm — a random or mistyped number fails this with near-certainty.",
+  },
+  {
+    key: "bank_document",
+    title: "Bank Details Validation",
+    icon: Landmark,
+    blurb: "Checks IFSC code format, MICR code length, and flags account numbers that look typed-to-look-real (repeated or sequential digits) rather than issued.",
   },
   {
     key: "resume_authenticity",
@@ -87,7 +111,7 @@ const STEP_META = [
     key: "reasoning",
     title: "AI Reasoning Synthesis",
     icon: Brain,
-    blurb: "Groq's llama-3.3-70b-versatile reads the document text plus every signal above and renders a final risk verdict.",
+    blurb: "An LLM reads the document text plus every signal above and renders a final risk verdict.",
   },
 ] as const;
 
@@ -324,7 +348,7 @@ function HeroSection() {
         </h1>
 
         <p className="text-[16px] text-zinc-600 leading-relaxed max-w-xl mx-auto mb-8">
-          Upload a resume, salary slip, offer letter, or relieving letter — as a PDF or a photo. {STEP_META.length} real forensic checks run against your file live: document metadata, OCR confidence, field arithmetic, error level analysis, font consistency, a duplicate-identity scan against every prior submission, a resume authenticity ensemble, and a final AI-reasoned verdict. No canned demo numbers.
+          Upload a resume, salary slip, offer letter, relieving letter, Aadhaar card, PAN card, or bank document — as a PDF or a photo. {STEP_META.length} real forensic checks run against your file live: document metadata, OCR confidence, field arithmetic, error level analysis, font consistency, photo splice/face-region consistency, a duplicate-identity scan, PAN and Aadhaar (UIDAI Verhoeff checksum) validation, bank detail validation, a resume authenticity ensemble, and a final AI-reasoned verdict. No canned demo numbers.
         </p>
 
         <div className="flex flex-wrap items-center justify-center gap-3 mb-5">
@@ -484,14 +508,14 @@ const UPLOAD_MODE_META: Record<UploadMode, { label: string; icon: typeof FileTex
   document: {
     label: "Document",
     icon: FileText,
-    hint: "PDF, JPG, or PNG — payslip, offer letter, relieving letter, or resume",
+    hint: "PDF, JPG, or PNG — payslip, offer letter, relieving letter, resume, Aadhaar, PAN, or bank document",
     dropHint: "Drag & drop a document here",
     accept: ACCEPTED_EXTENSIONS,
   },
   photo: {
     label: "Photo / Image",
     icon: Camera,
-    hint: "JPG or PNG — a photographed/scanned resume, payslip, or ID document",
+    hint: "JPG or PNG — a photographed/scanned resume, payslip, ID document, or a portrait photo",
     dropHint: "Drag & drop a photo here",
     accept: IMAGE_EXTENSIONS,
   },
@@ -748,6 +772,23 @@ function StepDetailChips({ stepKey, details }: { stepKey: string; details?: Reco
   } else if (stepKey === "reasoning") {
     const concerns = details.key_concerns as string[] | undefined;
     if (concerns?.length) chips.push(...concerns.slice(0, 2));
+  } else if (stepKey === "photo_forensics") {
+    if (details.grid) chips.push(`Grid: ${details.grid}`);
+    const cluster = details.largest_contiguous_cluster as number | undefined;
+    if (typeof cluster === "number") chips.push(`Largest anomalous cluster: ${cluster} block${cluster === 1 ? "" : "s"}`);
+  } else if (stepKey === "pan") {
+    const candidates = details.candidates as string[] | undefined;
+    if (candidates?.length) chips.push(...candidates.slice(0, 3));
+  } else if (stepKey === "aadhaar") {
+    const numbers = details.numbers_checked as string[] | undefined;
+    if (numbers?.length) chips.push(...numbers.slice(0, 2));
+    const masked = details.masked_last4 as string[] | undefined;
+    if (masked?.length) chips.push(`Masked, last 4: ${masked.join(", ")}`);
+  } else if (stepKey === "bank_document") {
+    const ifsc = details.ifsc_codes as string[] | undefined;
+    if (ifsc?.length) chips.push(`IFSC: ${ifsc.join(", ")}`);
+    const accounts = details.account_numbers as string[] | undefined;
+    if (accounts?.length) chips.push(`Account: ${accounts.slice(0, 2).join(", ")}`);
   }
 
   if (chips.length === 0) return null;

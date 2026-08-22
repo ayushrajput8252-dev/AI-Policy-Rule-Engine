@@ -8,7 +8,7 @@ import {
   ArrowLeft, Phone, Sparkles, ArrowRight, Globe, Clock, MessageSquare, RefreshCw,
   BarChart3, CheckCircle2, Upload, FileText, Code2, MessageCircle,
   User, MapPin, Briefcase, Languages, ShieldCheck, Target, PhoneMissed,
-  Loader2, Bot, PhoneCall, AlertTriangle, PhoneOff,
+  Loader2, Bot, PhoneCall, AlertTriangle, PhoneOff, CalendarClock, Mail,
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -126,6 +126,7 @@ export default function TelephonicAgentPage() {
 
       <HeroSection />
       <RealCallSection />
+      <ScheduledInterviewsSection />
       <MeetAgentSection />
       <ScoresSection />
       <ThreeStepSection />
@@ -484,6 +485,103 @@ function RealCallSection() {
                   <p className="text-xs text-zinc-400">Waiting for the call to connect…</p>
                 )}
               </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SCHEDULED INTERVIEWS — synced with hiring-automation.
+   Booking a "Telephonic Interview" slot on the /hiring-automation pipeline
+   persists it via POST /api/v1/orchestrator/candidates/schedule. This
+   section polls the same GET /api/v1/orchestrator/candidates the
+   Enterprise Orchestration scores table uses, and lists every candidate
+   with a telephonic slot booked — so a slot scheduled from the pipeline
+   shows up here without any manual refresh.
+   ═══════════════════════════════════════════════════════════ */
+
+interface ScheduledCandidate {
+  candidate_id: string;
+  candidate_name: string;
+  email: string | null;
+  telephonic_slot_date: string | null;
+  telephonic_slot_time: string | null;
+  ai_interview_slot_date: string | null;
+  ai_interview_slot_time: string | null;
+  telephonic_score: number | null;
+  telephonic_score_is_real: boolean;
+}
+
+function useScheduledCandidates(pollMs = 8000) {
+  const [candidates, setCandidates] = useState<ScheduledCandidate[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchScheduled = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/v1/orchestrator/candidates`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setCandidates(data.candidates || []);
+      } catch {
+        // transient — the next poll will retry
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    fetchScheduled();
+    const interval = setInterval(fetchScheduled, pollMs);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [pollMs]);
+
+  return { candidates, loading };
+}
+
+function ScheduledInterviewsSection() {
+  const { candidates, loading } = useScheduledCandidates();
+  const scheduled = candidates.filter((c) => c.telephonic_slot_date);
+
+  if (!loading && scheduled.length === 0) return null;
+
+  return (
+    <section className="py-12 border-t border-zinc-200/80 bg-white">
+      <div className="max-w-3xl mx-auto px-6">
+        <div className="rounded-3xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
+          <div className="p-5 border-b border-zinc-100 flex items-center justify-between gap-3">
+            <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2">
+              <CalendarClock className="w-4 h-4 text-blue-600" /> Scheduled Telephonic Interviews
+            </h3>
+            <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 shrink-0">
+              Synced from Hiring Pipeline
+            </span>
+          </div>
+          <div className="divide-y divide-zinc-100">
+            {loading ? (
+              <div className="p-6 flex items-center justify-center gap-2 text-xs text-zinc-400">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading scheduled interviews…
+              </div>
+            ) : (
+              scheduled.map((c) => (
+                <div key={c.candidate_id} className="p-4 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full border bg-blue-50 border-blue-200 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
+                    {c.candidate_name[0]}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold text-zinc-900 truncate">{c.candidate_name}</div>
+                    <div className="text-[10px] text-zinc-500 font-mono truncate flex items-center gap-1">
+                      <Mail className="w-2.5 h-2.5" /> {c.email || "no email extracted"}
+                    </div>
+                  </div>
+                  <div className="text-[11px] font-mono font-bold text-zinc-700 flex items-center gap-1.5 shrink-0">
+                    <CalendarClock className="w-3.5 h-3.5 text-blue-500" />
+                    {c.telephonic_slot_date} · {c.telephonic_slot_time}
+                  </div>
+                </div>
+              ))
             )}
           </div>
         </div>

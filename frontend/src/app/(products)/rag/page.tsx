@@ -220,6 +220,9 @@ export default function RAGPage() {
   const [extractedRules, setExtractedRules] = useState<Rule[]>([]);
   const [docStatus, setDocStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle");
   const [activeSource, setActiveSource] = useState<Source | null>(null);
+  // id of the chat message whose citation opened the inspector (null when the
+  // inspector was opened from the Extracted Rules tab, which has no message).
+  const [activeSourceMsgId, setActiveSourceMsgId] = useState<string | null>(null);
 
   // ── 3. Chat State — one unified thread ──
   const [messages, setMessages] = useState<Message[]>([
@@ -261,6 +264,15 @@ export default function RAGPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Per-message DOM nodes, keyed by Message.id, so a citation click can scroll
+  // its own parent message into view (opening the PDF inspector doesn't add a
+  // new message, so the bottom-of-chat auto-scroll below never fires for it).
+  const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const rulesEndRef = useRef<HTMLDivElement>(null);
+  const prevRulesCountRef = useRef(0);
+  // Which document IDs we've already posted a "finished indexing — N chunks"
+  // message for, so the 2500ms status poll doesn't post it more than once.
+  const announcedChunkCountRef = useRef<Set<string>>(new Set());
 
   // Fallback path: records raw mic audio and sends it to our own backend (faster-whisper)
   // for transcription. Used when the browser has no built-in speech API, or when that API
@@ -482,6 +494,28 @@ export default function RAGPage() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Clicking a citation opens the PDF inspector as a sibling of the chat
+  // column, which squeezes it narrower and reflows message bubbles taller —
+  // with no new message added, nothing else would re-trigger a scroll, so the
+  // message the user just clicked could end up pushed out of view. Scroll its
+  // own parent message back into frame whenever the inspector opens.
+  useEffect(() => {
+    if (activeSource && activeSourceMsgId) {
+      messageRefs.current[activeSourceMsgId]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [activeSource, activeSourceMsgId]);
+
+  // Rules stream in via polling (fetchRules, every 2500ms while processing)
+  // with no scroll handling at all previously — newly appended rules could
+  // land off-screen below the fold. Scroll the list's end into view whenever
+  // it grows while the Rules tab is open.
+  useEffect(() => {
+    if (activeTab === "rules" && extractedRules.length > prevRulesCountRef.current) {
+      rulesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    prevRulesCountRef.current = extractedRules.length;
+  }, [extractedRules, activeTab]);
+
   // Stop any live mic/speech session on unmount so voice mode can't keep running after navigating away.
   useEffect(() => {
     return () => {
@@ -525,6 +559,9 @@ export default function RAGPage() {
         const data = await res.json();
         const rules = data.rules || [];
         const status = data.status || "completed";
+        // Real count of Chunk rows for this document (see backend/app/api/rules.py) —
+        // replaces the Math.random() placeholder that used to be shown right after upload.
+        const chunkCount: number | undefined = typeof data.chunk_count === "number" ? data.chunk_count : undefined;
 
         setExtractedRules(rules);
         setDocStatus(status);
@@ -532,10 +569,25 @@ export default function RAGPage() {
           setDocuments((prev) =>
             prev.map((doc) =>
               doc.id === targetDocId
-                ? { ...doc, extractedRules: rules, status: status }
+                ? { ...doc, extractedRules: rules, status: status, chunkCount: chunkCount ?? doc.chunkCount }
                 : doc
             )
           );
+
+          // Announce the real chunk count once, the first time processing
+          // finishes and a count is actually known — not at upload time,
+          // when ingestion (and thus the true count) hasn't run yet.
+          if (status === "completed" && chunkCount !== undefined && !announcedChunkCountRef.current.has(targetDocId)) {
+            announcedChunkCountRef.current.add(targetDocId);
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `chunk-count-${targetDocId}`,
+                role: "assistant",
+                content: `Finished indexing — **${chunkCount}** vector chunk${chunkCount === 1 ? "" : "s"} now searchable. Ask a question about it, or check the Extracted Rules tab.`,
+              },
+            ]);
+          }
         }
       } else {
         setExtractedRules([]);
@@ -577,7 +629,9 @@ export default function RAGPage() {
       uploadedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       extractedRules: [],
       status: "processing",
-      chunkCount: Math.floor(Math.random() * 25) + 12,
+      // Real chunk count isn't known yet — ingestion (chunking) hasn't run.
+      // It's filled in from the backend once processing completes (see
+      // fetchRules), instead of being guessed here.
     };
 
     setDocuments((prev) => [...prev, newDoc]);
@@ -606,7 +660,7 @@ export default function RAGPage() {
         {
           id: (Date.now() + 1).toString(),
           role: "assistant",
-          content: `Indexed \`${file.name}\` (${newDoc.chunkCount} vector chunks). Ask a question about it, or check the Extracted Rules tab.`,
+          content: `Indexed \`${file.name}\`. Extracting vector chunks and rules now — check the Extracted Rules tab for live progress.`,
         },
       ]);
     } catch {
@@ -638,7 +692,8 @@ export default function RAGPage() {
       uploadedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       extractedRules: [],
       status: "processing",
-      chunkCount: Math.floor(Math.random() * 25) + 12,
+      // Real chunk count isn't known yet — filled in from the backend once
+      // processing completes (see fetchRules), instead of being guessed here.
     };
 
     setDocuments((prev) => [...prev, newDoc]);
@@ -666,7 +721,7 @@ export default function RAGPage() {
           id: (Date.now() + 1).toString(),
           role: "assistant",
           content: res && res.ok
-            ? `Crawled and indexed \`${url}\` (${newDoc.chunkCount} vector chunks). Ask a question about it, or check the Extracted Rules tab.`
+            ? `Crawled and indexed \`${url}\`. Extracting vector chunks and rules now — check the Extracted Rules tab for live progress.`
             : `Could not crawl \`${url}\`. The page may block automated access or the URL is unreachable.`,
         },
       ]);
@@ -1022,7 +1077,7 @@ export default function RAGPage() {
           {activeTab === "chat" && (
             <div className="flex-1 flex flex-col min-h-0 bg-white">
               <div className="flex-1 overflow-y-auto scrollbar-thin p-6 space-y-4 bg-zinc-50/40">
-                <div className="max-w-2xl mx-auto space-y-4">
+                <div className={`mx-auto space-y-4 ${activeSource ? "max-w-2xl" : "max-w-2xl lg:max-w-3xl 2xl:max-w-5xl"}`}>
                   <VoiceModePanel
                     isVoiceMode={isVoiceMode}
                     isRecording={isRecording}
@@ -1035,6 +1090,7 @@ export default function RAGPage() {
                   {messages.map((msg) => (
                     <motion.div
                       key={msg.id}
+                      ref={(el) => { messageRefs.current[msg.id] = el; }}
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
@@ -1123,7 +1179,7 @@ export default function RAGPage() {
                               ) : (
                                 <button
                                   key={sIdx}
-                                  onClick={() => setActiveSource(src)}
+                                  onClick={() => { setActiveSource(src); setActiveSourceMsgId(msg.id); }}
                                   className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 px-3 py-1 rounded-lg transition-colors shadow-2xs"
                                   title={`Jump to ${documents.find((d) => d.id === src.document_id)?.fileName || `Doc ${src.document_id.slice(0, 8)}`}, page ${src.page ?? "?"}`}
                                 >
@@ -1152,7 +1208,7 @@ export default function RAGPage() {
 
               {/* Chat Input & Harmonized Command Palette Menu */}
               <div className="p-4 bg-white border-t border-zinc-200/80 relative">
-                <div className="max-w-2xl mx-auto relative">
+                <div className={`mx-auto relative ${activeSource ? "max-w-2xl" : "max-w-2xl lg:max-w-3xl 2xl:max-w-5xl"}`}>
                   {/* Add Link (Web Crawl) Popover */}
                   <AnimatePresence>
                     {showLinkInput && (
@@ -1361,6 +1417,27 @@ export default function RAGPage() {
                   </div>
                 )}
 
+                {/* Loading skeleton: distinguishes "still loading, rules incoming"
+                    from the genuine "nothing extracted" empty state below —
+                    previously both looked identical (blank list) while processing. */}
+                {docStatus === "processing" && extractedRules.length === 0 && (
+                  <div className="space-y-3" aria-hidden="true">
+                    {[0, 1, 2].map((i) => (
+                      <div
+                        key={i}
+                        className="bg-white border border-zinc-200 rounded-xl p-3 shadow-xs animate-pulse"
+                      >
+                        <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-zinc-100">
+                          <div className="h-4 w-16 rounded bg-zinc-200" />
+                          <div className="h-4 w-10 rounded bg-zinc-100" />
+                        </div>
+                        <div className="h-3 w-full rounded bg-zinc-100 mb-1.5" />
+                        <div className="h-3 w-4/5 rounded bg-zinc-100" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {extractedRules.length === 0 && docStatus !== "processing" && (
                   <div className="p-8 text-center border-2 border-dashed border-zinc-200 rounded-2xl bg-white">
                     <Search className="w-8 h-8 text-zinc-300 mx-auto mb-3" />
@@ -1390,14 +1467,17 @@ export default function RAGPage() {
 
                         {rule.bbox && rule.page_dim && rule.page && rule.document_id && (
                           <button
-                            onClick={() =>
+                            onClick={() => {
+                              // No chat message backs a rule-card citation, so
+                              // don't scroll to a stale message from an earlier click.
+                              setActiveSourceMsgId(null);
                               setActiveSource({
                                 document_id: rule.document_id!,
                                 page: rule.page!,
                                 bbox: rule.bbox,
                                 page_dim: rule.page_dim,
-                              })
-                            }
+                              });
+                            }}
                             className="ml-auto text-[10px] font-mono flex items-center gap-1 bg-zinc-100 hover:bg-blue-600 hover:text-white text-zinc-700 px-2 py-1 rounded border border-zinc-200 transition-colors shadow-2xs"
                             title="View Bounding Box Target in PDF"
                           >
@@ -1413,6 +1493,7 @@ export default function RAGPage() {
                     </motion.div>
                   ))}
                 </AnimatePresence>
+                <div ref={rulesEndRef} />
               </div>
             </div>
           )}
@@ -1494,15 +1575,37 @@ export default function RAGPage() {
           )}
         </div>
 
-        {/* ── SLIDE-OVER: PDF SOURCE INSPECTOR ── */}
+        {/* ── SLIDE-OVER: PDF SOURCE INSPECTOR ──
+            Below `lg`, 38% would squeeze the chat column unusably thin, so
+            the panel becomes a full-screen overlay instead; at `lg` and up it
+            reverts to a docked 38% side panel. A backdrop behind it (dim on
+            mobile, invisible but still clickable on desktop) closes it on an
+            outside click — the panel itself stops that click from bubbling
+            through so nothing inside it (the X button, PdfViewer controls)
+            is affected. */}
         <AnimatePresence>
           {activeSource && (
             <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: "38%", opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
+              key="pdf-inspector-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setActiveSource(null)}
+              className="absolute inset-0 z-30 bg-zinc-900/40 lg:bg-transparent"
+              aria-hidden="true"
+            />
+          )}
+        </AnimatePresence>
+        <AnimatePresence>
+          {activeSource && (
+            <motion.div
+              key="pdf-inspector-panel"
+              initial={{ x: "100%", opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: "100%", opacity: 0 }}
               transition={{ duration: 0.3 }}
-              className="shrink-0 bg-white border-l border-zinc-200 flex flex-col overflow-hidden shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+              className="absolute inset-y-0 right-0 z-40 w-full lg:static lg:inset-auto lg:z-auto lg:w-[38%] shrink-0 bg-white border-l border-zinc-200 flex flex-col overflow-hidden shadow-xl"
             >
               <div className="h-11 shrink-0 bg-zinc-50 border-b border-zinc-200 px-4 flex items-center justify-between">
                 <span className="text-xs font-bold text-zinc-800">PDF Source Inspector</span>

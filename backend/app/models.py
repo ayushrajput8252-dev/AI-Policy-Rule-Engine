@@ -157,6 +157,13 @@ class CandidateScoreCard(Base):
     ai_interview_score_is_real = Column(String, default="false")
     telephonic_scheduled_at = Column(DateTime(timezone=True), nullable=True)
     ai_interview_scheduled_at = Column(DateTime(timezone=True), nullable=True)
+    # The candidate-picked calendar slot itself (date label + time label, e.g.
+    # "Mon, Jan 12" / "10:00 AM") — distinct from *_scheduled_at above, which
+    # is when the scheduling action happened, not when the interview is for.
+    telephonic_slot_date = Column(String, nullable=True)
+    telephonic_slot_time = Column(String, nullable=True)
+    ai_interview_slot_date = Column(String, nullable=True)
+    ai_interview_slot_time = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

@@ -33,6 +33,8 @@ class ScheduleCandidateInterviewRequest(BaseModel):
     candidate_name: str
     email: Optional[str] = None
     interview_type: str  # "telephonic" | "ai"
+    slot_date: Optional[str] = None
+    slot_time: Optional[str] = None
 
 
 @router.post("/session/start")
@@ -70,11 +72,14 @@ def schedule_candidate_interview(payload: ScheduleCandidateInterviewRequest):
     if payload.interview_type not in ("telephonic", "ai"):
         raise HTTPException(status_code=400, detail="interview_type must be 'telephonic' or 'ai'")
     return orchestrator.schedule_candidate_interview(
-        payload.candidate_id, payload.candidate_name, payload.email, payload.interview_type
+        payload.candidate_id, payload.candidate_name, payload.email, payload.interview_type,
+        payload.slot_date, payload.slot_time,
     )
 
 
 @router.get("/candidates")
 def list_candidate_scorecards():
-    """Backs the Enterprise Orchestration Layer's compact interview-scores table."""
+    """Backs the Enterprise Orchestration Layer's compact interview-scores table,
+    and the Telephonic Agent / Screening Agent pages' "Scheduled Interviews"
+    sections (filtered client-side by which slot field is set)."""
     return {"candidates": orchestrator.get_candidate_scorecards()}

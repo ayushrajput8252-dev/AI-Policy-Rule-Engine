@@ -254,12 +254,21 @@ def _placeholder_score(seed_key: str) -> int:
 
 
 def schedule_candidate_interview(
-    candidate_id: str, candidate_name: str, email: Optional[str], interview_type: str
+    candidate_id: str,
+    candidate_name: str,
+    email: Optional[str],
+    interview_type: str,
+    slot_date: Optional[str] = None,
+    slot_time: Optional[str] = None,
 ) -> dict:
     """Upserts this candidate's CandidateScoreCard row when an interview is
     scheduled from the hiring-automation UI, filling in a real score if one
     already exists (from a completed CallRecord / Screening episode) or a
-    stable placeholder otherwise. `interview_type` is "telephonic" or "ai"."""
+    stable placeholder otherwise. `interview_type` is "telephonic" or "ai".
+    `slot_date`/`slot_time` are the candidate-picked calendar slot labels
+    (e.g. "Mon, Jan 12" / "10:00 AM") — persisted so the Telephonic Agent and
+    Screening Agent pages can list upcoming interviews scheduled from the
+    hiring pipeline, in sync with what was actually booked."""
     from ..database import SessionLocal
     from ..models import CandidateScoreCard
 
@@ -279,11 +288,15 @@ def schedule_candidate_interview(
             row.telephonic_score = real if real is not None else _placeholder_score(f"tel:{candidate_id}")
             row.telephonic_score_is_real = "true" if real is not None else "false"
             row.telephonic_scheduled_at = now
+            row.telephonic_slot_date = slot_date
+            row.telephonic_slot_time = slot_time
         elif interview_type == "ai":
             real = _lookup_real_ai_interview_score(email)
             row.ai_interview_score = real if real is not None else _placeholder_score(f"ai:{candidate_id}")
             row.ai_interview_score_is_real = "true" if real is not None else "false"
             row.ai_interview_scheduled_at = now
+            row.ai_interview_slot_date = slot_date
+            row.ai_interview_slot_time = slot_time
         else:
             raise ValueError(f"Unknown interview_type: {interview_type!r} (expected 'telephonic' or 'ai')")
 
@@ -317,5 +330,9 @@ def _serialize_scorecard(row) -> dict:
         "telephonic_score_is_real": row.telephonic_score_is_real == "true",
         "ai_interview_score": row.ai_interview_score,
         "ai_interview_score_is_real": row.ai_interview_score_is_real == "true",
+        "telephonic_slot_date": row.telephonic_slot_date,
+        "telephonic_slot_time": row.telephonic_slot_time,
+        "ai_interview_slot_date": row.ai_interview_slot_date,
+        "ai_interview_slot_time": row.ai_interview_slot_time,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
