@@ -728,6 +728,47 @@ export default function RAGPage() {
 
         const queryText = userQuery.replace(cmdObj.command, "").trim();
 
+        // /github is wired to the real backend/app/mcp GitHub connector
+        // (see api/mcp.py) — every other slash command below still returns
+        // simulated text, since no other MCP connector has credentials
+        // configured yet. Syntax: "/github owner/repo" for repo details,
+        // "/github owner/repo prs" to list its pull requests.
+        if (cmdObj.command === "/github" && /^[\w.-]+\/[\w.-]+/.test(queryText)) {
+          setMessages((prev) => [...prev, { id: Date.now().toString(), role: "user", content: userQuery }]);
+          setIsLoading(true);
+          setLastQueryFailed(false);
+          try {
+            const [ownerRepo, ...rest] = queryText.split(/\s+/);
+            const [owner, repo] = ownerRepo.split("/");
+            const wantsPRs = /\bprs?\b|pull ?requests?/i.test(rest.join(" "));
+            const tool = wantsPRs ? "list_pull_requests" : "get_repository";
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+            const res = await fetch(`${apiUrl}/api/v1/mcp/connectors/github/tools/${tool}/call`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ owner, repo, state: "all" }),
+            });
+            const data = await res.json();
+
+            const content = res.ok
+              ? wantsPRs
+                ? data.pull_requests.length
+                  ? `**${owner}/${repo}** — ${data.pull_requests.length} pull request(s):\n\n${data.pull_requests.map((p: any) => `#${p.number} [${p.state}] ${p.title}`).join("\n")}`
+                  : `**${owner}/${repo}** has no pull requests.`
+                : `**${data.full_name}**\nDefault branch: \`${data.default_branch}\`\nOpen issues: ${data.open_issues}\n${data.url}`
+              : `GitHub MCP call failed (${res.status}): ${data.detail?.message || data.detail || "unknown error"}`;
+
+            setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: "assistant", isAgentic: true, isError: !res.ok, content }]);
+          } catch {
+            setLastQueryFailed(true);
+            setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: "assistant", isAgentic: true, isError: true, content: "Could not reach the GitHub MCP endpoint." }]);
+          } finally {
+            setIsLoading(false);
+          }
+          return;
+        }
+
         setMessages((prev) => [
           ...prev,
           { id: Date.now().toString(), role: "user", content: userQuery },
