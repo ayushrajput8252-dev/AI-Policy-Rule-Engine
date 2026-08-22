@@ -44,7 +44,7 @@ export default function UploadPage() {
     
     const fileArray = Array.from(newFiles).filter(f => {
       const ext = f.name.substring(f.name.lastIndexOf(".")).toLowerCase();
-      const validExts = [".pdf", ".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".webm", ".wma"];
+      const validExts = [".pdf", ".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".webm", ".wma", ".md", ".txt"];
       return allowedTypes.includes(f.type) || validExts.includes(ext);
     }).map(f => {
       const ext = f.name.substring(f.name.lastIndexOf(".")).toLowerCase();
@@ -103,7 +103,7 @@ export default function UploadPage() {
       <div className="max-w-4xl w-full mx-auto space-y-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-zinc-100 mb-2">Ingest Documents & Audio</h1>
-          <p className="text-zinc-400">Upload PDF documents or Audio files (.mp3, .wav, .m4a) for automatic STT transcription, chunking & RAG vector indexing.</p>
+          <p className="text-zinc-400">Upload PDF documents, Audio files (.mp3, .wav, .m4a), or plain text/markdown (.md, .txt) for automatic STT transcription, chunking & RAG vector indexing.</p>
         </div>
         
         <Card className="bg-zinc-900 border-zinc-800">
@@ -125,7 +125,7 @@ export default function UploadPage() {
                 id="fileInput" 
                 type="file" 
                 multiple 
-                accept=".pdf,.mp3,.wav,.m4a,.ogg,.flac,.aac,.webm,.wma,application/pdf,audio/*" 
+                accept=".pdf,.mp3,.wav,.m4a,.ogg,.flac,.aac,.webm,.wma,.md,.txt,application/pdf,audio/*,text/plain,text/markdown"
                 className="hidden" 
                 onChange={(e) => addFiles(e.target.files)}
               />
@@ -135,8 +135,8 @@ export default function UploadPage() {
                   <Music className="h-8 w-8 text-amber-400" />
                 </div>
                 <div>
-                  <p className="text-lg font-medium text-zinc-200">Click or drag PDF or Audio files here</p>
-                  <p className="text-sm text-zinc-500 mt-1">Supports PDF, MP3, WAV, M4A, OGG, WEBM (Max size: 100MB)</p>
+                  <p className="text-lg font-medium text-zinc-200">Click or drag PDF, Audio, or Text files here</p>
+                  <p className="text-sm text-zinc-500 mt-1">Supports PDF, MP3, WAV, M4A, OGG, WEBM, MD, TXT (Max size: 100MB)</p>
                 </div>
               </div>
             </div>

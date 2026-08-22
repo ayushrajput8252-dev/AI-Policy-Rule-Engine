@@ -54,6 +54,25 @@ def set_cached_query(document_id: str | None, query: str, data: dict, top_k: int
     except Exception as e:
         print(f"[Redis Cache Error]: Failed to write query cache: {e}")
 
+def flush_query_cache() -> int:
+    """Drops every cached /query answer (embedding cache untouched — those
+    stay valid regardless of what's indexed). Meant to be called right after
+    ingesting a document that should immediately ground new answers — e.g.
+    ground-truth product docs — so a stale cache entry from before that
+    ingestion (up to the 1hr TTL) can't keep serving an answer that predates
+    the new source. Returns the number of keys removed."""
+    r = get_redis_client()
+    if not r:
+        return 0
+    try:
+        keys = list(r.scan_iter("query_cache:*"))
+        if keys:
+            r.delete(*keys)
+        return len(keys)
+    except Exception as e:
+        print(f"[Redis Cache Error]: Failed to flush query cache: {e}")
+        return 0
+
 def get_cached_embedding(text: str) -> list[float] | None:
     r = get_redis_client()
     if not r:

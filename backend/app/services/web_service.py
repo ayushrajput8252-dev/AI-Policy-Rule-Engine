@@ -1,6 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 from ..config import settings
+from .parsing import text_to_blocks
 from .resilience import call_with_resilience, CircuitOpenError
 
 USER_AGENT = "Mozilla/5.0 (compatible; AgenticFlowBot/1.0; +policy-engine)"
@@ -94,22 +95,4 @@ def crawl_url_to_blocks(url: str) -> tuple[list[dict], str]:
     chunk_document() -> rule-extraction pipeline used for PDF uploads.
     """
     data = fetch_url_text(url)
-    paragraphs = [p.strip() for p in data["text"].split("\n") if p.strip()]
-
-    blocks: list[str] = []
-    buffer: list[str] = []
-    buffer_len = 0
-    for para in paragraphs:
-        buffer.append(para)
-        buffer_len += len(para)
-        if buffer_len >= MIN_BLOCK_CHARS:
-            blocks.append("\n".join(buffer))
-            buffer, buffer_len = [], 0
-    if buffer:
-        blocks.append("\n".join(buffer))
-
-    blocks_data = [
-        {"page": i + 1, "text": block, "bbox": None, "page_dim": None}
-        for i, block in enumerate(blocks)
-    ]
-    return blocks_data, data["title"]
+    return text_to_blocks(data["text"], MIN_BLOCK_CHARS), data["title"]

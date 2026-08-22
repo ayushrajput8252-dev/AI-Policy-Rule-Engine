@@ -20,7 +20,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 # uploaded files actually ingest concurrently.
 _ingestion_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ingestion")
 
-ALLOWED_EXTENSIONS = {".pdf", ".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".webm", ".wma"}
+ALLOWED_EXTENSIONS = {".pdf", ".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".webm", ".wma", ".md", ".txt"}
 
 
 class UrlUploadRequest(BaseModel):

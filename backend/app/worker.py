@@ -205,6 +205,13 @@ def process_document_task(document_id: str, file_path: str):
 
         ext = os.path.splitext(file_path)[1].lower()
         AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".webm", ".wma"}
+        TEXT_EXTS = {".md", ".txt"}
+
+        if ext in TEXT_EXTS:
+            from .services.parsing import parse_text_file
+
+            blocks_data = parse_text_file(file_path)
+            return _process_text_blocks(document_id, blocks_data, db)
 
         if ext in AUDIO_EXTS:
             from .services.audio_service import (

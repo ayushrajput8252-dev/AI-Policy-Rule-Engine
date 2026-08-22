@@ -16,6 +16,34 @@ def get_pinecone_index():
         _index = _pinecone.Index(settings.PINECONE_INDEX_NAME)
     return _index
 
+def delete_vectors_by_ids(vector_ids: list[str]):
+    """
+    Deletes vectors by explicit id (the counterpart to store_chunks_batch_in_pinecone
+    / canonicalize_and_store_rule's "chunk_{id}"/"rule_{id}" id scheme). Used when a
+    document is re-ingested after an edit, so the old chunk/rule vectors don't keep
+    contradicting the freshly-ingested content. Explicit ids rather than a metadata
+    filter delete, since filter-delete isn't reliably supported across all Pinecone
+    index types (serverless vs. pod-based).
+    """
+    if not vector_ids:
+        return
+    try:
+        index = get_pinecone_index()
+        # Pinecone caps delete-by-id batch size; chunk defensively even though a
+        # single document's vector count is normally well under this.
+        BATCH_SIZE = 1000
+        for i in range(0, len(vector_ids), BATCH_SIZE):
+            batch = vector_ids[i : i + BATCH_SIZE]
+            call_with_resilience(
+                "pinecone_write", index.delete, ids=batch,
+                max_attempts=3, base_delay=0.5, max_delay=4.0,
+            )
+        print(f"[Pinecone Indexer]: Deleted {len(vector_ids)} vectors.")
+    except CircuitOpenError as e:
+        print(f"Warning: Pinecone write circuit open, skipping vector deletion: {e}")
+    except Exception as e:
+        print(f"Warning: Failed to delete vectors from Pinecone: {str(e)}")
+
 def store_chunks_batch_in_pinecone(chunks: list[dict]):
     """
     Indexes raw document chunks into Pinecone so Normal Chunk RAG can query 100% of document content.
