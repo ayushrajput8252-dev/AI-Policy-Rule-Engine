@@ -3,7 +3,9 @@
 Auth: a fine-grained personal access token (or GitHub App installation
 token), Bearer-auth. A fine-grained token scoped to just the target
 repo(s) with Issues: Read & write, Pull requests: Read, Metadata: Read is
-enough for every tool below — no org-wide or admin scope is needed.
+enough for every tool below except list_repositories with no `username`
+(the "list my own repos" form), which needs read access to the token
+owner's account-level repo list rather than one specific repo.
 """
 from typing import List
 
@@ -62,6 +64,18 @@ class GitHubConnector(BaseMCPConnector):
             self._list_pull_requests,
         )
         self._add_tool(
+            "list_repositories",
+            "List repositories — either the token owner's own repos, or a given user's public repos.",
+            {
+                "type": "object",
+                "properties": {
+                    "username": {"type": "string", "description": "If omitted, lists the authenticated token's own repos (including private ones it can see)."},
+                    "limit": {"type": "integer", "description": "Max repos to return (default 30)."},
+                },
+            },
+            self._list_repositories,
+        )
+        self._add_tool(
             "get_repository",
             "Get metadata for a repository.",
             {"type": "object", "properties": {"owner": {"type": "string"}, "repo": {"type": "string"}}, "required": ["owner", "repo"]},
@@ -96,6 +110,27 @@ class GitHubConnector(BaseMCPConnector):
         raise_for_tool_error(resp, "GitHub")
         prs = [{"number": p["number"], "title": p["title"], "state": p["state"], "url": p["html_url"]} for p in resp.json()]
         return {"pull_requests": prs}
+
+    def _list_repositories(self, params: dict) -> dict:
+        username = params.get("username")
+        url = f"{GITHUB_API_BASE}/users/{username}/repos" if username else f"{GITHUB_API_BASE}/user/repos"
+        resp = resilient_request(
+            "mcp_github", "GET", url, headers=_headers(),
+            params={"per_page": min(params.get("limit", 30), 100), "sort": "updated"},
+        )
+        raise_for_tool_error(resp, "GitHub")
+        repos = [
+            {
+                "full_name": r["full_name"],
+                "private": r.get("private", False),
+                "default_branch": r.get("default_branch"),
+                "open_issues": r.get("open_issues_count"),
+                "url": r["html_url"],
+                "updated_at": r.get("updated_at"),
+            }
+            for r in resp.json()
+        ]
+        return {"repositories": repos}
 
     def _get_repository(self, params: dict) -> dict:
         url = f"{GITHUB_API_BASE}/repos/{params['owner']}/{params['repo']}"

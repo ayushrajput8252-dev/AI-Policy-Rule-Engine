@@ -701,6 +701,96 @@ export default function RAGPage() {
     await submitQuery(userQuery);
   };
 
+  // Real (non-simulated) handler for the "/github" chat command — parses a
+  // natural-language query into one of the GitHub MCP connector's tools and
+  // calls the actual backend/app/mcp connector (api/mcp.py). Understands:
+  //   - a github.com/<owner>[/<repo>] URL anywhere in the text
+  //   - a bare "owner/repo" shorthand
+  //   - "list [my] repo(s)" -> list_repositories (owner's own repos if none named)
+  //   - "pr" / "pull request(s)" -> list_pull_requests (needs owner+repo)
+  //   - owner+repo with no other intent -> get_repository
+  // Anything else gets an honest "couldn't parse this" message instead of
+  // falling back to simulated text, since faking a GitHub result would be
+  // worse than admitting the command wasn't understood.
+  const handleGithubCommand = async (userQuery: string, queryText: string) => {
+    setMessages((prev) => [...prev, { id: Date.now().toString(), role: "user", content: userQuery }]);
+
+    const urlMatch = queryText.match(/github\.com\/([\w.-]+)(?:\/([\w.-]+))?/i);
+    const shorthandMatch = !urlMatch ? queryText.match(/\b([\w.-]+)\/([\w.-]+)\b/) : null;
+    const owner = urlMatch?.[1] || shorthandMatch?.[1];
+    const repo = (urlMatch?.[2] || shorthandMatch?.[2])?.replace(/\.git$/, "");
+    const wantsList = /\blist\b.*\brepos?\b|\brepos?\b.*\blist\b|all (my )?repos?/i.test(queryText);
+    const wantsPRs = /\bprs?\b|pull ?requests?/i.test(queryText);
+
+    let tool: string;
+    let params: Record<string, unknown>;
+    if (wantsList || (owner && !repo)) {
+      tool = "list_repositories";
+      params = owner ? { username: owner } : {};
+    } else if (owner && repo && wantsPRs) {
+      tool = "list_pull_requests";
+      params = { owner, repo, state: "all" };
+    } else if (owner && repo) {
+      tool = "get_repository";
+      params = { owner, repo };
+    } else {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          isAgentic: true,
+          isError: true,
+          content:
+            "Couldn't tell what to do with that. Try:\n" +
+            "- `/github list my repos`\n" +
+            "- `/github owner/repo`\n" +
+            "- `/github owner/repo prs`\n" +
+            "- `/github https://github.com/owner/repo`",
+        },
+      ]);
+      return;
+    }
+
+    setIsLoading(true);
+    setLastQueryFailed(false);
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${apiUrl}/api/v1/mcp/connectors/github/tools/${tool}/call`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params),
+      });
+      const data = await res.json();
+
+      let content: string;
+      if (!res.ok) {
+        content = `GitHub MCP call failed (${res.status}): ${data.detail?.message || data.detail || "unknown error"}`;
+      } else if (tool === "list_repositories") {
+        content = data.repositories.length
+          ? `${owner ? `**${owner}**'s` : "Your"} repositories (${data.repositories.length}):\n\n${data.repositories
+              .map((r: { full_name: string; private: boolean; open_issues: number }) => `- [${r.full_name}](https://github.com/${r.full_name})${r.private ? " 🔒" : ""} — ${r.open_issues} open issue(s)`)
+              .join("\n")}`
+          : "No repositories found.";
+      } else if (tool === "list_pull_requests") {
+        content = data.pull_requests.length
+          ? `**${owner}/${repo}** — ${data.pull_requests.length} pull request(s):\n\n${data.pull_requests
+              .map((p: { number: number; state: string; title: string }) => `#${p.number} [${p.state}] ${p.title}`)
+              .join("\n")}`
+          : `**${owner}/${repo}** has no pull requests.`;
+      } else {
+        content = `**${data.full_name}**\nDefault branch: \`${data.default_branch}\`\nOpen issues: ${data.open_issues}\n${data.url}`;
+      }
+
+      setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: "assistant", isAgentic: true, isError: !res.ok, content }]);
+    } catch {
+      setLastQueryFailed(true);
+      setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: "assistant", isAgentic: true, isError: true, content: "Could not reach the GitHub MCP endpoint." }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Shared by the typed-input form and voice mode (which has no <form> submit
   // event to hook — it must call this directly once a spoken query is final).
   const submitQuery = async (rawQuery: string) => {
@@ -737,41 +827,9 @@ export default function RAGPage() {
         // /github is wired to the real backend/app/mcp GitHub connector
         // (see api/mcp.py) — every other slash command below still returns
         // simulated text, since no other MCP connector has credentials
-        // configured yet. Syntax: "/github owner/repo" for repo details,
-        // "/github owner/repo prs" to list its pull requests.
-        if (cmdObj.command === "/github" && /^[\w.-]+\/[\w.-]+/.test(queryText)) {
-          setMessages((prev) => [...prev, { id: Date.now().toString(), role: "user", content: userQuery }]);
-          setIsLoading(true);
-          setLastQueryFailed(false);
-          try {
-            const [ownerRepo, ...rest] = queryText.split(/\s+/);
-            const [owner, repo] = ownerRepo.split("/");
-            const wantsPRs = /\bprs?\b|pull ?requests?/i.test(rest.join(" "));
-            const tool = wantsPRs ? "list_pull_requests" : "get_repository";
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-            const res = await fetch(`${apiUrl}/api/v1/mcp/connectors/github/tools/${tool}/call`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ owner, repo, state: "all" }),
-            });
-            const data = await res.json();
-
-            const content = res.ok
-              ? wantsPRs
-                ? data.pull_requests.length
-                  ? `**${owner}/${repo}** — ${data.pull_requests.length} pull request(s):\n\n${data.pull_requests.map((p: any) => `#${p.number} [${p.state}] ${p.title}`).join("\n")}`
-                  : `**${owner}/${repo}** has no pull requests.`
-                : `**${data.full_name}**\nDefault branch: \`${data.default_branch}\`\nOpen issues: ${data.open_issues}\n${data.url}`
-              : `GitHub MCP call failed (${res.status}): ${data.detail?.message || data.detail || "unknown error"}`;
-
-            setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: "assistant", isAgentic: true, isError: !res.ok, content }]);
-          } catch {
-            setLastQueryFailed(true);
-            setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: "assistant", isAgentic: true, isError: true, content: "Could not reach the GitHub MCP endpoint." }]);
-          } finally {
-            setIsLoading(false);
-          }
+        // configured yet.
+        if (cmdObj.command === "/github") {
+          await handleGithubCommand(userQuery, queryText);
           return;
         }
 
