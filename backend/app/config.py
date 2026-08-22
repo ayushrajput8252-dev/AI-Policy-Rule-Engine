@@ -124,13 +124,30 @@ class Settings(BaseSettings):
     SAP_CLIENT_ID: str = ""
     SAP_CLIENT_SECRET: str = ""
 
-    # Google Workspace (Gmail, Drive, Calendar, Docs, Sheets) — a GCP service
-    # account JSON key (paste the full JSON, not a file path) with domain-wide
-    # delegation enabled, impersonating GOOGLE_WORKSPACE_DELEGATED_USER.
-    # Distinct from GOOGLE_CLIENT_ID above, which is only for verifying this
-    # app's own Google Sign-In — this is for calling Workspace APIs as a user.
+    # Google Workspace (Gmail, Drive, Calendar, Docs, Sheets) — two mutually
+    # exclusive auth modes, since which one works depends on the account type:
+    #
+    # 1. Domain-wide delegation (Google Workspace business/education accounts
+    #    ONLY — an admin must authorize the service account in the Workspace
+    #    admin console). Accepts the key JSON pasted inline or a path to the
+    #    downloaded key file.
     GOOGLE_WORKSPACE_SERVICE_ACCOUNT_JSON: str = ""
     GOOGLE_WORKSPACE_DELEGATED_USER: str = ""
+    #
+    # 2. OAuth2 user-consent flow (personal @gmail.com accounts — domain-wide
+    #    delegation doesn't exist for these). Run
+    #    `python backend/scripts/google_oauth_device_setup.py` once to mint
+    #    GOOGLE_OAUTH_REFRESH_TOKEN via the device-code flow (needs a
+    #    "Desktop app" OAuth client ID from the same GCP project as the
+    #    service account, Google Cloud Console > APIs & Services >
+    #    Credentials). Preferred over mode 1 when both are set.
+    GOOGLE_OAUTH_CLIENT_ID: str = ""
+    GOOGLE_OAUTH_CLIENT_SECRET: str = ""
+    GOOGLE_OAUTH_REFRESH_TOKEN: str = ""
+    #
+    # Distinct from GOOGLE_CLIENT_ID above, which is only for verifying this
+    # app's own Google Sign-In ID tokens — these are for calling Workspace
+    # APIs as a user.
 
     # Fraud detection pipeline
     FRAUD_ELA_THRESHOLD: float = 35.0

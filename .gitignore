@@ -152,6 +152,14 @@ activemq-data/
 # Environments
 .env
 .envrc
+
+# Google Cloud service account key files (referenced by path from .env's
+# GOOGLE_WORKSPACE_SERVICE_ACCOUNT_JSON, contain a real private key — never
+# commit one of these regardless of where it's dropped in the tree).
+service-account*.json
+*service_account*.json
+*-service-account.json
+fresh-fusion-*.json
 .venv
 env/
 venv/
