@@ -152,14 +152,6 @@ activemq-data/
 # Environments
 .env
 .envrc
-
-# Google Cloud service account key files (referenced by path from .env's
-# GOOGLE_WORKSPACE_SERVICE_ACCOUNT_JSON, contain a real private key — never
-# commit one of these regardless of where it's dropped in the tree).
-service-account*.json
-*service_account*.json
-*-service-account.json
-fresh-fusion-*.json
 .venv
 env/
 venv/
@@ -242,3 +234,45 @@ node_modules/
 # The .task model file is NOT covered by this — it has no npm source,
 # so it stays committed.
 frontend/public/mediapipe/wasm/
+
+# ─────────────────────────────────────────────────────────────────────────
+# Secrets & credentials — never commit any of these regardless of where in
+# the tree they're dropped. `.env`/`.venv` above already cover the main
+# cases; this section is the broader safety net (added 2026-08-22 after
+# finding an un-ignored GCP service-account key sitting in the repo root —
+# never committed, but shouldn't have been trackable in the first place).
+# ─────────────────────────────────────────────────────────────────────────
+
+# Cloud provider service-account / credential key files (GCP, Firebase, ...)
+*service-account*.json
+*service_account*.json
+*serviceaccount*.json
+fresh-fusion-*.json
+
+# OAuth token caches (the standard filenames google-auth-oauthlib's own
+# quickstart docs tell you to save these as — credentials.json is the
+# downloaded OAuth client secret, token.json/token.pickle is the minted
+# user token) — this repo's own OAuth client secret lives in .env instead,
+# but guard against anyone following that convention by habit.
+credentials.json
+token.json
+token.pickle
+
+# TLS/SSH private keys and keystores
+*.pem
+*.key
+*.pfx
+*.p12
+*.jks
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+id_ecdsa
+id_ecdsa.*
+
+# Generic catch-all for anything explicitly named as a secret/credential
+# dropped ad hoc into the tree (e.g. during local debugging).
+*secret*.json
+*secrets*.json
+*.secrets
