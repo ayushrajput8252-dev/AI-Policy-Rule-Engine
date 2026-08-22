@@ -34,14 +34,20 @@ const PdfViewer = dynamic(() => import("@/components/PdfViewer"), {
 });
 
 type Source = {
-  document_id: string;
-  page: number;
+  // Present for citations from indexed documents (retrieval_mode "rules" /
+  // "chunks"). Absent for retrieval_mode "web" — those sources are
+  // {title, url} web search results instead (see reasoning.py's Tier 3),
+  // not a document/page/bbox at all.
+  document_id?: string;
+  page?: number;
   bbox?: number[];
   page_dim?: number[];
   is_audio?: boolean;
   timestamp_str?: string;
   start_time?: number;
   end_time?: number;
+  title?: string;
+  url?: string;
 };
 
 type Message = {
@@ -1041,12 +1047,27 @@ export default function RAGPage() {
                                   <FileAudio className="w-3.5 h-3.5 text-amber-600" />
                                   <span>Audio Timestamp {src.timestamp_str || `[Page ${src.page}]`}</span>
                                 </div>
+                              ) : !src.document_id ? (
+                                // Web search source (retrieval_mode "web") — {title, url}, no
+                                // document/page/bbox at all, so it links out instead of
+                                // opening the PDF Source Inspector.
+                                <a
+                                  key={sIdx}
+                                  href={src.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 px-3 py-1 rounded-lg transition-colors shadow-2xs max-w-[220px] truncate"
+                                  title={src.url}
+                                >
+                                  <Globe className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                  <span className="truncate">{src.title || src.url || "Web source"}</span>
+                                </a>
                               ) : (
                                 <button
                                   key={sIdx}
                                   onClick={() => setActiveSource(src)}
                                   className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 px-3 py-1 rounded-lg transition-colors shadow-2xs"
-                                  title={`Jump to ${documents.find((d) => d.id === src.document_id)?.fileName || `Doc ${src.document_id.slice(0, 8)}`}, page ${src.page}`}
+                                  title={`Jump to ${documents.find((d) => d.id === src.document_id)?.fileName || `Doc ${src.document_id.slice(0, 8)}`}, page ${src.page ?? "?"}`}
                                 >
                                   <Crosshair className="w-3.5 h-3.5 text-blue-600" />
                                   <span>

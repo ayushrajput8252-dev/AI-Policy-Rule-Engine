@@ -4,8 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { FileText, Crosshair, AlertTriangle, ExternalLink, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 
 type Source = {
-  document_id: string;
-  page: number;
+  document_id?: string;
+  page?: number;
   bbox?: number[];
   page_dim?: number[];
 };
@@ -139,7 +139,7 @@ export default function PdfViewer({
               <>
                 <span>SOURCE DOCUMENT NOT IN THIS SESSION</span>
                 <p className="text-[10px] text-amber-400/70 mt-1 max-w-xs normal-case">
-                  This citation points at a document ({source.document_id.slice(0, 8)}…) that
+                  This citation points at a document ({source.document_id?.slice(0, 8) ?? "unknown"}…) that
                   isn't loaded in this browser session. Re-upload it to inspect the bounding box.
                 </p>
               </>
